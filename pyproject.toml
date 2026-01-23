@@ -1,0 +1,30 @@
+[project]
+name = "clientx"
+version = "0.1.0"
+description = "A typed, declarative HTTP API client framework for Python"
+readme = "README.md"
+authors = [
+    { name = "slatecipher", email = "25094255+slatecipher@users.noreply.github.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "httpx>=0.28.1",
+    "pydantic>=2.12.5",
+]
+
+[project.scripts]
+clientx = "clientx:main"
+
+[build-system]
+requires = ["uv_build>=0.9.10,<0.10.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+    "pytest-cov>=7.0.0",
+    "ruff>=0.14.10",
+]
+
+[tool.pytest.ini_options]
+addopts = "-vv --cov=clientx"
