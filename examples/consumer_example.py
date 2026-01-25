@@ -26,3 +26,8 @@ for comapny in companies:
 response = client.get_companies_raw()
 
 print(f"HTTP Status Code: {response.status_code}")
+
+# Deprecated call example: this will emit a deprecation warning message.
+response = client.get_companies_dep()
+
+print(response)

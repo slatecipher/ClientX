@@ -20,12 +20,20 @@ class CallContext:
     """Arguments bound to the endpoint signature, with defaults applied."""
 
     @property
+    def method(self) -> str:
+        return self.endpoint.method
+
+    @property
     def path(self):
         return self.endpoint.path
 
     @property
     def function_parameters(self):
         return self.endpoint.signature.parameters
+
+    @property
+    def return_type(self) -> Any:
+        return self.endpoint.return_type
 
     @classmethod
     def from_call(

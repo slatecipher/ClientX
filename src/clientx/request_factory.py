@@ -10,6 +10,8 @@ from pydantic.fields import FieldInfo
 
 from clientx.call_context import CallContext
 
+type PartMap = dict[ReqPart, set[tuple[str, None]]]
+
 
 class ReqPart(StrEnum):
     """Field enum for mapping fields into request payload sections."""
@@ -316,7 +318,7 @@ class ModelRequestParts:
 
         return self.build_request_parts(dump, part_map)
 
-    def build_request_parts(self, dump: dict[str, Any], part_map: dict[ReqPart, set[str]]) -> dict[str, dict[str, Any]]:
+    def build_request_parts(self, dump: dict[str, Any], part_map: PartMap) -> dict[str, dict[str, Any]]:
         """Build request parts based on a dump and request field mapping.
 
         Args:
@@ -366,7 +368,7 @@ class ModelRequestParts:
         origin = get_origin(annotation) or annotation
         return isinstance(origin, type) and issubclass(origin, BaseModel)
 
-    def get_request_field_map(self, model: BaseModel) -> dict[ReqPart, set[str]]:
+    def get_request_field_map(self, model: BaseModel) -> PartMap:
         """Build a mapping of request parts to model field and alias pairs.
 
         Args:

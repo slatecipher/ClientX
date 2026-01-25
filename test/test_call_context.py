@@ -1,9 +1,9 @@
 import inspect
-
-from clientx.client import ClientX
-from clientx.call_context import CallContext
-from clientx.endpoint_context import EndpointContext
 from typing import cast
+
+from clientx.call_context import CallContext
+from clientx.client import ClientX
+from clientx.endpoint_context import EndpointContext
 
 
 def test_call_context_binds_args_and_defaults():

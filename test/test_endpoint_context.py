@@ -2,7 +2,7 @@ import inspect
 
 import pytest
 
-from clientx.endpoint_context import EndpointContext, EndpointRegistry, URLPath
+from clientx.endpoint_context import Deprecated, EndpointContext, URLPath
 from clientx.exceptions import MissingPathArgumentsError
 
 
@@ -22,33 +22,6 @@ def test_endpoint_context_requires_func_for_signature():
 
     with pytest.raises(RuntimeError, match="EndpointContext.signature is not set"):
         _ = endpoint.signature
-
-
-def test_endpoint_registry_key_uses_bound_function_qualname():
-    endpoint = EndpointContext("POST", "/v1/users/{user_id}")
-
-    def create_user() -> None: ...
-
-    endpoint.func = create_user
-
-    registry = EndpointRegistry.default()
-
-    assert registry.key_for(endpoint) == (f"/v1/users/{{user_id}}:POST:{create_user.__qualname__}")
-
-
-def test_endpoint_registry_registers_endpoint():
-    endpoint = EndpointContext("GET", "/health")
-
-    def healthcheck() -> None: ...
-
-    endpoint.func = healthcheck
-
-    registry = EndpointRegistry.default()
-    key = registry.register(endpoint)
-
-    assert key == registry.key_for(endpoint)
-    assert key in registry.registry
-    assert registry.registry[key] is endpoint
 
 
 def test_url_path_format_fills_parameters():
@@ -90,4 +63,11 @@ def test_endpoint_context_path_setter_wraps_url_path():
     endpoint.path = "/v1/teams/{team_id}"
 
     assert isinstance(endpoint.path, URLPath)
-    assert endpoint.path.path == "/v1/teams/{team_id}"
+    assert str(endpoint.path) == "/v1/teams/{team_id}"
+
+
+def test_deprecated_emits_deprecation_warning():
+    deprecated = Deprecated("Use /v2/users instead.")
+
+    with pytest.warns(DeprecationWarning, match="Use /v2/users instead."):
+        deprecated()

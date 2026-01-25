@@ -2,16 +2,35 @@ from __future__ import annotations
 
 import inspect
 import re
+import warnings
 from dataclasses import dataclass
 from typing import Any, Callable, ClassVar, Type, get_type_hints
 
 from clientx.client_types import (
     Decoder,
+    DeprecatedType,
     MethodType,
     is_none_type,
     is_response_type,
 )
-from clientx.exceptions import MissingDecoderError, MissingReturnTypeError, MissingPathArgumentsError
+from clientx.exceptions import MissingDecoderError, MissingPathArgumentsError, MissingReturnTypeError
+
+
+@dataclass(frozen=True)
+class Deprecated:
+    """Encapsulate deprecation metadata for an endpoint.
+
+    Attributes:
+        message: Deprecation message to emit.
+        stacklevel: Stack level to report for the warning.
+    """
+
+    message: str
+    stacklevel: int = 4
+
+    def __call__(self) -> None:
+        """Emit a deprecation warning with the configured message."""
+        warnings.warn(self.message, DeprecationWarning, stacklevel=self.stacklevel)
 
 
 @dataclass(frozen=True)
@@ -72,7 +91,9 @@ class EndpointContext:
     request behavior.
     """
 
-    def __init__(self, method: MethodType, path: str, decoder: Decoder | None = None) -> None:
+    def __init__(
+        self, method: MethodType, path: str, decoder: Decoder | None = None, deprecated: DeprecatedType | None = None
+    ) -> None:
         """Initialize the endpoint with an HTTP method and URL path template.
 
         Args:
@@ -82,9 +103,14 @@ class EndpointContext:
         self.method = method
         self.path = path
         self.decoder = decoder
+        self.deprecated = deprecated
         self._func: Callable[..., Any] | None = None
         self._signature: inspect.Signature | None = None
         self._return_type: Any | None = None
+
+    def check_deprecation(self):
+        if callable(self.deprecated):
+            self.deprecated()
 
     @property
     def func(self) -> Callable[..., Any]:
@@ -196,37 +222,31 @@ class EndpointContext:
 
 
 @dataclass
-class EndpointRegistry:
-    """Store and manage endpoint registrations by unique key."""
+class EndpointsRegister:
+    """Store and manage endpoint registrations.
 
-    registry: dict[str, EndpointContext]
+    Attributes:
+        registry: List of registered endpoint contexts.
+    """
+
+    registry: list[EndpointContext]
 
     @classmethod
-    def default(cls: Type[EndpointRegistry]) -> EndpointRegistry:
-        """Return an empty registry."""
-        return cls(registry={})
-
-    def key_for(self, endpoint: EndpointContext) -> str:
-        """Build the registry key for an endpoint.
-
-        Args:
-            endpoint: The endpoint context to build a key for.
+    def default(cls: Type[EndpointsRegister]) -> EndpointsRegister:
+        """Create an empty registry instance.
 
         Returns:
-            str: The registry key for the endpoint.
+            EndpointsRegister: A registry with no registered endpoints.
         """
-        func = endpoint.func
-        return f"{endpoint.path.path}:{endpoint.method}:{func.__qualname__}"
+        return cls(registry=[])
 
-    def register(self, endpoint: EndpointContext) -> str:
-        """Register an endpoint and return its registry key.
+    def register(self, endpoint: EndpointContext) -> None:
+        """Register an endpoint context.
 
         Args:
             endpoint: The endpoint context to register.
-
-        Returns:
-            str: The registry key under which the endpoint was registered.
         """
-        key = self.key_for(endpoint)
-        self.registry[key] = endpoint
-        return key
+        self.registry.append(endpoint)
+
+
+__all__ = ["EndpointContext", "EndpointsRegister", "Deprecated", "URLPath"]

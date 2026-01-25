@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from .beeceptor_models import Companies, Company, User, Users
 
-from clientx import ClientX, Response, api as x
+from clientx import ClientX, Response, Deprecated, api as x
 
 
 class Beeceptor(ClientX):
@@ -15,6 +15,8 @@ class Beeceptor(ClientX):
 
     Refernce: https://beeceptor.com/docs/sample-api-for-testing/
     """
+    # Default User-Agent for all Beeceptor sample API requests from this client.
+    _default_user_agent = "Beeceptor/0.1.0"
 
     @x.get("/users", decoder=lambda r: Users.validate_python(r.json()))
     def get_users(self) -> list[User]:
@@ -40,11 +42,27 @@ class Beeceptor(ClientX):
 
     @x.get("/companies")
     def get_companies_raw(self) -> Response:
-        """Return Beeceptor sample companies as `Company` models.
+        """Return the raw Beeceptor companies response.
 
         The endpoint responds with a JSON array of company records (id, name,
         address, zip, country, employeeCount, industry, marketCap, domain,
-        logo, ceoName), which the client validates and returns as a typed
-        list for demos or quick integration tests.
+        logo, ceoName). This method returns the unvalidated Response for
+        demos or quick integration tests.
+        """
+        ...
+    
+    @x.get(
+        "/companies",
+        deprecated=Deprecated(
+            "Deprecated: use get_companies_raw(); this endpoint will be removed in a future release."
+        ),
+    )
+    def get_companies_dep(self) -> Response:
+        """Deprecated Warning: return the raw Beeceptor companies response.
+
+        The endpoint responds with a JSON array of company records (id, name,
+        address, zip, country, employeeCount, industry, marketCap, domain,
+        logo, ceoName). Use `get_companies_raw` for the same unvalidated
+        Response payload.
         """
         ...

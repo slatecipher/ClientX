@@ -8,17 +8,18 @@ from clientx.call_context import CallContext
 from clientx.client import ClientX
 from clientx.client_types import (
     Decoder,
+    DeprecatedType,
     MethodType,
     is_none_type,
     is_response_type,
 )
 from clientx.endpoint_context import (
     EndpointContext,
-    EndpointRegistry,
+    EndpointsRegister,
 )
 from clientx.request_factory import RequestFactory
 
-endpoint_registry = EndpointRegistry.default()
+endpoints = EndpointsRegister.default()
 
 
 P = ParamSpec("P")
@@ -31,37 +32,49 @@ class ApiMethod:
     method: MethodType
 
     def __call__(
-        self,
-        path: str,
-        *,
-        decoder: Decoder | None = None,
-    ):
+        self, path: str, *, decoder: Decoder | None = None, deprecated: DeprecatedType | None = None
+    ) -> Callable:
+        """Build a decorator that registers an endpoint for this HTTP method.
+
+        Args:
+            path: URL path template for the endpoint (e.g., ``/v1/users/{user_id}``).
+            decoder: Optional response decoder used when the endpoint's return
+                type is neither ``httpx.Response`` nor ``None``.
+            deprecated: Optional deprecation metadata or callable that emits a
+                warning when the endpoint is invoked.
+
+        Returns:
+            Callable: A decorator that wraps and registers the endpoint.
+        """
+
         def decorator(
             func: Callable[Concatenate[T, P], R],
         ) -> Callable[Concatenate[T, P], R]:
-            endpoint = EndpointContext(method=self.method, path=path, decoder=decoder)
-            request_factory = RequestFactory()
+            _endpoint = EndpointContext(method=self.method, path=path, decoder=decoder, deprecated=deprecated)
+            _request_factory = RequestFactory()
 
             @wraps(func)
             def wrapper(_self: T, *args: P.args, **kwargs: P.kwargs) -> R:
-                call_ctx = CallContext.from_call(endpoint=endpoint, client=_self, args=args, kwargs=kwargs)
+                _endpoint.check_deprecation()
 
-                request = request_factory(call_ctx)
+                call_ctx = CallContext.from_call(endpoint=_endpoint, client=_self, args=args, kwargs=kwargs)
 
-                response: httpx.Response = call_ctx.client.send(method=call_ctx.endpoint.method, **request)
+                request = _request_factory(call_ctx)
 
-                if is_none_type(endpoint.return_type):
+                response: httpx.Response = call_ctx.client.send(method=call_ctx.method, **request)
+
+                if is_none_type(call_ctx.return_type):
                     return cast(R, None)
 
-                if is_response_type(endpoint.return_type):
+                if is_response_type(call_ctx.return_type):
                     return cast(R, response)
 
                 assert decoder is not None
 
                 return cast(R, decoder(response))
 
-            endpoint.func = wrapper
-            endpoint_registry.register(endpoint)
+            _endpoint.func = wrapper
+            endpoints.register(_endpoint)
             return wrapper
 
         return decorator
@@ -87,6 +100,7 @@ class Api:
     """PUT request decorator."""
 
 
+# Preconfigured HTTP verb decorators for client usage.
 api = Api(
     delete=ApiMethod("DELETE"),
     get=ApiMethod("GET"),
@@ -96,3 +110,5 @@ api = Api(
     post=ApiMethod("POST"),
     put=ApiMethod("PUT"),
 )
+
+__all__ = ["api", "endpoints"]

@@ -1,17 +1,18 @@
 import inspect
-from typing import Annotated
+from typing import Annotated, cast
 
 import pytest
 from pydantic import BaseModel, Field, computed_field
 
 from clientx.call_context import CallContext
+from clientx.client import ClientX
 from clientx.endpoint_context import EndpointContext
 from clientx.request_factory import (
     ArgumentCursor,
     FieldRequestParts,
     ModelRequestParts,
-    RequestFactory,
     ReqPart,
+    RequestFactory,
 )
 
 
@@ -35,7 +36,7 @@ def test_request_factory_builds_request_parts():
     endpoint.func = handler
 
     payload = Payload(token="t-1", q="q-1", payload="d-1")
-    client = object()
+    client = cast(ClientX, object())
     call_ctx = CallContext.from_call(
         endpoint=endpoint,
         client=client,

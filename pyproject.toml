@@ -1,6 +1,6 @@
 [project]
 name = "clientx"
-version = "0.1.0"
+version = "0.1.1"
 description = "A typed, declarative HTTP API client framework for Python"
 readme = "README.md"
 authors = [
@@ -31,6 +31,9 @@ addopts = "-vv --cov=clientx"
 
 [tool.ruff]
 line-length = 120
+
+[tool.ruff.lint]
+select = ["I"]
 
 [tool.ruff.format]
 quote-style = "double"

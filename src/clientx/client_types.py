@@ -4,8 +4,9 @@ from typing import Any, Callable, Literal, Mapping, TypedDict
 
 import httpx
 
-
 type Decoder = Callable[[httpx.Response], object]
+
+type DeprecatedType = Callable[..., None]
 
 type MethodType = Literal["GET", "PUT", "POST", "PATCH", "DELETE", "HEAD", "OPTIONS"]
 

@@ -41,3 +41,6 @@ class ClientX:
             _httpx_client=httpx.Client(base_url=base_url, **client_kwargs),
             _user_agent=user_agent,
         )
+
+
+__all__ = ["ClientX"]
