@@ -4,8 +4,8 @@ from typing import ClassVar, Unpack
 
 import httpx
 
-from clientx import __version__
 from clientx.client_types import HttpxClientKwargs
+from clientx.version import __version__
 
 
 class ClientX:
