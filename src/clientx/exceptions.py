@@ -1,4 +1,40 @@
-from typing import Callable
+from typing import Any, Callable
+
+
+class UnconsumableArgumentError(TypeError):
+    """Raised when an argument cannot be mapped into an HTTP request part."""
+
+    def __init__(self, *, field: str, annotation: Any, value: Any) -> None:
+        self.field = field
+        self.annotation = annotation
+        self.value = value
+
+        value_type = type(value).__name__
+
+        message = (
+            f"Cannot map argument '{field}' into an HTTP request part.\n"
+            f"  value_type: {value_type}\n"
+            f"  annotation: {annotation!r}\n"
+            "Expected one of:\n"
+            "  • argument name is a RequestSection "
+            "(e.g. 'json', 'params', 'data', 'files', 'headers')\n"
+            "  • argument is Annotated[..., RequestSection.*]\n"
+            "  • argument value is a pydantic BaseModel "
+            "(expanded via ModelExtractor)\n"
+            "Fix: rename the parameter, annotate it with RequestSection, "
+            "or wrap it in a BaseModel."
+        )
+
+        super().__init__(message)
+
+
+class UnprocessedArgumentsError(ValueError):
+    """Raised when call arguments remain unprocessed."""
+
+    def __init__(self, leftovers: dict[str, Any]) -> None:
+        detail = ", ".join(f"{key}={value!r}" for key, value in leftovers.items())
+        super().__init__(f"Unprocessed arguments: {detail}")
+        self.leftovers = leftovers
 
 
 class MissingPathArgumentsError(ValueError):

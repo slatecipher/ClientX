@@ -28,6 +28,10 @@ class CallContext:
         return self.endpoint.path
 
     @property
+    def function_signature(self):
+        return self.endpoint.signature
+
+    @property
     def function_parameters(self):
         return self.endpoint.signature.parameters
 

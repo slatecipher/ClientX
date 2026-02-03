@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from .beeceptor_models import Companies, Company, User, Users
+from clientx import ClientX, Deprecated, Response
+from clientx import api as x
 
-from clientx import ClientX, Response, Deprecated, api as x
+from .beeceptor_models import Companies, Company, User, Users
 
 
 class Beeceptor(ClientX):
@@ -15,6 +16,7 @@ class Beeceptor(ClientX):
 
     Refernce: https://beeceptor.com/docs/sample-api-for-testing/
     """
+
     # Default User-Agent for all Beeceptor sample API requests from this client.
     _default_user_agent = "Beeceptor/0.1.0"
 
@@ -50,7 +52,7 @@ class Beeceptor(ClientX):
         demos or quick integration tests.
         """
         ...
-    
+
     @x.get(
         "/companies",
         deprecated=Deprecated(

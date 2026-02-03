@@ -2,24 +2,20 @@ import inspect
 from typing import Annotated, cast
 
 import pytest
-from pydantic import BaseModel, Field, computed_field
+from pydantic import BaseModel, Field
 
+from clientx.annotations import RequestSection
 from clientx.call_context import CallContext
 from clientx.client import ClientX
 from clientx.endpoint_context import EndpointContext
-from clientx.request_factory import (
-    ArgumentCursor,
-    FieldRequestParts,
-    ModelRequestParts,
-    ReqPart,
-    RequestFactory,
-)
+from clientx.exceptions import UnconsumableArgumentError
+from clientx.request_factory import ArgumentCursor, ModelExtractor, RequestFactory
 
 
 class Payload(BaseModel):
-    token: Annotated[str, ReqPart.HEADERS]
-    q: Annotated[str, ReqPart.PARAMS]
-    data: Annotated[str, ReqPart.JSON] = Field(alias="payload")
+    headers: Annotated[dict[str, str], RequestSection.HEADERS]
+    params: Annotated[dict[str, int], RequestSection.PARAMS]
+    data: str = Field(alias="payload")
 
 
 def test_request_factory_builds_request_parts():
@@ -29,18 +25,18 @@ def test_request_factory_builds_request_parts():
         self,
         item_id: str,
         payload: Payload,
-        limit: Annotated[int, ReqPart.PARAMS],
-        header: Annotated[str, ReqPart.HEADERS],
+        params: dict[str, int],
+        headers: dict[str, str],
     ) -> None: ...
 
     endpoint.func = handler
 
-    payload = Payload(token="t-1", q="q-1", payload="d-1")
+    payload = Payload(headers={"token": "t-1"}, params={"q": 1}, payload="d-1")
     client = cast(ClientX, object())
     call_ctx = CallContext.from_call(
         endpoint=endpoint,
         client=client,
-        args=("123", payload, 5, "h-1"),
+        args=("123", payload, {"limit": 5}, {"header": "h-1"}),
         kwargs={},
     )
 
@@ -49,8 +45,29 @@ def test_request_factory_builds_request_parts():
 
     assert request["path"] == "/v1/items/123"
     assert request["headers"] == {"token": "t-1", "header": "h-1"}
-    assert request["params"] == {"q": "q-1", "limit": 5}
+    assert request["params"] == {"q": 1, "limit": 5}
     assert request["json"] == {"data": "d-1"}
+
+
+def test_request_factory_uses_section_annotation_on_parameter():
+    endpoint = EndpointContext("POST", "/v1/items")
+
+    def handler(self, payload: Annotated[Payload, RequestSection.JSON]) -> None: ...
+
+    endpoint.func = handler
+
+    payload = Payload(headers={"token": "t-1"}, params={"q": 1}, payload="d-1")
+    client = cast(ClientX, object())
+    call_ctx = CallContext.from_call(
+        endpoint=endpoint,
+        client=client,
+        args=(payload,),
+        kwargs={},
+    )
+
+    request = RequestFactory()(call_ctx)
+
+    assert request["json"] == {"headers": {"token": "t-1"}, "params": {"q": 1}, "data": "d-1"}
 
 
 def test_merge_request_parts_warns_on_shared_dict_keys():
@@ -121,52 +138,34 @@ def test_argument_cursor_consume_errors():
         cursor.consume("missing")
 
 
-def test_field_request_parts_returns_none_without_request_field():
-    cursor = ArgumentCursor(inspect.signature(lambda a: None).bind(1))
-    field_parts = FieldRequestParts()
+def test_model_extractor_groups_sections_and_defaults_json():
+    class GroupedPayload(BaseModel):
+        headers: Annotated[dict[str, str], RequestSection.HEADERS]
+        params: Annotated[dict[str, int], RequestSection.PARAMS]
+        data: str
 
-    assert field_parts("a", Annotated[int, "meta"], cursor) is None
+    model = GroupedPayload(headers={"token": "t"}, params={"q": 1}, data="d")
+    parts = ModelExtractor()(model)
 
-
-def test_model_request_parts_field_matches_request_part():
-    model_parts = ModelRequestParts()
-    dump = {"json": {"a": 1}}
-    part_map = {ReqPart.JSON: {("json", None)}}
-
-    parts = model_parts.build_request_parts(dump, part_map)
-
-    assert parts["json"] == {"a": 1}
+    assert parts[RequestSection.HEADERS] == {"token": "t"}
+    assert parts[RequestSection.PARAMS] == {"q": 1}
+    assert parts[RequestSection.JSON] == {"data": "d"}
 
 
-def test_model_request_parts_explicit_request_keys():
-    model_parts = ModelRequestParts()
-    dump = {"json": {"a": 1}, "files": {"f": "x"}}
+def test_request_factory_raises_unconsumable_argument_error():
+    endpoint = EndpointContext("GET", "/v1/items/{item_id}")
 
-    parts = model_parts.build_request_parts(dump, {})
+    def handler(self, item_id: str, token: str) -> None: ...
 
-    assert parts[ReqPart.JSON] == {"a": 1}
-    assert parts[ReqPart.FILES] == {"f": "x"}
+    endpoint.func = handler
 
+    client = cast(ClientX, object())
+    call_ctx = CallContext.from_call(
+        endpoint=endpoint,
+        client=client,
+        args=("123", "t-1"),
+        kwargs={},
+    )
 
-def test_model_request_parts_defaults_remaining_to_json():
-    class RemainingPayload(BaseModel):
-        extra: str
-
-    model = RemainingPayload(extra="e")
-    parts = ModelRequestParts()(model)
-
-    assert parts["json"] == {"extra": "e"}
-
-
-def test_get_request_field_map_includes_computed_fields():
-    class ComputedPayload(BaseModel):
-        token: str
-
-        @computed_field
-        @property
-        def auth(self) -> Annotated[str, ReqPart.HEADERS]:
-            return self.token
-
-    mapping = ModelRequestParts().get_request_field_map(ComputedPayload(token="t"))
-
-    assert mapping == {ReqPart.HEADERS: {("auth", None)}}
+    with pytest.raises(UnconsumableArgumentError, match="Cannot map argument 'token'"):
+        RequestFactory()(call_ctx)

@@ -1,26 +1,18 @@
+from __future__ import annotations
+
 import inspect
 import warnings
 from collections import defaultdict
 from dataclasses import dataclass, field
-from enum import StrEnum
-from typing import Annotated, Any, Sequence, cast, get_args, get_origin
+from typing import Any
 
 from pydantic import BaseModel
-from pydantic.fields import FieldInfo
 
+from clientx.annotations import NamedAnnotation, NamedAnnotationExtractor, RequestSection
 from clientx.call_context import CallContext
+from clientx.exceptions import UnconsumableArgumentError, UnprocessedArgumentsError
 
-type PartMap = dict[ReqPart, set[tuple[str, None]]]
-
-
-class ReqPart(StrEnum):
-    """Field enum for mapping fields into request payload sections."""
-
-    PARAMS = "params"
-    FILES = "files"
-    DATA = "data"
-    JSON = "json"
-    HEADERS = "headers"
+type PartMap = dict[RequestSection, set[tuple[str, None]]]
 
 
 @dataclass
@@ -126,11 +118,10 @@ class ArgumentCursor:
             raise TypeError(f"Unhandled arguments: {', '.join(self.bound_copy)}")
 
 
-@dataclass
+@dataclass(frozen=True)
 class RequestFactory:
     """Construct HTTP request parts from a call context."""
 
-    strict: bool = True
     warn_on_conflict: bool = False
 
     def __call__(self, call_ctx: CallContext) -> dict[str, Any]:
@@ -149,6 +140,7 @@ class RequestFactory:
         rendered_path = self.render_path(call_ctx, cursor)
 
         request_parts = self.extract_request_parts(call_ctx, cursor)
+
         request = self.merge_request_parts(request_parts)
 
         return {"path": rendered_path, **request}
@@ -181,25 +173,32 @@ class RequestFactory:
 
         Returns:
             List of request part mappings suitable for httpx.request(**kwargs).
+
+            Parameters are converted into request parts using one of three strategies:
+            - Parameter name matches a RequestSection (e.g., ``json`` or ``params``).
+            - Parameter is annotated with a RequestSection via ``Annotated`` metadata.
+            - Parameter value is a Pydantic model, which is expanded by ModelExtractor.
         """
         parts = []
+        annotation_map = NamedAnnotationExtractor.from_signature(call.function_signature)
+        model_extractor = ModelExtractor()
 
-        parameters = call.function_parameters
-        model_processor = ModelRequestParts()
-        field_processor = FieldRequestParts()
-
-        for name, param in parameters.items():
-            if name in cursor.consumed:  # already consumed or never bound
+        for field, annotation in annotation_map.items():
+            # already consumed (e.g., self or path parameters)
+            if field in cursor.consumed:
                 continue
 
-            if model_processor.is_base_model(param.annotation):
-                model = cast(BaseModel, cursor.consume(name))
-                part = model_processor(model)
-                parts.append(part)
+            value = cursor.consume(field)
 
-            elif field_processor.is_annotated(param.annotation):
-                if part := field_processor(name, param.annotation, cursor):
-                    parts.append(part)
+            if key := RequestSection.get(field) or annotation.info.request_section:
+                parts.append({key: value.model_dump() if isinstance(value, BaseModel) else value})
+                continue
+
+            elif isinstance(value, BaseModel):
+                parts.append(model_extractor(value))
+                continue
+
+            raise UnconsumableArgumentError(field=field, annotation=annotation, value=value)
 
         return parts
 
@@ -259,51 +258,8 @@ class RequestFactory:
             )
 
 
-def get_request_field(meta: Sequence[Any]) -> ReqPart | None:
-    """Return the first RequestField marker from a metadata sequence, if any.
-
-    Args:
-        meta: Annotation metadata items to search.
-
-    Returns:
-        The first RequestField marker, if present.
-    """
-    return next((m for m in meta if isinstance(m, ReqPart)), None)
-
-
-class FieldRequestParts:
-    def __call__(self, field_name: str, annotation: Any, cursor: ArgumentCursor) -> dict[str, Any] | None:
-        """Build request parts for an Annotated argument.
-
-        Args:
-            field_name: Name of the bound argument.
-            annotation: Annotation carrying a RequestField marker.
-            cursor: Cursor over bound arguments for consumption.
-
-        Returns:
-            Request part mapping, or None if no RequestField is present.
-        """
-        part = defaultdict(dict)
-
-        if not (field := self.request_field_from_annotation(annotation)):
-            return None
-
-        value = cursor.consume(field_name)
-        part[field].update({field_name: value})
-
-        return dict(part)
-
-    def is_annotated(self, annotation: Any) -> bool:
-        """Return whether an annotation is typing.Annotated."""
-        return get_origin(annotation) is Annotated
-
-    def request_field_from_annotation(self, annotation: Any) -> ReqPart | None:
-        """Return the RequestField marker from an Annotated annotation, if present."""
-        _, *meta = get_args(annotation)
-        return get_request_field(meta)
-
-
-class ModelRequestParts:
+@dataclass(frozen=True)
+class ModelExtractor:
     def __call__(self, model: BaseModel) -> dict[str, Any]:
         """Build request parts from a Pydantic model.
 
@@ -313,94 +269,34 @@ class ModelRequestParts:
         Returns:
             Request part mapping derived from the model.
         """
-        part_map = self.get_request_field_map(model)
-        dump = model.model_dump()
+        annotation_map = NamedAnnotationExtractor.from_base_model(model)
 
-        return self.build_request_parts(dump, part_map)
+        return self.build_request_arguments(model, annotation_map)
 
-    def build_request_parts(self, dump: dict[str, Any], part_map: PartMap) -> dict[str, dict[str, Any]]:
-        """Build request parts based on a dump and request field mapping.
-
-        Args:
-            dump: Model dump of field values.
-            part_map: Mapping of request parts to field/alias pairs.
-
-        Returns:
-            Request part mapping grouped by request section.
-        """
-        request_parts = defaultdict(dict)
-
-        for request_part, fields in part_map.items():
-            for field_keys in fields:
-                # field = (model_field, alias)
-                # Prefer the field name when present, otherwise fall back to the alias.
-                field_key: str = next(f for f in field_keys if f in dump)
-
-                # If a field name matches a request payload key (json/data/file/params/headers),
-                # treat its value as the whole payload for that request part.
-                if field_key == request_part:
-                    request_parts[request_part] = dump.pop(field_key)
-
-                if field_key in dump:
-                    request_parts[request_part][field_key] = dump.pop(field_key)
-
-        # Promote explicit request-part keys (json/data/file/params)
-        # treat its value as the whole payload for that request part.
-        for part in ReqPart:
-            if part in dump:
-                request_parts[part] = dump.pop(part)
-
-        # Any remaining fields default to the JSON request body.
-        if dump:
-            request_parts[ReqPart.JSON] = dump
-
-        return dict(request_parts)
-
-    def is_base_model(self, annotation: Any) -> bool:
-        """Return whether an annotation resolves to a BaseModel subtype.
+    def build_request_arguments(
+        self, model: BaseModel, annotation_map: dict[str, NamedAnnotation]
+    ) -> dict[str, dict[str, Any]]:
+        """Build request parts based on a model dump and annotation mapping.
 
         Args:
-            annotation: Annotation to inspect.
+            model: Model instance to extract request parts from.
+            annotation_map: Mapping of model field names (and aliases) to annotations.
 
         Returns:
-            True if the annotation resolves to a BaseModel subtype.
+            Request part mapping grouped by request section. Fields marked with a
+            RequestSection are merged into that section and are expected to be
+            mapping values. Remaining fields default to the JSON section.
         """
-        origin = get_origin(annotation) or annotation
-        return isinstance(origin, type) and issubclass(origin, BaseModel)
+        request = defaultdict(dict)
 
-    def get_request_field_map(self, model: BaseModel) -> PartMap:
-        """Build a mapping of request parts to model field and alias pairs.
+        data = model.model_dump()
 
-        Args:
-            model: Model instance to inspect for request field metadata.
+        for field in list(data):
+            annotation = annotation_map[field]
+            if section := annotation.info.request_section:
+                request[section].update(data.pop(field))
 
-        Returns:
-            Mapping of request parts to field and alias pairs.
+        if data:
+            request[RequestSection.JSON].update(**data)
 
-        Example:
-            >>> class Payload(BaseModel):
-            ...     token: Annotated[str, RequestField.HEADERS]
-            ...     data: Annotated[str, RequestField.JSON] = Field(alias="payload")
-            >>> ModelRequestParts().get_request_field_map(
-            ...     Payload(token="t", payload="d")
-            ... )
-            {<RequestField.HEADERS: 'headers'>: {('token', None)},
-             <RequestField.JSON: 'json'>: {('data', 'payload')}}
-        """
-        field_reference = defaultdict(set)
-        model_fields = type(model).model_fields | type(model).model_computed_fields
-
-        for name, info in model_fields.items():
-            # FieldInfo
-            if isinstance(info, FieldInfo):
-                if field := get_request_field(info.metadata):
-                    field_reference[field].add((name, info.alias))
-                continue
-
-            # ComputedFieldInfo
-            if get_origin(info.return_type) is Annotated:
-                return_args = get_args(info.return_type)
-                if field := get_request_field(return_args):
-                    field_reference[field].add((name, info.alias))
-
-        return dict(field_reference)
+        return request
