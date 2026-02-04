@@ -4,7 +4,7 @@ from typing import Annotated, cast
 import pytest
 from pydantic import BaseModel, Field
 
-from clientx.annotations import RequestSection
+from clientx.annotations import DumpOptions, RequestSection
 from clientx.call_context import CallContext
 from clientx.client import ClientX
 from clientx.endpoint_context import EndpointContext
@@ -145,7 +145,7 @@ def test_model_extractor_groups_sections_and_defaults_json():
         data: str
 
     model = GroupedPayload(headers={"token": "t"}, params={"q": 1}, data="d")
-    parts = ModelExtractor()(model)
+    parts = ModelExtractor()(model, DumpOptions())
 
     assert parts[RequestSection.HEADERS] == {"token": "t"}
     assert parts[RequestSection.PARAMS] == {"q": 1}

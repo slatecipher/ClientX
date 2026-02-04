@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field, computed_field
 from clientx.annotations import (
     AnnotationExtractor,
     AnnotationInfo,
+    DumpOptions,
     NamedAnnotation,
     NamedAnnotationExtractor,
     RequestSection,
@@ -25,11 +26,21 @@ def test_annotation_info_request_section_first_match():
     assert info.request_section is RequestSection.PARAMS
 
 
+def test_annotation_info_dump_options_first_match():
+    first = DumpOptions(exclude_none=True)
+    second = DumpOptions(exclude_unset=True)
+    info = AnnotationInfo(metadata=["meta", first, second])
+
+    assert info.dump_options is first
+
+
 def test_annotation_extractor_from_field_annotation_with_annotated_metadata():
-    info = AnnotationExtractor.from_field_annotation(Annotated[int, RequestSection.HEADERS, "meta"])
+    info = AnnotationExtractor.from_field_annotation(
+        Annotated[int, RequestSection.HEADERS, DumpOptions(exclude_none=True)]
+    )
 
     assert info.annotation is int
-    assert info.metadata == [RequestSection.HEADERS, "meta"]
+    assert info.metadata == [RequestSection.HEADERS, DumpOptions(exclude_none=True)]
 
 
 def test_annotation_extractor_from_signature_maps_annotations():
@@ -71,3 +82,12 @@ def test_named_annotation_extractor_from_signature():
 
     assert mapping["a"].name == "a"
     assert mapping["a"].info.annotation is int
+
+
+def test_dump_options_kwargs_returns_fields():
+    options = DumpOptions(exclude_none=True, exclude_defaults=True)
+
+    assert options.model_dump(exclude_unset=True) == {
+        "exclude_none": True,
+        "exclude_defaults": True,
+    }

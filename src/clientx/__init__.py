@@ -1,6 +1,6 @@
 from httpx import Auth, Request, Response
 
-from clientx.annotations import RequestSection
+from clientx.annotations import DumpOptions, RequestSection
 from clientx.client import ClientX
 from clientx.decoding import FromResponseDecoder, ModelDecoder, TypeAdapterDecoder
 from clientx.decorators import api, endpoints
@@ -13,6 +13,7 @@ __all__ = [
     "Auth",
     "ClientX",
     "Deprecated",
+    "DumpOptions",
     "ModelDecoder",
     "Request",
     "RequestSection",
