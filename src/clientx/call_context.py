@@ -47,7 +47,7 @@ class CallContext:
         client: ClientX,
         args: tuple[Any, ...],
         kwargs: dict[str, Any],
-    ) -> "CallContext":
+    ) -> CallContext:
         """Build a call context by binding arguments to an endpoint signature.
 
         Args:

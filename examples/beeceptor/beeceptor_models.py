@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, HttpUrl, TypeAdapter
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl, TypeAdapter
 
 
 class User(BaseModel):
@@ -37,31 +37,36 @@ Users = TypeAdapter(list[User])
 class Company(BaseModel):
     """Company profile returned by the Beeceptor sample companies API.
 
+    Field names follow Python ``snake_case`` conventions, while aliases
+    preserve the original camelCase field names used by the API.
+
     Attributes:
         id: Numeric identifier for the company.
         name: Company name.
         address: Street address.
-        zip: Postal code, stored as a string for hyphenated zips.
+        zip: Postal code, stored as a string for hyphenated ZIP codes.
         country: Country name.
-        employeeCount: Number of employees.
+        employee_count: Number of employees.
         industry: Industry category.
-        marketCap: Market capitalization value.
+        market_cap: Market capitalization value.
         domain: Company domain name.
         logo: URL to the company logo image.
-        ceoName: CEO full name.
+        ceo_name: CEO full name.
     """
+
+    model_config = ConfigDict(populate_by_name=True)
 
     id: int
     name: str
     address: str
-    zip: str = Field(..., description="Postal code (string because of hyphenated zips)")
+    zip: str = Field(..., description="Postal code (string because of hyphenated ZIP codes)")
     country: str
-    employeeCount: int = Field(..., ge=0)
+    employee_count: int = Field(..., ge=0, alias="employeeCount")
     industry: str
-    marketCap: int = Field(..., ge=0)
+    market_cap: int = Field(..., ge=0, alias="marketCap")
     domain: str
     logo: HttpUrl
-    ceoName: str
+    ceo_name: str = Field(..., alias="ceoName")
 
 
 Companies = TypeAdapter(list[Company])

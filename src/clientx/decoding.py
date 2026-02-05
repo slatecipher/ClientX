@@ -1,14 +1,14 @@
 """Response decoders for mapping HTTP responses into typed models."""
 
 from dataclasses import dataclass, field
-from typing import Protocol, Type
+from typing import Protocol
 
 from httpx import Response
 from pydantic import BaseModel, TypeAdapter
 
 
 @dataclass
-class ModelDecoder[T: Type[BaseModel]]:
+class ModelDecoder[T: type[BaseModel]]:
     """Decode a response body into a Pydantic model instance."""
 
     model: T

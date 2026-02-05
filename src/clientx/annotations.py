@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from enum import StrEnum
 from inspect import Signature
 from typing import Annotated, Any, Literal, get_args, get_origin
 
-from pydantic import BaseModel, ConfigDict, TypeAdapter, ValidationError
+from pydantic import BaseModel, TypeAdapter, ValidationError
 from pydantic.fields import ComputedFieldInfo, FieldInfo
 
 
@@ -186,7 +186,8 @@ class AnnotationExtractor:
             # For computed fields, the annotation lives in return_type.
             return AnnotationExtractor.from_field_annotation(field_info.return_type)
 
-        assert isinstance(field_info, FieldInfo)
+        if not isinstance(field_info, FieldInfo):
+            raise TypeError(f"Expected FieldInfo or ComputedFieldInfo, got {type(field_info).__name__}")
         # FieldInfo.annotation is already the underlying type; metadata is separate.
         return AnnotationInfo(annotation=field_info.annotation, metadata=list(field_info.metadata))
 

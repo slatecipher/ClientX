@@ -1,6 +1,6 @@
 [project]
 name = "clientx"
-version = "0.4.0"
+version = "0.4.1"
 description = "A typed, declarative HTTP API client framework for Python"
 readme = "README.md"
 authors = [
@@ -28,16 +28,3 @@ dev = [
 
 [tool.pytest.ini_options]
 addopts = "-vv --cov=clientx"
-
-[tool.ruff]
-line-length = 120
-target-version = "py312"
-
-[tool.ruff.lint]
-select = ["I"]
-
-[tool.ruff.format]
-quote-style = "double"
-indent-style = "space"
-skip-magic-trailing-comma = false
-line-ending = "auto"

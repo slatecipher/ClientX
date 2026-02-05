@@ -1,6 +1,7 @@
 import ssl
+from collections.abc import Callable, Mapping
 from http.cookiejar import CookieJar
-from typing import Any, Callable, Literal, Mapping, TypedDict
+from typing import Any, Literal, TypedDict
 
 import httpx
 

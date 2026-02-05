@@ -3,8 +3,9 @@ from __future__ import annotations
 import inspect
 import re
 import warnings
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable, ClassVar, Type, get_type_hints
+from typing import Any, ClassVar, get_type_hints
 
 from clientx.client_types import (
     Decoder,
@@ -232,7 +233,7 @@ class EndpointsRegister:
     registry: list[EndpointContext]
 
     @classmethod
-    def default(cls: Type[EndpointsRegister]) -> EndpointsRegister:
+    def default(cls: type[EndpointsRegister]) -> EndpointsRegister:
         """Create an empty registry instance.
 
         Returns:

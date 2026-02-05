@@ -10,7 +10,7 @@ from pydantic import BaseModel
 
 from clientx.annotations import DumpOptions, NamedAnnotation, NamedAnnotationExtractor, RequestSection
 from clientx.call_context import CallContext
-from clientx.exceptions import UnconsumableArgumentError, UnprocessedArgumentsError
+from clientx.exceptions import UnconsumableArgumentError
 
 type PartMap = dict[RequestSection, set[tuple[str, None]]]
 
@@ -183,14 +183,14 @@ class RequestFactory:
         annotation_map = NamedAnnotationExtractor.from_signature(call.function_signature)
         model_extractor = ModelExtractor()
 
-        for field, annotation in annotation_map.items():
+        for field_name, annotation in annotation_map.items():
             # already consumed (e.g., self or path parameters)
-            if field in cursor.consumed:
+            if field_name in cursor.consumed:
                 continue
 
-            value = cursor.consume(field)
+            value = cursor.consume(field_name)
 
-            if key := RequestSection.get(field) or annotation.request_section:
+            if key := RequestSection.get(field_name) or annotation.request_section:
                 parts.append(
                     {key: value.model_dump(**annotation.dump_options.kwargs) if isinstance(value, BaseModel) else value}
                 )
@@ -200,7 +200,7 @@ class RequestFactory:
                 parts.append(model_extractor(model=value, dump_options=annotation.dump_options))
                 continue
 
-            raise UnconsumableArgumentError(field=field, annotation=annotation, value=value)
+            raise UnconsumableArgumentError(field=field_name, annotation=annotation, value=value)
 
         return parts
 
@@ -292,10 +292,10 @@ class ModelExtractor:
         """
         request = defaultdict(dict)
 
-        for field in list(dump):
-            annotation = annotation_map[field]
+        for key in list(dump):
+            annotation = annotation_map[key]
             if section := annotation.info.request_section:
-                request[section].update(dump.pop(field))
+                request[section].update(dump.pop(key))
 
         if dump:
             request[RequestSection.JSON].update(**dump)

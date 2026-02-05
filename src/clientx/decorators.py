@@ -1,6 +1,7 @@
+from collections.abc import Callable
 from dataclasses import dataclass
 from functools import wraps
-from typing import Callable, Concatenate, ParamSpec, TypeVar, cast
+from typing import Concatenate, ParamSpec, TypeVar, cast
 
 import httpx
 
@@ -69,7 +70,8 @@ class ApiMethod:
                 if is_response_type(call_ctx.return_type):
                     return cast(R, response)
 
-                assert decoder is not None
+                if decoder is None:
+                    raise RuntimeError("Internal error: decoder was None for a decodable return type.")
 
                 return cast(R, decoder(response))
 
