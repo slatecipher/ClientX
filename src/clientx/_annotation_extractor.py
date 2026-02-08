@@ -26,24 +26,6 @@ class AnnotationInfo:
     def fieldx(self) -> FieldX:
         return next((m for m in self.metadata if isinstance(m, FieldX)), FieldX())
 
-    # @property
-    # def request_section(self) -> RequestPart | None:
-    #     """Return the first RequestSection marker from metadata, if present.
-
-    #     Returns:
-    #         The first RequestSection found in metadata, or None when not present.
-    #     """
-    #     return next((m for m in self.metadata if isinstance(m, RequestPart)), None)
-
-    # @property
-    # def dump_options(self) -> ModelDumpConfig:
-    #     """Return the first DumpOptions marker from metadata, if present.
-
-    #     Returns:
-    #         The first DumpOptions found in metadata, or a default DumpOptions instance when not present.
-    #     """
-    #     return next((d for d in self.metadata if isinstance(d, ModelDumpConfig)), ModelDumpConfig())
-
     def validate(self, value: Any) -> None:
         """Validate a value against this annotation.
 
@@ -85,14 +67,6 @@ class NamedAnnotation:
     @property
     def fieldx(self) -> FieldX:
         return self.info.fieldx
-
-    # @property
-    # def dump_options(self) -> ModelDumpConfig:
-    #     return self.info.dump_options
-
-    # @property
-    # def request_section(self) -> RequestPart | None:
-    #     return self.info.request_section
 
 
 class AnnotationExtractor:

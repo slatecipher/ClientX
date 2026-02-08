@@ -4,13 +4,14 @@ import inspect
 import warnings
 from collections import defaultdict
 from dataclasses import dataclass, field
+from inspect import BoundArguments
 from typing import Any
 
 from pydantic import BaseModel
 
 from clientx._annotation_extractor import NamedAnnotation, NamedAnnotationExtractor
 from clientx._annotations import DumpConfig, RequestPart
-from clientx._call_context import CallContext
+from clientx._endpoint_context import Endpoint
 from clientx.exceptions import UnconsumableArgumentError
 
 type PartMap = dict[RequestPart, set[tuple[str, None]]]
@@ -121,67 +122,81 @@ class ArgumentCursor:
 
 @dataclass(frozen=True)
 class RequestFactory:
-    """Construct HTTP request parts from a call context."""
+    """Construct HTTP request inputs from a bound endpoint invocation.
 
+    Attributes:
+        endpoint: Endpoint metadata and signature used to consume arguments.
+        warn_on_conflict: Whether merge conflicts should emit warnings.
+    """
+
+    endpoint: Endpoint
     warn_on_conflict: bool = False
 
-    def __call__(self, call_ctx: CallContext) -> dict[str, Any]:
-        """Build a request for a call context.
+    def __call__(self, arguments: BoundArguments) -> dict[str, Any]:
+        """Build request kwargs and a rendered path from bound arguments.
 
         Args:
-            call_ctx: Call metadata and bound arguments.
+            arguments: Bound endpoint arguments produced from signature binding.
 
         Returns:
-            Request parts including the rendered path.
+            dict[str, Any]: Request mapping containing ``path`` plus merged
+                request parts suitable for ``httpx`` calls.
         """
-        cursor = ArgumentCursor(call_ctx.bound)
+        cursor = ArgumentCursor(arguments)
 
         # 1) drop self from request materialization
         cursor.consume_optional("self")
-        rendered_path = self.render_path(call_ctx, cursor)
+        rendered_path = self.render_path(cursor)
 
-        request_parts = self.extract_request_parts(call_ctx, cursor)
+        request_parts = self.extract_request_parts(cursor)
 
         request = self.merge_request_parts(request_parts)
 
         return {"path": rendered_path, **request}
 
-    def render_path(self, call: CallContext, cursor: ArgumentCursor) -> str:
+    def render_path(self, cursor: ArgumentCursor) -> str:
         """Render the endpoint path using bound arguments.
 
         Args:
-            call: Call metadata describing the endpoint.
             cursor: Cursor over bound arguments for consumption.
 
         Returns:
-            The formatted request path.
+            str: Formatted request path with template parameters applied.
+
+        Raises:
+            KeyError: If a required path parameter has already been consumed or
+                is missing from the bound arguments.
         """
-        path_parameters = call.path.parameters
+
+        path_parameters = self.endpoint.path.parameters
         values = {name: cursor.consume(name) for name in path_parameters}
 
-        return call.path.format(values)
+        return self.endpoint.path.format(values)
 
     def extract_request_parts(
         self,
-        call: CallContext,
         cursor: ArgumentCursor,
     ) -> list[dict[str, Any]]:
         """Extract HTTP request parts from remaining arguments.
 
         Args:
-            call: Call metadata describing the endpoint.
             cursor: Cursor over bound arguments for consumption.
 
         Returns:
-            List of request part mappings suitable for httpx.request(**kwargs).
+            list[dict[str, Any]]: Request part mappings suitable for
+                ``httpx.request(**kwargs)``.
 
             Parameters are converted into request parts using one of three strategies:
-            - Parameter name matches a RequestSection (e.g., ``json`` or ``params``).
-            - Parameter is annotated with a RequestSection via ``Annotated`` metadata.
-            - Parameter value is a Pydantic model, which is expanded by ModelExtractor.
+            - Parameter name matches a ``RequestPart`` (for example ``json`` or ``params``).
+            - Parameter is annotated with a ``RequestPart`` via ``Annotated`` metadata.
+            - Parameter value is a Pydantic model, expanded by ``ModelExtractor``.
+
+        Raises:
+            UnconsumableArgumentError: If a parameter cannot be mapped to a
+                request part.
         """
         parts = []
-        annotation_map = NamedAnnotationExtractor.from_signature(call.function_signature)
+        annotation_map = NamedAnnotationExtractor.from_signature(self.endpoint.signature)
         model_extractor = ModelExtractor()
 
         for field_name, annotation in annotation_map.items():
@@ -263,15 +278,17 @@ class RequestFactory:
 
 @dataclass(frozen=True)
 class ModelExtractor:
+    """Expand Pydantic models into request-part mappings."""
+
     def __call__(self, model: BaseModel, dump_config: DumpConfig) -> dict[str, Any]:
         """Build request parts from a Pydantic model.
 
         Args:
             model: Model instance to extract request fields from.
-            dump_options: Serialization options passed to ``model_dump``.
+            dump_config: Serialization options passed to ``model_dump``.
 
         Returns:
-            Request part mapping derived from the model.
+            dict[str, Any]: Request part mapping derived from the model.
         """
         annotation_map = NamedAnnotationExtractor.from_base_model(model)
         dump = model.model_dump(**dump_config)
@@ -283,13 +300,15 @@ class ModelExtractor:
         """Build request parts based on a model dump and annotation mapping.
 
         Args:
-            dump: Model dump to map into request parts. This dict is mutated as fields are assigned.
+            dump: Model dump to map into request parts. This dict is mutated as
+                fields are assigned.
             annotation_map: Mapping of model field names (and aliases) to annotations.
 
         Returns:
-            Request part mapping grouped by request section. Fields marked with a
-            RequestPart are merged into that section and are expected to be
-            mapping values. Remaining fields default to the JSON section.
+            dict[str, dict[str, Any]]: Request-part mapping grouped by
+                ``RequestPart``. Fields marked with a request part are merged
+                into that section and are expected to be mapping values.
+                Remaining fields default to ``RequestPart.JSON``.
         """
         request = defaultdict(dict)
 

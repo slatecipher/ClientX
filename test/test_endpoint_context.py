@@ -1,13 +1,14 @@
 import inspect
 
 import pytest
+from httpx import Response
 
-from clientx._endpoint_context import DeprecatedMessage, EndpointContext, URLPath
-from clientx.exceptions import MissingPathArgumentsError
+from clientx._endpoint_context import DeprecatedMessage, Endpoint, EndpointRegister, URLPath
+from clientx.exceptions import MissingDecoderError, MissingPathArgumentsError, MissingReturnTypeError
 
 
 def test_endpoint_context_wraps_path_and_extracts_parameters():
-    endpoint = EndpointContext("GET", "/v1/users/{user_id}")
+    endpoint = Endpoint("GET", "/v1/users/{user_id}")
 
     assert isinstance(endpoint.path, URLPath)
     assert endpoint.path.path == "/v1/users/{user_id}"
@@ -15,7 +16,7 @@ def test_endpoint_context_wraps_path_and_extracts_parameters():
 
 
 def test_endpoint_context_requires_func_for_signature():
-    endpoint = EndpointContext("GET", "/v1/users/{user_id}")
+    endpoint = Endpoint("GET", "/v1/users/{user_id}")
 
     with pytest.raises(AttributeError, match="_func is not set"):
         _ = endpoint.func
@@ -48,7 +49,7 @@ def test_url_path_str_returns_template():
 
 
 def test_endpoint_context_signature_is_set_with_func():
-    endpoint = EndpointContext("GET", "/v1/users/{user_id}")
+    endpoint = Endpoint("GET", "/v1/users/{user_id}")
 
     def handler(user_id: str) -> None: ...
 
@@ -58,7 +59,7 @@ def test_endpoint_context_signature_is_set_with_func():
 
 
 def test_endpoint_context_path_setter_wraps_url_path():
-    endpoint = EndpointContext("GET", "/v1/users/{user_id}")
+    endpoint = Endpoint("GET", "/v1/users/{user_id}")
 
     endpoint.path = "/v1/teams/{team_id}"
 
@@ -71,3 +72,59 @@ def test_deprecated_emits_deprecation_warning():
 
     with pytest.warns(DeprecationWarning, match="Use /v2/users instead."):
         deprecated()
+
+
+def test_endpoint_repr_includes_method_path_function_and_return_type():
+    endpoint = Endpoint("GET", "/v1/users/{user_id}")
+
+    def handler(user_id: str) -> Response: ...
+
+    endpoint.func = handler
+
+    rendered = repr(endpoint)
+
+    assert "Endpoint(method='GET'" in rendered
+    assert "path='/v1/users/{user_id}'" in rendered
+    assert "function='test_endpoint_repr_includes_method_path_function_and_return_type.<locals>.handler'" in rendered
+    assert "return_type='Response'" in rendered
+
+
+def test_endpoint_check_deprecation_calls_callable():
+    endpoint = Endpoint("GET", "/v1/users")
+    calls = {"count": 0}
+
+    def deprecated_call() -> None:
+        calls["count"] += 1
+
+    endpoint.deprecated = deprecated_call
+    endpoint.check_deprecation()
+
+    assert calls["count"] == 1
+
+
+def test_endpoint_func_requires_decoder_for_decodable_return_type():
+    endpoint = Endpoint("GET", "/v1/users")
+
+    def handler() -> int: ...
+
+    with pytest.raises(MissingDecoderError):
+        endpoint.func = handler
+
+
+def test_endpoint_func_requires_return_annotation():
+    endpoint = Endpoint("GET", "/v1/users")
+
+    def handler(): ...
+
+    with pytest.raises(MissingReturnTypeError):
+        endpoint.func = handler
+
+
+def test_endpoint_register_appends_endpoint():
+    endpoint = Endpoint("GET", "/v1/users")
+    original = list(EndpointRegister.registry)
+    try:
+        EndpointRegister.register(endpoint)
+        assert EndpointRegister.registry[-1] is endpoint
+    finally:
+        EndpointRegister.registry = original

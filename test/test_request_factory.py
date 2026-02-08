@@ -5,9 +5,8 @@ import pytest
 from pydantic import BaseModel, Field
 
 from clientx._annotations import DumpConfig, FieldX, RequestPart
-from clientx._call_context import CallContext
 from clientx._client import ClientX
-from clientx._endpoint_context import EndpointContext
+from clientx._endpoint_context import Endpoint
 from clientx._request_factory import ArgumentCursor, ModelExtractor, RequestFactory
 from clientx.exceptions import UnconsumableArgumentError
 
@@ -19,7 +18,7 @@ class Payload(BaseModel):
 
 
 def test_request_factory_builds_request_parts():
-    endpoint = EndpointContext("GET", "/v1/items/{item_id}")
+    endpoint = Endpoint("GET", "/v1/items/{item_id}")
 
     def handler(
         self,
@@ -33,15 +32,14 @@ def test_request_factory_builds_request_parts():
 
     payload = Payload(headers={"token": "t-1"}, params={"q": 1}, payload="d-1")
     client = cast(ClientX, object())
-    call_ctx = CallContext.from_call(
-        endpoint=endpoint,
+    arguments = endpoint.bind(
         client=client,
         args=("123", payload, {"limit": 5}, {"header": "h-1"}),
         kwargs={},
     )
 
-    factory = RequestFactory()
-    request = factory(call_ctx)
+    factory = RequestFactory(endpoint=endpoint)
+    request = factory(arguments)
 
     assert request["path"] == "/v1/items/123"
     assert request["headers"] == {"token": "t-1", "header": "h-1"}
@@ -50,7 +48,7 @@ def test_request_factory_builds_request_parts():
 
 
 def test_request_factory_uses_section_annotation_on_parameter():
-    endpoint = EndpointContext("POST", "/v1/items")
+    endpoint = Endpoint("POST", "/v1/items")
 
     def handler(self, payload: Annotated[Payload, FieldX(RequestPart.JSON)]) -> None: ...
 
@@ -58,20 +56,15 @@ def test_request_factory_uses_section_annotation_on_parameter():
 
     payload = Payload(headers={"token": "t-1"}, params={"q": 1}, payload="d-1")
     client = cast(ClientX, object())
-    call_ctx = CallContext.from_call(
-        endpoint=endpoint,
-        client=client,
-        args=(payload,),
-        kwargs={},
-    )
+    arguments = endpoint.bind(client=client, args=(payload,), kwargs={})
 
-    request = RequestFactory()(call_ctx)
+    request = RequestFactory(endpoint=endpoint)(arguments)
 
     assert request["json"] == {"headers": {"token": "t-1"}, "params": {"q": 1}, "data": "d-1"}
 
 
 def test_request_factory_applies_fieldx_dump_config():
-    endpoint = EndpointContext("POST", "/v1/items")
+    endpoint = Endpoint("POST", "/v1/items")
 
     class DataPayload(BaseModel):
         data: str
@@ -88,20 +81,15 @@ def test_request_factory_applies_fieldx_dump_config():
     endpoint.func = handler
 
     client = cast(ClientX, object())
-    call_ctx = CallContext.from_call(
-        endpoint=endpoint,
-        client=client,
-        args=(DataPayload(data="d-1"),),
-        kwargs={},
-    )
+    arguments = endpoint.bind(client=client, args=(DataPayload(data="d-1"),), kwargs={})
 
-    request = RequestFactory()(call_ctx)
+    request = RequestFactory(endpoint=endpoint)(arguments)
 
     assert request["data"] == {"data": "d-1"}
 
 
 def test_merge_request_parts_warns_on_shared_dict_keys():
-    factory = RequestFactory(warn_on_conflict=True)
+    factory = RequestFactory(endpoint=Endpoint("GET", "/"), warn_on_conflict=True)
 
     with pytest.warns(UserWarning, match="share keys for 'headers'"):
         factory.merge_request_parts(
@@ -113,7 +101,7 @@ def test_merge_request_parts_warns_on_shared_dict_keys():
 
 
 def test_merge_request_parts_warns_on_full_overwrite():
-    factory = RequestFactory(warn_on_conflict=True)
+    factory = RequestFactory(endpoint=Endpoint("GET", "/"), warn_on_conflict=True)
 
     with pytest.warns(UserWarning, match="fully overwritten"):
         factory.merge_request_parts(
@@ -125,7 +113,7 @@ def test_merge_request_parts_warns_on_full_overwrite():
 
 
 def test_merge_request_parts_silent_when_disabled():
-    factory = RequestFactory(warn_on_conflict=False)
+    factory = RequestFactory(endpoint=Endpoint("GET", "/"), warn_on_conflict=False)
 
     factory.merge_request_parts(
         [
@@ -183,19 +171,14 @@ def test_model_extractor_groups_sections_and_defaults_json():
 
 
 def test_request_factory_raises_unconsumable_argument_error():
-    endpoint = EndpointContext("GET", "/v1/items/{item_id}")
+    endpoint = Endpoint("GET", "/v1/items/{item_id}")
 
     def handler(self, item_id: str, token: str) -> None: ...
 
     endpoint.func = handler
 
     client = cast(ClientX, object())
-    call_ctx = CallContext.from_call(
-        endpoint=endpoint,
-        client=client,
-        args=("123", "t-1"),
-        kwargs={},
-    )
+    arguments = endpoint.bind(client=client, args=("123", "t-1"), kwargs={})
 
     with pytest.raises(UnconsumableArgumentError, match="Cannot map argument 'token'"):
-        RequestFactory()(call_ctx)
+        RequestFactory(endpoint=endpoint)(arguments)

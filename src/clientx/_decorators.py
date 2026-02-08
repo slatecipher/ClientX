@@ -5,7 +5,6 @@ from typing import Concatenate, ParamSpec, TypeVar, cast
 
 import httpx
 
-from clientx._call_context import CallContext
 from clientx._client import ClientX
 from clientx._client_types import (
     Decoder,
@@ -15,7 +14,7 @@ from clientx._client_types import (
     is_response_type,
 )
 from clientx._endpoint_context import (
-    EndpointContext,
+    Endpoint,
     EndpointRegister,
 )
 from clientx._request_factory import RequestFactory
@@ -48,23 +47,21 @@ class ApiMethod:
         def decorator(
             func: Callable[Concatenate[T, P], R],
         ) -> Callable[Concatenate[T, P], R]:
-            _endpoint = EndpointContext(method=self.method, path=path, decoder=decoder, deprecated=deprecated)
-            _request_factory = RequestFactory()
+            endpoint = Endpoint(method=self.method, path=path, decoder=decoder, deprecated=deprecated)
+            request_factory = RequestFactory(endpoint)
 
             @wraps(func)
             def wrapper(_self: T, *args: P.args, **kwargs: P.kwargs) -> R:
-                _endpoint.check_deprecation()
+                endpoint.check_deprecation()
 
-                call_ctx = CallContext.from_call(endpoint=_endpoint, client=_self, args=args, kwargs=kwargs)
+                request = request_factory(arguments=endpoint.bind(_self, args, kwargs))
 
-                request = _request_factory(call_ctx)
+                response: httpx.Response = _self.send(method=endpoint.method, **request)
 
-                response: httpx.Response = call_ctx.client.send(method=call_ctx.method, **request)
-
-                if is_none_type(call_ctx.return_type):
+                if is_none_type(endpoint.return_type):
                     return cast(R, None)
 
-                if is_response_type(call_ctx.return_type):
+                if is_response_type(endpoint.return_type):
                     return cast(R, response)
 
                 if decoder is None:
@@ -72,8 +69,8 @@ class ApiMethod:
 
                 return cast(R, decoder(response))
 
-            _endpoint.func = wrapper
-            EndpointRegister.register(_endpoint)
+            endpoint.func = wrapper
+            EndpointRegister.register(endpoint)
             return wrapper
 
         return decorator

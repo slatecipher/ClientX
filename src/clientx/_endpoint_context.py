@@ -5,8 +5,10 @@ import re
 import warnings
 from collections.abc import Callable
 from dataclasses import dataclass
+from inspect import BoundArguments
 from typing import Any, ClassVar, get_type_hints
 
+from clientx._client import ClientX
 from clientx._client_types import (
     Decoder,
     DeprecatedType,
@@ -83,23 +85,29 @@ class URLPath:
         return self.path
 
 
-class EndpointContext:
-    """Represent an API endpoint with an HTTP method and URL path pattern.
+class Endpoint:
+    """Represent a decorated endpoint with metadata and binding helpers.
 
-    Stores a method and a path template such as ``/v1/users/{user_id}``,
-    wrapping the path in a ``URLPath`` helper for parameter extraction.
-    A callable can be attached via ``func`` to implement the endpoint's
-    request behavior.
+    An endpoint stores the HTTP method, URL path template, optional decoder,
+    and optional deprecation handler configured by the decorator. When a
+    callable is assigned via ``func``, the endpoint captures the function
+    signature and resolved return type so calls can be validated and bound
+    before request construction.
     """
 
     def __init__(
         self, method: MethodType, path: str, decoder: Decoder | None = None, deprecated: DeprecatedType | None = None
     ) -> None:
-        """Initialize the endpoint with an HTTP method and URL path template.
+        """Initialize endpoint metadata from decorator configuration.
 
         Args:
-            method: The HTTP method for the endpoint.
-            path: The URL path template for the endpoint.
+            method: HTTP method used for requests to this endpoint.
+            path: URL path template, optionally containing ``{parameter}``
+                placeholders.
+            decoder: Optional response decoder for non-``Response`` return
+                types. Defaults to None.
+            deprecated: Optional callable or deprecation metadata emitted when
+                the endpoint is invoked. Defaults to None.
         """
         self.method = method
         self.path = path
@@ -108,6 +116,16 @@ class EndpointContext:
         self._func: Callable[..., Any] | None = None
         self._signature: inspect.Signature | None = None
         self._return_type: Any | None = None
+
+    def __repr__(self) -> str:
+        """Return a dataclass-like summary of the endpoint configuration."""
+        func_qualname = self._func.__qualname__ if self._func is not None else None
+        return_type = self._return_type if self._return_type is not None else None
+        return (
+            f"{type(self).__name__}(method={self.method!r}, path={str(self.path)!r}, "
+            f"function={func_qualname!r}, has_decoder={self.decoder is not None!r}, "
+            f"deprecated={self.deprecated is not None!r}, return_type={return_type.__qualname__!r})"
+        )
 
     def check_deprecation(self):
         """Emit a deprecation warning when a deprecation handler is configured.
@@ -150,6 +168,10 @@ class EndpointContext:
     @property
     def signature(self) -> inspect.Signature:
         """Return the signature of the bound implementation callable.
+
+        Returns:
+            inspect.Signature: Signature captured from the bound endpoint
+                function.
 
         Raises:
             RuntimeError: If the callable signature has not been set yet.
@@ -221,13 +243,38 @@ class EndpointContext:
     def return_type(self) -> Any:
         """Return the declared return type of the bound endpoint.
 
-        If the callable does not declare a return annotation, the value may be
-        ``inspect.Signature.empty``.
+        The value is ``None`` until ``func`` is assigned.
 
         Returns:
-            Any: The return annotation of the bound callable.
+            Any: Resolved return type for the bound callable, or ``None`` when
+                unbound.
         """
         return self._return_type
+
+    def bind(self, client: ClientX, args: tuple[Any, ...], kwargs: dict[str, Any]) -> BoundArguments:
+        """Bind call arguments to the endpoint function signature.
+
+        This helper binds the provided ``client``, positional arguments, and
+        keyword arguments against the endpoint's captured signature, then
+        applies default values.
+
+        Args:
+            client: Client instance passed as the first argument (``self``).
+            args: Positional arguments supplied by the caller.
+            kwargs: Keyword arguments supplied by the caller.
+
+        Returns:
+            BoundArguments: Bound argument mapping with defaults applied.
+
+        Raises:
+            RuntimeError: If the endpoint signature has not been captured yet.
+            TypeError: If the provided arguments do not satisfy the function
+                signature.
+        """
+        bound = self.signature.bind(client, *args, **kwargs)
+        bound.apply_defaults()
+
+        return bound
 
 
 @dataclass
@@ -235,19 +282,19 @@ class EndpointRegister:
     """Store and manage endpoint registrations.
 
     Attributes:
-        registry: List of registered endpoints
+        registry: Registry of endpoints discovered from decorated functions.
     """
 
-    registry: ClassVar[list[EndpointContext]] = []
+    registry: ClassVar[list[Endpoint]] = []
 
     @classmethod
-    def register(cls, endpoint: EndpointContext) -> None:
-        """Register an endpoint context.
+    def register(cls, endpoint: Endpoint) -> None:
+        """Register an endpoint.
 
         Args:
-            endpoint: The endpoint context to register.
+            endpoint: Endpoint to append to the class-level registry.
         """
         cls.registry.append(endpoint)
 
 
-__all__ = ["EndpointContext", "EndpointRegister", "DeprecatedMessage", "URLPath"]
+__all__ = ["Endpoint", "EndpointRegister", "DeprecatedMessage", "URLPath"]

@@ -91,6 +91,11 @@ def test_named_annotation_extractor_from_signature():
     assert mapping["a"].info.annotation is int
 
 
+def test_annotation_extractor_from_field_info_rejects_invalid_type():
+    with pytest.raises(TypeError, match="Expected FieldInfo or ComputedFieldInfo, got object"):
+        AnnotationExtractor.from_field_info(object())  # type: ignore[arg-type]
+
+
 def test_dump_config_typed_dict_returns_fields():
     options = DumpConfig(exclude_none=True, exclude_defaults=True)
 
