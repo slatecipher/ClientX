@@ -2,16 +2,22 @@
 
 Typed, declarative HTTP API clients for Python 3.12+.
 
-ClientX turns endpoint method signatures into HTTP requests, validates responses
-with Pydantic, and keeps your client implementation minimal and readable.
+## Overview
+
+ClientX is a declarative API client framework designed to make writing and maintaining API clients easier while keeping the client contract explicit and well documented.
+
+For client authors, ClientX reduces boilerplate by turning typed endpoint definitions into concrete `httpx` requests and centralizing request/response behavior. For client consumers, it pushes API contracts and guard rails into the client itself, helping prevent avoidable runtime mistakes and making integrations more predictable.
+
+The result is less scaffolding code and more focus on outcomes: authors spend less time on plumbing, and consumers spend less time guessing how to call an API correctly.
 
 ## Features
 
-- Declarative endpoints using `@api.get`, `@api.post`, etc.
-- Typed response decoding with Pydantic models or TypeAdapter.
-- Automatic path parameter injection from method arguments.
-- Request body/params/headers/files mapping via `Annotated` or Pydantic models.
-- Optional deprecation warnings per endpoint.
+- Declarative endpoint definitions with HTTP verb decorators.
+- Typed response handling with pluggable decoders.
+- Path parameter rendering from method arguments (e.g. `"/users/{user_id}"`).
+- Request payload mapping from parameter names, `Annotated` metadata, or Pydantic models.
+- Built-in deprecation warnings per endpoint.
+- Full access to `httpx.Client` configuration through `ClientX(...)` kwargs.
 
 ## Install
 
@@ -22,28 +28,68 @@ pip install clientx
 ## Quickstart
 
 ```python
-from clientx import ClientX, Response, api
+from clientx import ClientX, Response
+from clientx.methods import get
 
 
-class Users(ClientX):
-    @api.get("/users/{user_id}")
+class UsersClient(ClientX):
+    @get("/users/{user_id}")
     def get_user(self, user_id: str) -> Response:
-        # Body never executes; ClientX builds and sends the request
+        # Method body is not executed.
+        # ClientX uses the signature + decorator metadata.
         ...
 
 
-client = Users.setup_client("https://api.example.com")
+client = UsersClient("https://api.example.com")
 response = client.get_user("42")
 print(response.status_code)
 ```
 
-## Typed responses
+## Defining Endpoints
 
-If the return type is neither `Response` nor `None`, a decoder is required.
+Use decorators from `clientx.methods`:
+
+- `get`
+- `post`
+- `put`
+- `patch`
+- `delete`
+- `head`
+- `options`
+
+Each decorator accepts:
+
+- `path` (required)
+- `decoder` (required when return type is not `Response` or `None`)
+- `deprecated` (optional callable, including `DeprecatedMessage`)
+
+```python
+from clientx import ClientX, Response
+from clientx.methods import post
+
+
+class ItemsClient(ClientX):
+    @post("/items")
+    def create_item(self, json: dict[str, object]) -> Response:
+        ...
+```
+
+## Return Types and Decoders
+
+ClientX enforces explicit return annotations:
+
+- `-> Response`: returns raw `httpx.Response`.
+- `-> None`: sends request and returns `None`.
+- Any other type: requires `decoder=...`.
+
+### `ModelDecoder`
 
 ```python
 from pydantic import BaseModel
-from clientx import ClientX, api, ModelDecoder
+
+from clientx import ClientX
+from clientx.decoders import ModelDecoder
+from clientx.methods import get
 
 
 class User(BaseModel):
@@ -51,99 +97,210 @@ class User(BaseModel):
     email: str
 
 
-class Users(ClientX):
-    @api.get("/users/{user_id}", decoder=ModelDecoder(User))
+class UsersClient(ClientX):
+    @get("/users/{user_id}", decoder=ModelDecoder(User))
     def get_user(self, user_id: str) -> User:
         ...
 ```
 
-## Request payload mapping
-
-ClientX builds requests from method arguments.
-
-### `Annotated` request parts
-
-```python
-from typing import Annotated
-from clientx import ClientX, api
-from clientx.request_factory import ReqPart
-
-
-class Search(ClientX):
-    @api.get("/search")
-    def search(
-        self,
-        q: Annotated[str, ReqPart.PARAMS],
-        token: Annotated[str, ReqPart.HEADERS],
-    ) -> None:
-        ...
-```
-
-### Pydantic request models
-
-```python
-from typing import Annotated
-from pydantic import BaseModel, Field
-from clientx.request_factory import ReqPart
-
-
-class Payload(BaseModel):
-    token: Annotated[str, ReqPart.HEADERS]
-    q: Annotated[str, ReqPart.PARAMS]
-    data: Annotated[str, ReqPart.JSON] = Field(alias="payload")
-```
-
-Passing `Payload(...)` as an endpoint argument will route fields into
-headers/params/json automatically. Remaining fields default to JSON.
-
-## Deprecation warnings
-
-```python
-from clientx import ClientX, Response, Deprecated, api
-
-
-class Example(ClientX):
-    @api.get(
-        "/old",
-        deprecated=Deprecated("Deprecated: use /new instead."),
-    )
-    def old(self) -> Response:
-        ...
-```
-
-## Using TypeAdapter decoders
+### `TypeAdapterDecoder`
 
 ```python
 from pydantic import TypeAdapter
-from clientx import ClientX, api, TypeAdapterDecoder
 
-UsersAdapter = TypeAdapter(list[str])
+from clientx import ClientX
+from clientx.decoders import TypeAdapterDecoder
+from clientx.methods import get
 
 
-class Example(ClientX):
-    @api.get("/users", decoder=TypeAdapterDecoder(UsersAdapter))
-    def list_users(self) -> list[str]:
+UserList = TypeAdapter(list[dict[str, str]])
+
+
+class UsersClient(ClientX):
+    @get("/users", decoder=TypeAdapterDecoder(UserList))
+    def list_users(self) -> list[dict[str, str]]:
         ...
 ```
 
-## How it works
+### `FromResponseDecoder`
 
-- Client methods are wrapped at definition time.
-- When you call an endpoint:
-  - Path parameters are filled from arguments.
-  - Request parts (params/json/headers/files/data) are built from arguments.
-  - The request is sent via `httpx.Client`.
-  - The response is returned or decoded based on the return type.
+```python
+from httpx import Response
+from pydantic import BaseModel
+
+from clientx import ClientX
+from clientx.decoders import FromResponseDecoder
+from clientx.methods import get
+
+
+class SessionPayload(BaseModel):
+    token: str
+    status_code: int
+
+    @classmethod
+    def from_response(cls, response: Response) -> "SessionPayload":
+        return cls(token=response.json()["token"], status_code=response.status_code)
+
+
+class SessionClient(ClientX):
+    @get("/session", decoder=FromResponseDecoder(SessionPayload))
+    def get_session(self) -> SessionPayload:
+        ...
+```
+
+## Building Request Payloads
+
+ClientX maps method arguments into request parts in this order:
+
+1. Path placeholders (e.g. `{user_id}`) are consumed from arguments.
+2. Remaining arguments map to request parts via one of:
+   - parameter name equals a request part: `json`, `params`, `data`, `files`, `headers`
+   - `Annotated[..., FieldX(RequestPart.*)]`
+   - Pydantic model expansion
+
+### By parameter name
+
+```python
+from clientx import ClientX, Response
+from clientx.methods import get
+
+
+class SearchClient(ClientX):
+    @get("/search")
+    def search(self, params: dict[str, object], headers: dict[str, str]) -> Response:
+        ...
+```
+
+### By `Annotated` + `FieldX`
+
+```python
+from typing import Annotated
+
+from clientx import ClientX, FieldX, RequestPart, Response
+from clientx.methods import post
+
+
+class UploadClient(ClientX):
+    @post("/upload")
+    def upload(
+        self,
+        auth: Annotated[str, FieldX(RequestPart.HEADERS)],
+        payload: Annotated[dict[str, object], FieldX(RequestPart.JSON)],
+    ) -> Response:
+        ...
+```
+
+### By Pydantic model
+
+```python
+from typing import Annotated
+
+from pydantic import BaseModel
+
+from clientx import ClientX, FieldX, RequestPart, Response
+from clientx.methods import post
+
+
+class CreateUserPayload(BaseModel):
+    headers: Annotated[dict[str, str], FieldX(RequestPart.HEADERS)]
+    params: Annotated[dict[str, str], FieldX(RequestPart.PARAMS)]
+    name: str
+    email: str
+
+
+class UsersClient(ClientX):
+    @post("/users")
+    def create_user(self, payload: CreateUserPayload) -> Response:
+        ...
+```
+
+In model extraction, fields explicitly routed to `HEADERS`, `PARAMS`, `DATA`, or `FILES` should be mappings. Unassigned fields default to JSON.
+
+### Serialization control with `DumpConfig`
+
+```python
+from typing import Annotated
+
+from pydantic import BaseModel
+
+from clientx import ClientX, DumpConfig, FieldX, RequestPart, Response
+from clientx.methods import post
+
+
+class PatchPayload(BaseModel):
+    name: str | None = None
+    title: str | None = None
+
+
+class UsersClient(ClientX):
+    @post("/users/{user_id}")
+    def patch_user(
+        self,
+        user_id: str,
+        data: Annotated[
+            PatchPayload,
+            FieldX(RequestPart.JSON, dump_config=DumpConfig(exclude_none=True)),
+        ],
+    ) -> Response:
+        ...
+```
+
+## Deprecating Endpoints
+
+Use `DeprecatedMessage` for warning-based deprecation:
+
+```python
+from clientx import ClientX, DeprecatedMessage, Response
+from clientx.methods import get
+
+
+class LegacyClient(ClientX):
+    @get(
+        "/v1/legacy",
+        deprecated=DeprecatedMessage("Deprecated: use /v2/new-endpoint instead."),
+    )
+    def legacy(self) -> Response:
+        ...
+```
+
+You can also pass any callable as `deprecated`, and it will run on endpoint invocation.
+
+## Client Configuration
+
+`ClientX` initializes an internal `httpx.Client`:
+
+```python
+ClientX(
+    "https://api.example.com",
+    user_agent="MyApp/1.0",
+    timeout=5.0,
+    headers={"X-Env": "dev"},
+)
+```
+
+- `user_agent` defaults to `ClientX/<version>`.
+- Additional kwargs are forwarded to `httpx.Client(...)`.
+
+## Error Rules
+
+ClientX raises explicit errors for common contract violations:
+
+- missing return annotation -> `MissingReturnTypeError`
+- typed return without decoder -> `MissingDecoderError`
+- path placeholders not provided -> `MissingPathArgumentsError`
+- argument cannot map to request parts -> `UnconsumableArgumentError`
 
 ## Development
 
 ```bash
-pytest
-ruff check .
+make lint
+make test
 ```
 
-## Notes / Limitations
+or directly:
 
-- Sync-only (`httpx.Client`); no async client yet.
-- Decoder is required for non-`Response` return types.
-- Default user agent is `ClientX/<version>`, or override via `setup_client`.
+```bash
+uv run ruff format src test
+uv run ruff check --fix src test
+uv run pytest
+```
