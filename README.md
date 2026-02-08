@@ -8,7 +8,7 @@ ClientX is a declarative API client framework designed to make writing and maint
 
 For client authors, ClientX reduces boilerplate by turning typed endpoint definitions into concrete `httpx` requests and centralizing request/response behavior. For client consumers, it pushes API contracts and guard rails into the client itself, helping prevent avoidable runtime mistakes and making integrations more predictable.
 
-The result is less scaffolding code and more focus on outcomes: authors spend less time on plumbing, and consumers spend less time guessing how to call an API correctly.
+The result is less scaffolding code and more focus on outcomes: authors spend less time on plumbing, and consumers spend less time guessing how to call your API correctly.
 
 ## Features
 
@@ -74,6 +74,23 @@ class ItemsClient(ClientX):
         ...
 ```
 
+## Endpoint Registry (`EndpointRegister`)
+
+`EndpointRegister` is a developer-facing introspection tool that collects decorated endpoints at import time. It is useful when you want to build metadata-driven tooling around your client classes.
+
+Common uses:
+
+- Generate JSON metadata files describing methods, paths, return types, and deprecation status.
+- Feed endpoint metadata into documentation generators.
+- Build context for internal systems (for example validation, tracing, SDK tooling, or contract checks).
+
+```python
+from clientx import EndpointRegister
+
+for endpoint in EndpointRegister.iter():
+    print(endpoint.method, str(endpoint.path), endpoint.return_type)
+```
+
 ## Return Types and Decoders
 
 ClientX enforces explicit return annotations:
@@ -81,6 +98,14 @@ ClientX enforces explicit return annotations:
 - `-> Response`: returns raw `httpx.Response`.
 - `-> None`: sends request and returns `None`.
 - Any other type: requires `decoder=...`.
+
+A decoder is a callable that receives the raw `httpx.Response` and returns the value that matches your method's return annotation. ClientX executes the HTTP request first, then passes the response into the decoder, and returns the decoder output to the caller.
+
+In practice, decoders are where you define response parsing and validation behavior:
+
+- Parse JSON/text/bytes from the response body.
+- Validate and coerce payloads into typed Python objects.
+- Build richer return objects that combine body data with headers/status metadata.
 
 ### `ModelDecoder`
 
@@ -147,6 +172,68 @@ class SessionClient(ClientX):
     def get_session(self) -> SessionPayload:
         ...
 ```
+
+### Vanilla decoders (`clientx.decoders`)
+
+For lightweight cases, ClientX also ships simple function decoders:
+
+- `json_decoder`: returns `response.json()` (`Any`).
+- `content_decoder`: returns raw `response.content` (`bytes`).
+- `text_decoder`: returns `response.text` (`str`).
+
+```python
+from clientx import ClientX
+from clientx.decoders import json_decoder, text_decoder
+from clientx.methods import get
+
+
+class HealthClient(ClientX):
+    @get("/health", decoder=text_decoder)
+    def health(self) -> str:
+        ...
+
+
+class MetadataClient(ClientX):
+    @get("/metadata", decoder=json_decoder)
+    def metadata(self) -> dict[str, object]:
+        ...
+```
+
+### Bring Your Own Decoder (BYOD)
+
+You can pass any callable with signature `(response: httpx.Response) -> T` as `decoder=...`, where `T` matches your endpoint return type.
+
+Use BYOD when you need behavior that is specific to your API contract, such as envelope unwrapping, fallback parsing, or custom validation rules.
+
+```python
+from httpx import Response
+from pydantic import BaseModel, TypeAdapter
+
+from clientx import ClientX
+from clientx.methods import get
+
+
+class Item(BaseModel):
+    id: int
+    name: str
+
+
+_item_list = TypeAdapter(list[Item])
+
+
+def items_decoder(response: Response) -> list[Item]:
+    payload = response.json()
+    # Example: API returns {"data": {"items": [...]}}
+    return _item_list.validate_python(payload["data"]["items"])
+
+
+class ItemsClient(ClientX):
+    @get("/items", decoder=items_decoder)
+    def list_items(self) -> list[Item]:
+        ...
+```
+
+The only requirement is that your decoder output matches the declared return annotation.
 
 ## Building Request Payloads
 

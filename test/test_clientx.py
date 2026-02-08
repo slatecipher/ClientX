@@ -72,3 +72,48 @@ def test_clientx_send_logs_request_parts_when_debug_enabled(monkeypatch, caplog)
     assert "HTTP request parts" in caplog.text
     assert "method" in caplog.text
     assert "path" in caplog.text
+
+
+def test_clientx_repr_includes_base_url_and_user_agent():
+    client = ClientX("https://example.test", user_agent="MyApp/1.0")
+
+    rendered = repr(client)
+
+    assert rendered == "ClientX(base_url='https://example.test', user_agent='MyApp/1.0')"
+
+
+def test_clientx_enter_delegates_to_httpx_client(monkeypatch):
+    client = ClientX("https://example.test")
+    calls = {"entered": False}
+
+    def fake_enter():
+        calls["entered"] = True
+        return object()
+
+    monkeypatch.setattr(client.client, "__enter__", fake_enter)
+
+    entered = client.__enter__()
+
+    assert calls["entered"] is True
+    assert entered is client
+
+
+def test_clientx_exit_delegates_to_httpx_client_and_returns_false(monkeypatch):
+    client = ClientX("https://example.test")
+    calls: dict[str, object] = {}
+
+    def fake_exit(exc_type, exc, tb):
+        calls["exc_type"] = exc_type
+        calls["exc"] = exc
+        calls["tb"] = tb
+        return True
+
+    monkeypatch.setattr(client.client, "__exit__", fake_exit)
+    error = RuntimeError("boom")
+
+    result = client.__exit__(RuntimeError, error, None)
+
+    assert result is False
+    assert calls["exc_type"] is RuntimeError
+    assert calls["exc"] is error
+    assert calls["tb"] is None

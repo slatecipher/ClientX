@@ -3,7 +3,7 @@ from __future__ import annotations
 import inspect
 import re
 import warnings
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from inspect import BoundArguments
 from typing import Any, ClassVar, get_type_hints
@@ -279,20 +279,33 @@ class Endpoint:
 
 @dataclass
 class EndpointRegister:
-    """Store and manage endpoint registrations.
+    """Class-level registry for decorated endpoints.
+
+    `EndpointRegister` provides a shared in-memory list used to track
+    `Endpoint` objects as decorators are applied.
 
     Attributes:
-        registry: Registry of endpoints discovered from decorated functions.
+        registry: Mutable class-level list of registered `Endpoint` objects.
+            Defaults to an empty list.
     """
 
     registry: ClassVar[list[Endpoint]] = []
 
     @classmethod
+    def iter(cls) -> Iterator[Endpoint]:
+        """Yield registered endpoints in insertion order.
+
+        Returns:
+            Iterator[Endpoint]: Iterator over the class-level endpoint registry.
+        """
+        yield from cls.registry
+
+    @classmethod
     def register(cls, endpoint: Endpoint) -> None:
-        """Register an endpoint.
+        """Append an endpoint to the class-level registry.
 
         Args:
-            endpoint: Endpoint to append to the class-level registry.
+            endpoint: `Endpoint` instance to register.
         """
         cls.registry.append(endpoint)
 
