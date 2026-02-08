@@ -1,12 +1,26 @@
 """Response decoders for mapping HTTP responses into typed models."""
 
 from dataclasses import dataclass, field
-from typing import Protocol
+from typing import Any, Protocol
 
 from httpx import Response
 from pydantic import BaseModel, TypeAdapter
 
 
+# vanilla httpx response decoders
+def json_decoder(response: Response) -> Any:
+    return response.json()
+
+
+def content_decoder(response: Response) -> bytes:
+    return response.content
+
+
+def text_decoder(response: Response) -> str:
+    return response.text
+
+
+# Pydantic base model decoders
 @dataclass
 class ModelDecoder[T: type[BaseModel]]:
     """Decode a response body into a Pydantic model instance."""
@@ -48,7 +62,7 @@ class TypeAdapterDecoder[T: TypeAdapter]:
         return self.adapter.validate_python(data)
 
 
-class FromResponseModel[M: BaseModel](Protocol):
+class _FromResponseModel[M: BaseModel](Protocol):
     """Protocol for models that construct themselves from HTTP responses."""
 
     @classmethod
@@ -57,9 +71,9 @@ class FromResponseModel[M: BaseModel](Protocol):
 
 @dataclass
 class FromResponseDecoder[T: BaseModel]:
-    """Decode a response using a model's custom from-response constructor."""
+    """Decode a response using a model's custom from_response constructor."""
 
-    model: type[FromResponseModel[T]]
+    model: type[_FromResponseModel[T]]
 
     def __call__(self, response: Response) -> T:
         """Return a model instance from the response object.
@@ -71,6 +85,3 @@ class FromResponseDecoder[T: BaseModel]:
             An instance created by the model's ``from_response`` method.
         """
         return self.model.from_response(response)
-
-
-__all__ = ["ModelDecoder", "TypeAdapterDecoder", "FromResponseDecoder"]

@@ -17,6 +17,14 @@ type EventHook = Callable[[httpx.Request | httpx.Response], None]
 
 type EventHooks = Mapping[str, list[EventHook]]
 
+type RequestPartName = Literal[
+    "params",
+    "files",
+    "data",
+    "json",
+    "headers",
+]
+
 
 def is_none_type(return_type: Any) -> bool:
     return return_type is type(None)
@@ -92,6 +100,3 @@ class HttpxClientKwargs(TypedDict, total=False):
         Hooks should avoid consuming the response body or performing blocking
         operations that depend on the full response content.
     """
-
-
-__all__ = ["HttpxClientKwargs", "MethodType", "Decoder"]

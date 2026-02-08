@@ -5,23 +5,20 @@ from typing import Concatenate, ParamSpec, TypeVar, cast
 
 import httpx
 
-from clientx.call_context import CallContext
-from clientx.client import ClientX
-from clientx.client_types import (
+from clientx._call_context import CallContext
+from clientx._client import ClientX
+from clientx._client_types import (
     Decoder,
     DeprecatedType,
     MethodType,
     is_none_type,
     is_response_type,
 )
-from clientx.endpoint_context import (
+from clientx._endpoint_context import (
     EndpointContext,
-    EndpointsRegister,
+    EndpointRegister,
 )
-from clientx.request_factory import RequestFactory
-
-endpoints = EndpointsRegister.default()
-
+from clientx._request_factory import RequestFactory
 
 P = ParamSpec("P")
 T = TypeVar("T", bound=ClientX)
@@ -76,34 +73,37 @@ class ApiMethod:
                 return cast(R, decoder(response))
 
             _endpoint.func = wrapper
-            endpoints.register(_endpoint)
+            EndpointRegister.register(_endpoint)
             return wrapper
 
         return decorator
 
 
 @dataclass(frozen=True)
-class Api:
-    """Container for HTTP verb decorators."""
+class MethodContainer:
+    """Container for HTTP verb decorators.
+
+    Attributes:
+        delete: DELETE request decorator.
+        get: GET request decorator.
+        head: HEAD request decorator.
+        options: OPTIONS request decorator.
+        patch: PATCH request decorator.
+        post: POST request decorator.
+        put: PUT request decorator.
+    """
 
     delete: ApiMethod
-    """DELETE request decorator."""
     get: ApiMethod
-    """GET request decorator."""
     head: ApiMethod
-    """HEAD request decorator."""
     options: ApiMethod
-    """OPTIONS request decorator."""
     patch: ApiMethod
-    """PATCH request decorator."""
     post: ApiMethod
-    """POST request decorator."""
     put: ApiMethod
-    """PUT request decorator."""
 
 
 # Preconfigured HTTP verb decorators for client usage.
-api = Api(
+method = MethodContainer(
     delete=ApiMethod("DELETE"),
     get=ApiMethod("GET"),
     head=ApiMethod("HEAD"),
@@ -112,5 +112,3 @@ api = Api(
     post=ApiMethod("POST"),
     put=ApiMethod("PUT"),
 )
-
-__all__ = ["api", "endpoints"]

@@ -4,68 +4,75 @@ from typing import Annotated
 import pytest
 from pydantic import BaseModel, Field, computed_field
 
-from clientx.annotations import (
-    AnnotationExtractor,
-    AnnotationInfo,
-    DumpOptions,
-    NamedAnnotation,
-    NamedAnnotationExtractor,
-    RequestSection,
+from clientx._annotation_extractor import AnnotationExtractor, AnnotationInfo, NamedAnnotation, NamedAnnotationExtractor
+from clientx._annotations import (
+    DumpConfig,
+    FieldX,
+    RequestPart,
 )
 
 
 def test_request_section_get():
-    assert RequestSection.get("json") is RequestSection.JSON
-    assert RequestSection.get("params") is RequestSection.PARAMS
-    assert RequestSection.get("missing") is None
+    assert RequestPart.get("json") is RequestPart.JSON
+    assert RequestPart.get("params") is RequestPart.PARAMS
+    assert RequestPart.get("missing") is None
 
 
-def test_annotation_info_request_section_first_match():
-    info = AnnotationInfo(metadata=["meta", RequestSection.PARAMS, RequestSection.JSON])
-
-    assert info.request_section is RequestSection.PARAMS
-
-
-def test_annotation_info_dump_options_first_match():
-    first = DumpOptions(exclude_none=True)
-    second = DumpOptions(exclude_unset=True)
+def test_annotation_info_fieldx_first_match():
+    first = FieldX(RequestPart.PARAMS)
+    second = FieldX(RequestPart.JSON)
     info = AnnotationInfo(metadata=["meta", first, second])
 
-    assert info.dump_options is first
+    assert info.fieldx is first
+
+
+def test_annotation_info_fieldx_defaults_when_missing():
+    info = AnnotationInfo(metadata=["meta"])
+
+    assert info.fieldx.request_part is None
+    assert info.fieldx.dump_config == {}
+
+
+def test_annotation_info_fieldx_dump_config_first_match():
+    first = FieldX(RequestPart.DATA, dump_config=DumpConfig(exclude_none=True))
+    second = FieldX(RequestPart.JSON, dump_config=DumpConfig(exclude_unset=True))
+    info = AnnotationInfo(metadata=["meta", first, second])
+
+    assert info.fieldx.dump_config == {"exclude_none": True}
 
 
 def test_annotation_extractor_from_field_annotation_with_annotated_metadata():
     info = AnnotationExtractor.from_field_annotation(
-        Annotated[int, RequestSection.HEADERS, DumpOptions(exclude_none=True)]
+        Annotated[int, FieldX(RequestPart.HEADERS, dump_config=DumpConfig(exclude_none=True))]
     )
 
     assert info.annotation is int
-    assert info.metadata == [RequestSection.HEADERS, DumpOptions(exclude_none=True)]
+    assert info.metadata == [FieldX(RequestPart.HEADERS, dump_config=DumpConfig(exclude_none=True))]
 
 
 def test_annotation_extractor_from_signature_maps_annotations():
-    def handler(a: int, b: Annotated[str, RequestSection.PARAMS]) -> None: ...
+    def handler(a: int, b: Annotated[str, FieldX(RequestPart.PARAMS)]) -> None: ...
 
     mapping = AnnotationExtractor.from_signature(inspect.signature(handler))
 
     assert mapping["a"].annotation is int
-    assert mapping["b"].request_section is RequestSection.PARAMS
+    assert mapping["b"].fieldx.request_part is RequestPart.PARAMS
 
 
 def test_annotation_extractor_from_base_model_includes_aliases_and_computed_fields():
     class Example(BaseModel):
-        token: Annotated[str, RequestSection.HEADERS] = Field(alias="auth")
+        token: Annotated[str, FieldX(RequestPart.HEADERS)] = Field(alias="auth")
 
         @computed_field
         @property
-        def qs(self) -> Annotated[dict[str, int], RequestSection.PARAMS]:
+        def qs(self) -> Annotated[dict[str, int], FieldX(RequestPart.PARAMS)]:
             return {"q": 1}
 
     mapping = AnnotationExtractor.from_base_model(Example)
 
-    assert mapping["token"].request_section is RequestSection.HEADERS
-    assert mapping["auth"].request_section is RequestSection.HEADERS
-    assert mapping["qs"].request_section is RequestSection.PARAMS
+    assert mapping["token"].fieldx.request_part is RequestPart.HEADERS
+    assert mapping["auth"].fieldx.request_part is RequestPart.HEADERS
+    assert mapping["qs"].fieldx.request_part is RequestPart.PARAMS
 
 
 def test_named_annotation_validation_wraps_errors():
@@ -84,10 +91,10 @@ def test_named_annotation_extractor_from_signature():
     assert mapping["a"].info.annotation is int
 
 
-def test_dump_options_kwargs_returns_fields():
-    options = DumpOptions(exclude_none=True, exclude_defaults=True)
+def test_dump_config_typed_dict_returns_fields():
+    options = DumpConfig(exclude_none=True, exclude_defaults=True)
 
-    assert options.model_dump(exclude_unset=True) == {
+    assert options == {
         "exclude_none": True,
         "exclude_defaults": True,
     }

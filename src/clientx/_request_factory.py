@@ -8,11 +8,12 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from clientx.annotations import DumpOptions, NamedAnnotation, NamedAnnotationExtractor, RequestSection
-from clientx.call_context import CallContext
+from clientx._annotation_extractor import NamedAnnotation, NamedAnnotationExtractor
+from clientx._annotations import DumpConfig, RequestPart
+from clientx._call_context import CallContext
 from clientx.exceptions import UnconsumableArgumentError
 
-type PartMap = dict[RequestSection, set[tuple[str, None]]]
+type PartMap = dict[RequestPart, set[tuple[str, None]]]
 
 
 @dataclass
@@ -190,14 +191,14 @@ class RequestFactory:
 
             value = cursor.consume(field_name)
 
-            if key := RequestSection.get(field_name) or annotation.request_section:
-                parts.append(
-                    {key: value.model_dump(**annotation.dump_options.kwargs) if isinstance(value, BaseModel) else value}
-                )
+            fieldx = annotation.fieldx
+
+            if key := RequestPart.get(field_name) or fieldx.request_part:
+                parts.append({key: value.model_dump(**fieldx.dump_config) if isinstance(value, BaseModel) else value})
                 continue
 
             elif isinstance(value, BaseModel):
-                parts.append(model_extractor(model=value, dump_options=annotation.dump_options))
+                parts.append(model_extractor(model=value, dump_config=fieldx.dump_config))
                 continue
 
             raise UnconsumableArgumentError(field=field_name, annotation=annotation, value=value)
@@ -262,7 +263,7 @@ class RequestFactory:
 
 @dataclass(frozen=True)
 class ModelExtractor:
-    def __call__(self, model: BaseModel, dump_options: DumpOptions) -> dict[str, Any]:
+    def __call__(self, model: BaseModel, dump_config: DumpConfig) -> dict[str, Any]:
         """Build request parts from a Pydantic model.
 
         Args:
@@ -273,7 +274,7 @@ class ModelExtractor:
             Request part mapping derived from the model.
         """
         annotation_map = NamedAnnotationExtractor.from_base_model(model)
-        dump = model.model_dump(**dump_options.kwargs)
+        dump = model.model_dump(**dump_config)
         return self.build_request_arguments(dump, annotation_map)
 
     def build_request_arguments(
@@ -287,17 +288,17 @@ class ModelExtractor:
 
         Returns:
             Request part mapping grouped by request section. Fields marked with a
-            RequestSection are merged into that section and are expected to be
+            RequestPart are merged into that section and are expected to be
             mapping values. Remaining fields default to the JSON section.
         """
         request = defaultdict(dict)
 
         for key in list(dump):
             annotation = annotation_map[key]
-            if section := annotation.info.request_section:
-                request[section].update(dump.pop(key))
+            if part := annotation.fieldx.request_part:
+                request[part].update(dump.pop(key))
 
         if dump:
-            request[RequestSection.JSON].update(**dump)
+            request[RequestPart.JSON].update(**dump)
 
         return request

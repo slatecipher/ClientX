@@ -4,17 +4,17 @@ from typing import Annotated, cast
 import pytest
 from pydantic import BaseModel, Field
 
-from clientx.annotations import DumpOptions, RequestSection
-from clientx.call_context import CallContext
-from clientx.client import ClientX
-from clientx.endpoint_context import EndpointContext
+from clientx._annotations import DumpConfig, FieldX, RequestPart
+from clientx._call_context import CallContext
+from clientx._client import ClientX
+from clientx._endpoint_context import EndpointContext
+from clientx._request_factory import ArgumentCursor, ModelExtractor, RequestFactory
 from clientx.exceptions import UnconsumableArgumentError
-from clientx.request_factory import ArgumentCursor, ModelExtractor, RequestFactory
 
 
 class Payload(BaseModel):
-    headers: Annotated[dict[str, str], RequestSection.HEADERS]
-    params: Annotated[dict[str, int], RequestSection.PARAMS]
+    headers: Annotated[dict[str, str], FieldX(RequestPart.HEADERS)]
+    params: Annotated[dict[str, int], FieldX(RequestPart.PARAMS)]
     data: str = Field(alias="payload")
 
 
@@ -52,7 +52,7 @@ def test_request_factory_builds_request_parts():
 def test_request_factory_uses_section_annotation_on_parameter():
     endpoint = EndpointContext("POST", "/v1/items")
 
-    def handler(self, payload: Annotated[Payload, RequestSection.JSON]) -> None: ...
+    def handler(self, payload: Annotated[Payload, FieldX(RequestPart.JSON)]) -> None: ...
 
     endpoint.func = handler
 
@@ -68,6 +68,36 @@ def test_request_factory_uses_section_annotation_on_parameter():
     request = RequestFactory()(call_ctx)
 
     assert request["json"] == {"headers": {"token": "t-1"}, "params": {"q": 1}, "data": "d-1"}
+
+
+def test_request_factory_applies_fieldx_dump_config():
+    endpoint = EndpointContext("POST", "/v1/items")
+
+    class DataPayload(BaseModel):
+        data: str
+        optional: str | None = None
+
+    def handler(
+        self,
+        payload: Annotated[
+            DataPayload,
+            FieldX(RequestPart.DATA, dump_config=DumpConfig(exclude_none=True)),
+        ],
+    ) -> None: ...
+
+    endpoint.func = handler
+
+    client = cast(ClientX, object())
+    call_ctx = CallContext.from_call(
+        endpoint=endpoint,
+        client=client,
+        args=(DataPayload(data="d-1"),),
+        kwargs={},
+    )
+
+    request = RequestFactory()(call_ctx)
+
+    assert request["data"] == {"data": "d-1"}
 
 
 def test_merge_request_parts_warns_on_shared_dict_keys():
@@ -140,16 +170,16 @@ def test_argument_cursor_consume_errors():
 
 def test_model_extractor_groups_sections_and_defaults_json():
     class GroupedPayload(BaseModel):
-        headers: Annotated[dict[str, str], RequestSection.HEADERS]
-        params: Annotated[dict[str, int], RequestSection.PARAMS]
+        headers: Annotated[dict[str, str], FieldX(RequestPart.HEADERS)]
+        params: Annotated[dict[str, int], FieldX(RequestPart.PARAMS)]
         data: str
 
     model = GroupedPayload(headers={"token": "t"}, params={"q": 1}, data="d")
-    parts = ModelExtractor()(model, DumpOptions())
+    parts = ModelExtractor()(model, DumpConfig())
 
-    assert parts[RequestSection.HEADERS] == {"token": "t"}
-    assert parts[RequestSection.PARAMS] == {"q": 1}
-    assert parts[RequestSection.JSON] == {"data": "d"}
+    assert parts[RequestPart.HEADERS] == {"token": "t"}
+    assert parts[RequestPart.PARAMS] == {"q": 1}
+    assert parts[RequestPart.JSON] == {"data": "d"}
 
 
 def test_request_factory_raises_unconsumable_argument_error():

@@ -1,22 +1,21 @@
 from httpx import Auth, Request, Response
 
-from clientx.annotations import DumpOptions, RequestSection
-from clientx.client import ClientX
-from clientx.decoding import FromResponseDecoder, ModelDecoder, TypeAdapterDecoder
-from clientx.decorators import api, endpoints
-from clientx.endpoint_context import Deprecated
+from clientx._annotations import DumpConfig, FieldX, RequestPart
+from clientx._client import ClientX
+from clientx._endpoint_context import DeprecatedMessage, EndpointRegister
 
 __all__ = [
-    "api",
-    "endpoints",
+    # httpx
     "Auth",
-    "ClientX",
-    "Deprecated",
-    "DumpOptions",
-    "ModelDecoder",
     "Request",
-    "RequestSection",
     "Response",
-    "TypeAdapterDecoder",
-    "FromResponseDecoder",
+    # clientx._annotations
+    "DumpConfig",
+    "FieldX",
+    "RequestPart",
+    # clientx._client
+    "ClientX",
+    # clientx._endpoint_context
+    "DeprecatedMessage",
+    "EndpointRegister",
 ]

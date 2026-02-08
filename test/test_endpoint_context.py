@@ -2,7 +2,7 @@ import inspect
 
 import pytest
 
-from clientx.endpoint_context import Deprecated, EndpointContext, URLPath
+from clientx._endpoint_context import DeprecatedMessage, EndpointContext, URLPath
 from clientx.exceptions import MissingPathArgumentsError
 
 
@@ -67,7 +67,7 @@ def test_endpoint_context_path_setter_wraps_url_path():
 
 
 def test_deprecated_emits_deprecation_warning():
-    deprecated = Deprecated("Use /v2/users instead.")
+    deprecated = DeprecatedMessage("Use /v2/users instead.")
 
     with pytest.warns(DeprecationWarning, match="Use /v2/users instead."):
         deprecated()

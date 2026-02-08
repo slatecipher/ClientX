@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from clientx import ClientX, Deprecated, Response
-from clientx import api as x
+from clientx import ClientX, DeprecatedMessage, Response
+from clientx.methods import get
+from clientx.decoders import TypeAdapterDecoder
 
 from .beeceptor_models import Companies, Company, User, Users
 
@@ -20,7 +21,7 @@ class Beeceptor(ClientX):
     # Default User-Agent for all Beeceptor sample API requests from this client.
     _default_user_agent = "Beeceptor/0.1.0"
 
-    @x.get("/users", decoder=lambda r: Users.validate_python(r.json()))
+    @get("/users", decoder=TypeAdapterDecoder(Users))
     def get_users(self) -> list[User]:
         """Return Beeceptor sample users as `User` models.
 
@@ -31,7 +32,7 @@ class Beeceptor(ClientX):
         """
         ...
 
-    @x.get("/companies", decoder=lambda r: Companies.validate_python(r.json()))
+    @get("/companies", decoder=TypeAdapterDecoder(Companies))
     def get_companies(self) -> list[Company]:
         """Return Beeceptor sample companies as `Company` models.
 
@@ -42,7 +43,7 @@ class Beeceptor(ClientX):
         """
         ...
 
-    @x.get("/companies")
+    @get("/companies")
     def get_companies_raw(self) -> Response:
         """Return the raw Beeceptor companies response.
 
@@ -53,9 +54,9 @@ class Beeceptor(ClientX):
         """
         ...
 
-    @x.get(
+    @get(
         "/companies",
-        deprecated=Deprecated(
+        deprecated=DeprecatedMessage(
             "Deprecated: use get_companies_raw(); this endpoint will be removed in a future release."
         ),
     )

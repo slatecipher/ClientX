@@ -7,7 +7,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, ClassVar, get_type_hints
 
-from clientx.client_types import (
+from clientx._client_types import (
     Decoder,
     DeprecatedType,
     MethodType,
@@ -18,7 +18,7 @@ from clientx.exceptions import MissingDecoderError, MissingPathArgumentsError, M
 
 
 @dataclass(frozen=True)
-class Deprecated:
+class DeprecatedMessage:
     """Encapsulate deprecation metadata for an endpoint.
 
     Attributes:
@@ -110,6 +110,14 @@ class EndpointContext:
         self._return_type: Any | None = None
 
     def check_deprecation(self):
+        """Emit a deprecation warning when a deprecation handler is configured.
+
+        Calls ``self.deprecated`` when it is callable, allowing either a plain
+        callable or ``DeprecatedMessage`` to handle warning emission.
+
+        Returns:
+            None
+        """
         if callable(self.deprecated):
             self.deprecated()
 
@@ -223,31 +231,23 @@ class EndpointContext:
 
 
 @dataclass
-class EndpointsRegister:
+class EndpointRegister:
     """Store and manage endpoint registrations.
 
     Attributes:
-        registry: List of registered endpoint contexts.
+        registry: List of registered endpoints
     """
 
-    registry: list[EndpointContext]
+    registry: ClassVar[list[EndpointContext]] = []
 
     @classmethod
-    def default(cls: type[EndpointsRegister]) -> EndpointsRegister:
-        """Create an empty registry instance.
-
-        Returns:
-            EndpointsRegister: A registry with no registered endpoints.
-        """
-        return cls(registry=[])
-
-    def register(self, endpoint: EndpointContext) -> None:
+    def register(cls, endpoint: EndpointContext) -> None:
         """Register an endpoint context.
 
         Args:
             endpoint: The endpoint context to register.
         """
-        self.registry.append(endpoint)
+        cls.registry.append(endpoint)
 
 
-__all__ = ["EndpointContext", "EndpointsRegister", "Deprecated", "URLPath"]
+__all__ = ["EndpointContext", "EndpointRegister", "DeprecatedMessage", "URLPath"]

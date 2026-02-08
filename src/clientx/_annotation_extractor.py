@@ -1,79 +1,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import StrEnum
 from inspect import Signature
-from typing import Annotated, Any, Literal, get_args, get_origin
+from typing import Annotated, Any, get_args, get_origin
 
 from pydantic import BaseModel, TypeAdapter, ValidationError
 from pydantic.fields import ComputedFieldInfo, FieldInfo
 
-
-class DumpOptions(BaseModel):
-    """Options for controlling Pydantic serialization output.
-
-    For more context on each option, see:
-        `https://docs.pydantic.dev/latest/api/base_model/#pydantic.BaseModel.model_dump`
-
-    Attributes:
-        mode: Controls how values are serialized. Use "json" for JSON-serializable types only, or
-            "python" to allow non-JSON-serializable Python objects. Defaults to "python".
-        include: Fields to include in the output (Pydantic include/exclude spec). Defaults to None.
-        exclude: Fields to exclude from the output (Pydantic include/exclude spec). Defaults to None.
-        context: Additional context passed to the serializer. Defaults to None.
-        by_alias: Whether to use field aliases as dictionary keys. Defaults to None.
-        exclude_unset: Whether to exclude fields that were not explicitly set. Defaults to False.
-        exclude_defaults: Whether to exclude fields set to their default value. Defaults to False.
-        exclude_none: Whether to exclude fields with a value of None. Defaults to False.
-        exclude_computed_fields: Whether to exclude computed fields. Defaults to False.
-        round_trip: Whether dumped values should be valid inputs for non-idempotent types such as Json[T].
-            Defaults to False.
-        warnings: How to handle serialization errors. False/"none" ignores, True/"warn" logs, and
-            "error" raises a PydanticSerializationError. Defaults to True.
-        serialize_as_any: Whether to serialize fields with duck-typing serialization behavior. Defaults to False.
-    """
-
-    mode: Literal["json", "python"] | str = "python"
-    include: Any = None
-    exclude: Any = None
-    context: dict[str, Any] | None = None
-    by_alias: bool | None = None
-    exclude_unset: bool = False
-    exclude_defaults: bool = False
-    exclude_none: bool = False
-    exclude_computed_fields: bool = False
-    round_trip: bool = False
-    warnings: bool | Literal["none", "warn", "error"] = True
-    serialize_as_any: bool = False
-
-    @property
-    def kwargs(self) -> dict[str, Any]:
-        return self.model_dump(exclude_unset=True)
-
-
-class RequestSection(StrEnum):
-    """Field enum for mapping fields into request payload sections.
-
-    The values correspond to keyword arguments used by HTTP client request APIs.
-    """
-
-    PARAMS = "params"
-    FILES = "files"
-    DATA = "data"
-    JSON = "json"
-    HEADERS = "headers"
-
-    @classmethod
-    def get(cls, value: str) -> RequestSection | None:
-        """Return the matching enum member for a string, if present.
-
-        Args:
-            value: Candidate request section string.
-
-        Returns:
-            The matching RequestSection member, or None when the value is not a member.
-        """
-        return cls(value) if value in RequestSection else None
+from clientx._annotations import FieldX
 
 
 @dataclass(frozen=True)
@@ -89,22 +23,26 @@ class AnnotationInfo:
     metadata: list[Any] = field(default_factory=list)
 
     @property
-    def request_section(self) -> RequestSection | None:
-        """Return the first RequestSection marker from metadata, if present.
+    def fieldx(self) -> FieldX:
+        return next((m for m in self.metadata if isinstance(m, FieldX)), FieldX())
 
-        Returns:
-            The first RequestSection found in metadata, or None when not present.
-        """
-        return next((m for m in self.metadata if isinstance(m, RequestSection)), None)
+    # @property
+    # def request_section(self) -> RequestPart | None:
+    #     """Return the first RequestSection marker from metadata, if present.
 
-    @property
-    def dump_options(self) -> DumpOptions:
-        """Return the first DumpOptions marker from metadata, if present.
+    #     Returns:
+    #         The first RequestSection found in metadata, or None when not present.
+    #     """
+    #     return next((m for m in self.metadata if isinstance(m, RequestPart)), None)
 
-        Returns:
-            The first DumpOptions found in metadata, or a default DumpOptions instance when not present.
-        """
-        return next((d for d in self.metadata if isinstance(d, DumpOptions)), DumpOptions())
+    # @property
+    # def dump_options(self) -> ModelDumpConfig:
+    #     """Return the first DumpOptions marker from metadata, if present.
+
+    #     Returns:
+    #         The first DumpOptions found in metadata, or a default DumpOptions instance when not present.
+    #     """
+    #     return next((d for d in self.metadata if isinstance(d, ModelDumpConfig)), ModelDumpConfig())
 
     def validate(self, value: Any) -> None:
         """Validate a value against this annotation.
@@ -145,12 +83,16 @@ class NamedAnnotation:
             raise ValueError(f"{self.name!r}: {e}") from e
 
     @property
-    def dump_options(self) -> DumpOptions:
-        return self.info.dump_options
+    def fieldx(self) -> FieldX:
+        return self.info.fieldx
 
-    @property
-    def request_section(self) -> RequestSection | None:
-        return self.info.request_section
+    # @property
+    # def dump_options(self) -> ModelDumpConfig:
+    #     return self.info.dump_options
+
+    # @property
+    # def request_section(self) -> RequestPart | None:
+    #     return self.info.request_section
 
 
 class AnnotationExtractor:
@@ -166,6 +108,7 @@ class AnnotationExtractor:
         Returns:
             The normalized AnnotationInfo for the annotation.
         """
+
         if get_origin(annotation) is not Annotated:
             return AnnotationInfo(annotation=annotation)
 

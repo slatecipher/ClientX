@@ -4,8 +4,8 @@ import inspect
 from dataclasses import dataclass
 from typing import Any
 
-from clientx.client import ClientX
-from clientx.endpoint_context import EndpointContext
+from clientx._client import ClientX
+from clientx._endpoint_context import EndpointContext
 
 
 @dataclass
