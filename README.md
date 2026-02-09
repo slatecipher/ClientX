@@ -17,6 +17,7 @@ The result is less scaffolding code and more focus on outcomes: authors spend le
 - Path parameter rendering from method arguments (e.g. `"/users/{user_id}"`).
 - Request payload mapping from parameter names, `Annotated` metadata, or Pydantic models.
 - Built-in deprecation warnings per endpoint.
+- Endpoint metadata tags for registry filtering and sorting.
 - Full access to `httpx.Client` configuration through `ClientX(...)` kwargs.
 
 ## Install
@@ -62,6 +63,7 @@ Each decorator accepts:
 - `path` (required)
 - `decoder` (required when return type is not `Response` or `None`)
 - `deprecated` (optional callable, including `DeprecatedMessage`)
+- `tags` (optional list of metadata labels for registry tooling)
 
 ```python
 from clientx import ClientX, Response
@@ -83,12 +85,30 @@ Common uses:
 - Generate JSON metadata files describing methods, paths, return types, and deprecation status.
 - Feed endpoint metadata into documentation generators.
 - Build context for internal systems (for example validation, tracing, SDK tooling, or contract checks).
+- Filter or sort endpoints by custom tags (for example domain, stability, or ownership).
 
 ```python
 from clientx import EndpointRegister
 
 for endpoint in EndpointRegister.iter():
     print(endpoint.method, str(endpoint.path), endpoint.return_type)
+
+public_endpoints = [endpoint for endpoint in EndpointRegister.iter() if "public" in endpoint.tags]
+for endpoint in sorted(public_endpoints, key=lambda item: (item.method, str(item.path))):
+    print(endpoint.method, str(endpoint.path), endpoint.tags)
+```
+
+You can attach tags directly in the endpoint decorator:
+
+```python
+from clientx import ClientX, Response
+from clientx.methods import get
+
+
+class UsersClient(ClientX):
+    @get("/users", tags=["public", "users"])
+    def list_users(self) -> Response:
+        ...
 ```
 
 ## Return Types and Decoders

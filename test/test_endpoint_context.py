@@ -75,7 +75,7 @@ def test_deprecated_emits_deprecation_warning():
 
 
 def test_endpoint_repr_includes_method_path_function_and_return_type():
-    endpoint = Endpoint("GET", "/v1/users/{user_id}")
+    endpoint = Endpoint("GET", "/v1/users/{user_id}", tags=["users"])
 
     def handler(user_id: str) -> Response: ...
 
@@ -85,8 +85,18 @@ def test_endpoint_repr_includes_method_path_function_and_return_type():
 
     assert "Endpoint(method='GET'" in rendered
     assert "path='/v1/users/{user_id}'" in rendered
+    assert "tags=['users']" in rendered
     assert "function='test_endpoint_repr_includes_method_path_function_and_return_type.<locals>.handler'" in rendered
     assert "return_type='Response'" in rendered
+
+
+def test_endpoint_copies_tags_on_initialization():
+    tags = ["one", "two"]
+
+    endpoint = Endpoint("GET", "/v1/users", tags=tags)
+    tags.append("mutated")
+
+    assert endpoint.tags == ["one", "two"]
 
 
 def test_endpoint_check_deprecation_calls_callable():

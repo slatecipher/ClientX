@@ -89,14 +89,19 @@ class Endpoint:
     """Represent a decorated endpoint with metadata and binding helpers.
 
     An endpoint stores the HTTP method, URL path template, optional decoder,
-    and optional deprecation handler configured by the decorator. When a
-    callable is assigned via ``func``, the endpoint captures the function
-    signature and resolved return type so calls can be validated and bound
-    before request construction.
+    optional deprecation handler, and optional metadata tags configured by the
+    decorator. When a callable is assigned via ``func``, the endpoint captures
+    the function signature and resolved return type so calls can be validated
+    and bound before request construction.
     """
 
     def __init__(
-        self, method: MethodType, path: str, decoder: Decoder | None = None, deprecated: DeprecatedType | None = None
+        self,
+        method: MethodType,
+        path: str,
+        decoder: Decoder | None = None,
+        deprecated: DeprecatedType | None = None,
+        tags: list[str] | None = None,
     ) -> None:
         """Initialize endpoint metadata from decorator configuration.
 
@@ -108,11 +113,14 @@ class Endpoint:
                 types. Defaults to None.
             deprecated: Optional callable or deprecation metadata emitted when
                 the endpoint is invoked. Defaults to None.
+            tags: Optional metadata labels for endpoint registry filtering and
+                sorting. Defaults to None.
         """
         self.method = method
         self.path = path
         self.decoder = decoder
         self.deprecated = deprecated
+        self.tags = list(tags or [])
         self._func: Callable[..., Any] | None = None
         self._signature: inspect.Signature | None = None
         self._return_type: Any | None = None
@@ -124,7 +132,8 @@ class Endpoint:
         return (
             f"{type(self).__name__}(method={self.method!r}, path={str(self.path)!r}, "
             f"function={func_qualname!r}, has_decoder={self.decoder is not None!r}, "
-            f"deprecated={self.deprecated is not None!r}, return_type={return_type.__qualname__!r})"
+            f"deprecated={self.deprecated is not None!r}, tags={self.tags!r}, "
+            f"return_type={return_type.__qualname__!r})"
         )
 
     def check_deprecation(self):

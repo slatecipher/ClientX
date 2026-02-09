@@ -104,6 +104,21 @@ def test_api_method_calls_deprecation_handler(monkeypatch):
     assert calls["count"] == 1
 
 
+def test_api_method_registers_endpoint_tags():
+    class API(ClientX):
+        @ApiMethod("GET")("/v1/items", tags=["catalog", "public"])
+        def list_items(self) -> Response: ...
+
+    api = API("https://example.test")
+
+    endpoint = EndpointRegister.registry[-1]
+
+    assert endpoint.method == "GET"
+    assert str(endpoint.path) == "/v1/items"
+    assert endpoint.tags == ["catalog", "public"]
+    assert api is not None
+
+
 def test_api_method_raises_internal_error_when_type_checks_are_forced_false(monkeypatch):
     class API(ClientX):
         @ApiMethod("GET")("/v1/items/{item_id}")
