@@ -120,7 +120,8 @@ class Endpoint:
         self.path = path
         self.decoder = decoder
         self.deprecated = deprecated
-        self.tags = list(tags or [])
+        # Dedupe tags via set operation
+        self.tags = list(set(tags or []))
         self._func: Callable[..., Any] | None = None
         self._signature: inspect.Signature | None = None
         self._return_type: Any | None = None
