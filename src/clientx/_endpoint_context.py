@@ -120,8 +120,8 @@ class Endpoint:
         self.path = path
         self.decoder = decoder
         self.deprecated = deprecated
-        # Dedupe tags via set operation
-        self.tags = list(set(tags or []))
+        # Dedupe tags while preserving insertion order.
+        self.tags = list(dict.fromkeys(tags or []))
         self._func: Callable[..., Any] | None = None
         self._signature: inspect.Signature | None = None
         self._return_type: Any | None = None

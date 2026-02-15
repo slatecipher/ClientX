@@ -55,10 +55,13 @@ class FieldX:
             Defaults to ``None``.
         dump_config: Optional Pydantic dump options used when serializing the
             field value. Defaults to an empty ``DumpConfig``.
+        key: Optional key name used when mapping scalar values into keyed request
+            sections such as query params or headers. Defaults to ``None``.
     """
 
     request_part: RequestPartName | RequestPart | None = field(default=None)
     dump_config: DumpConfig = field(kw_only=True, default_factory=DumpConfig)
+    key: str | None = field(default=None)
 
     def __post_init__(self):
         """Normalize string ``request_part`` values into ``RequestPart`` members."""

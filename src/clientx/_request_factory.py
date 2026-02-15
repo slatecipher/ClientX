@@ -4,6 +4,7 @@ import inspect
 import warnings
 from collections import defaultdict
 from dataclasses import dataclass, field
+from enum import Enum
 from inspect import BoundArguments
 from typing import Any
 
@@ -209,7 +210,15 @@ class RequestFactory:
             fieldx = annotation.fieldx
 
             if key := RequestPart.get(field_name) or fieldx.request_part:
-                parts.append({key: value.model_dump(**fieldx.dump_config) if isinstance(value, BaseModel) else value})
+                if isinstance(value, BaseModel):
+                    payload = value.model_dump(**fieldx.dump_config)
+                elif fieldx.key is not None and key in {RequestPart.PARAMS, RequestPart.HEADERS, RequestPart.DATA}:
+                    scalar = value.value if isinstance(value, Enum) else value
+                    payload = {fieldx.key: scalar}
+                else:
+                    payload = value
+
+                parts.append({key: payload})
                 continue
 
             elif isinstance(value, BaseModel):

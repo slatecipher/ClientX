@@ -1,4 +1,5 @@
 import inspect
+from enum import StrEnum
 from typing import Annotated, cast
 
 import pytest
@@ -182,3 +183,37 @@ def test_request_factory_raises_unconsumable_argument_error():
 
     with pytest.raises(UnconsumableArgumentError, match="Cannot map argument 'token'"):
         RequestFactory(endpoint=endpoint)(arguments)
+
+
+def test_request_factory_maps_scalar_param_using_fieldx_key():
+    endpoint = Endpoint("GET", "/v1/items")
+
+    def handler(self, list_type: Annotated[str, FieldX(RequestPart.PARAMS, key="type")]) -> None: ...
+
+    endpoint.func = handler
+
+    client = cast(ClientX, object())
+    arguments = endpoint.bind(client=client, args=("block",), kwargs={})
+
+    request = RequestFactory(endpoint=endpoint)(arguments)
+
+    assert request["params"] == {"type": "block"}
+
+
+def test_request_factory_maps_enum_param_value_using_fieldx_key():
+    class Kind(StrEnum):
+        ALLOW = "allow"
+        BLOCK = "block"
+
+    endpoint = Endpoint("GET", "/v1/items")
+
+    def handler(self, list_type: Annotated[Kind, FieldX(RequestPart.PARAMS, key="type")]) -> None: ...
+
+    endpoint.func = handler
+
+    client = cast(ClientX, object())
+    arguments = endpoint.bind(client=client, args=(Kind.ALLOW,), kwargs={})
+
+    request = RequestFactory(endpoint=endpoint)(arguments)
+
+    assert request["params"] == {"type": "allow"}
