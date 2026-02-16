@@ -35,6 +35,8 @@ class ApiMethod:
         decoder: Decoder | None = None,
         deprecated: DeprecatedType | None = None,
         tags: list[str] | None = None,
+        stream: bool = False,
+        timeout: httpx.Timeout | float | None = None,
     ) -> Callable:
         """Build a decorator that registers an endpoint for this HTTP method.
 
@@ -46,6 +48,10 @@ class ApiMethod:
                 warning when the endpoint is invoked.
             tags: Optional metadata labels attached to the endpoint for
                 registry filtering and sorting. Defaults to None.
+            stream: Whether to send the request in streamed mode. Defaults to
+                False.
+            timeout: Optional timeout override applied to requests sent to this
+                endpoint. Defaults to None.
 
         Returns:
             Callable: A decorator that wraps and registers the endpoint.
@@ -54,7 +60,15 @@ class ApiMethod:
         def decorator(
             func: Callable[Concatenate[T, P], R],
         ) -> Callable[Concatenate[T, P], R]:
-            endpoint = Endpoint(method=self.method, path=path, decoder=decoder, deprecated=deprecated, tags=tags)
+            endpoint = Endpoint(
+                method=self.method,
+                path=path,
+                decoder=decoder,
+                deprecated=deprecated,
+                tags=tags,
+                stream=stream,
+                timeout=timeout,
+            )
             request_factory = RequestFactory(endpoint)
 
             @wraps(func)
@@ -63,7 +77,10 @@ class ApiMethod:
 
                 request = request_factory(arguments=endpoint.bind(_self, args, kwargs))
 
-                response: httpx.Response = _self.send(method=endpoint.method, **request)
+                if endpoint.timeout is not None:
+                    request.setdefault("timeout", endpoint.timeout)
+
+                response = _self.send(method=endpoint.method, stream=endpoint.stream, **request)
 
                 if is_none_type(endpoint.return_type):
                     return cast(R, None)

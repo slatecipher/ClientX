@@ -1,9 +1,14 @@
+from collections.abc import Iterator
+
 from httpx import Response
 from pydantic import BaseModel, TypeAdapter
 
 from clientx.decoders import (
     FromResponseDecoder,
     ModelDecoder,
+    StreamChunksDecoder,
+    StreamDecoder,
+    StreamLinesDecoder,
     TypeAdapterDecoder,
     content_decoder,
     json_decoder,
@@ -27,6 +32,30 @@ def test_text_decoder_returns_response_text():
     response = Response(200, content=b"hello")
 
     assert text_decoder(response) == "hello"
+
+
+def test_stream_lines_decoder_yields_lines():
+    response = Response(200, content=b"alpha\nbeta\n")
+
+    result = StreamLinesDecoder()(response)
+
+    assert isinstance(result, Iterator)
+    assert list(result) == ["alpha", "beta"]
+
+
+def test_stream_chunks_decoder_yields_chunks():
+    response = Response(200, content=b"alpha")
+
+    result = StreamChunksDecoder(chunk_size=2)(response)
+
+    assert isinstance(result, Iterator)
+    assert list(result) == [b"al", b"ph", b"a"]
+
+
+def test_stream_decoders_opt_into_stream_mode():
+    assert StreamLinesDecoder().stream is True
+    assert StreamChunksDecoder().stream is True
+    assert isinstance(StreamLinesDecoder(), StreamDecoder)
 
 
 def test_model_decoder_validates_with_model():

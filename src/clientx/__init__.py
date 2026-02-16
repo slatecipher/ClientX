@@ -1,4 +1,4 @@
-from httpx import Auth, Request, Response
+from httpx import Auth, Request, Response, Timeout
 
 from clientx._annotations import DumpConfig, FieldX, RequestPart
 from clientx._client import ClientX
@@ -9,6 +9,7 @@ __all__ = [
     "Auth",
     "Request",
     "Response",
+    "Timeout",
     # clientx._annotations
     "DumpConfig",
     "FieldX",

@@ -1,5 +1,7 @@
 """Response decoders for mapping HTTP responses into typed models."""
 
+from abc import ABC, abstractmethod
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
@@ -18,6 +20,43 @@ def content_decoder(response: Response) -> bytes:
 
 def text_decoder(response: Response) -> str:
     return response.text
+
+
+class StreamDecoder[T](ABC):
+    """Base decoder for streamed HTTP responses.
+
+    Subclasses should yield data incrementally and must not materialize the
+    full response payload in memory.
+    """
+
+    stream: bool = True
+
+    @abstractmethod
+    def __call__(self, response: Response) -> Iterator[T]:
+        """Yield decoded stream items from the response body.
+
+        Args:
+            response: HTTP response containing a streamed body.
+        """
+        ...
+
+
+@dataclass
+class StreamLinesDecoder(StreamDecoder[str]):
+    """Yield streamed response text line-by-line."""
+
+    def __call__(self, response: Response) -> Iterator[str]:
+        yield from response.iter_lines()
+
+
+@dataclass
+class StreamChunksDecoder(StreamDecoder[bytes]):
+    """Yield streamed response body as raw byte chunks."""
+
+    chunk_size: int | None = field(default=None, kw_only=True)
+
+    def __call__(self, response: Response) -> Iterator[bytes]:
+        yield from response.iter_bytes(chunk_size=self.chunk_size)
 
 
 # Pydantic base model decoders

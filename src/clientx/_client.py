@@ -90,12 +90,13 @@ class ClientX:
         self._user_agent = value or type(self)._default_user_agent
         self.client.headers.update({"User-Agent": self._user_agent})
 
-    def send(self, method: str, path, **request) -> Response:
+    def send(self, method: str, path, *, stream: bool = False, **request) -> Response:
         """Build and send a single HTTP request via the underlying ``httpx.Client``.
 
         Args:
             method: HTTP method name, such as ``"GET"`` or ``"POST"``.
             path: Request URL path or URL object relative to ``base_url`` when applicable.
+            stream: Whether to stream the response body instead of eagerly reading it.
             **request: Additional request options forwarded to ``httpx.Client.build_request``.
 
         Returns:
@@ -111,7 +112,7 @@ class ClientX:
                 },
             )
         request = self.client.build_request(method=method, url=path, **request)
-        return self.client.send(request)
+        return self.client.send(request, stream=stream)
 
 
 __all__ = ["ClientX"]

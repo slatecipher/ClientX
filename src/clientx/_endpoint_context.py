@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from inspect import BoundArguments
 from typing import Any, ClassVar, get_type_hints
 
+import httpx
+
 from clientx._client import ClientX
 from clientx._client_types import (
     Decoder,
@@ -102,6 +104,8 @@ class Endpoint:
         decoder: Decoder | None = None,
         deprecated: DeprecatedType | None = None,
         tags: list[str] | None = None,
+        stream: bool = False,
+        timeout: httpx.Timeout | float | None = None,
     ) -> None:
         """Initialize endpoint metadata from decorator configuration.
 
@@ -115,11 +119,17 @@ class Endpoint:
                 the endpoint is invoked. Defaults to None.
             tags: Optional metadata labels for endpoint registry filtering and
                 sorting. Defaults to None.
+            stream: Whether this endpoint should use HTTP response streaming.
+                Defaults to False.
+            timeout: Optional request timeout override for this endpoint.
+                Defaults to None.
         """
         self.method = method
         self.path = path
         self.decoder = decoder
         self.deprecated = deprecated
+        self.stream = stream
+        self.timeout = timeout
         # Dedupe tags while preserving insertion order.
         self.tags = list(dict.fromkeys(tags or []))
         self._func: Callable[..., Any] | None = None
@@ -133,7 +143,8 @@ class Endpoint:
         return (
             f"{type(self).__name__}(method={self.method!r}, path={str(self.path)!r}, "
             f"function={func_qualname!r}, has_decoder={self.decoder is not None!r}, "
-            f"deprecated={self.deprecated is not None!r}, tags={self.tags!r}, "
+            f"deprecated={self.deprecated is not None!r}, stream={self.stream!r}, "
+            f"timeout={self.timeout!r}, tags={self.tags!r}, "
             f"return_type={return_type.__qualname__!r})"
         )
 
