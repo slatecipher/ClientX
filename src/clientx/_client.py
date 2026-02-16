@@ -108,6 +108,7 @@ class ClientX:
                 {
                     "method": method,
                     "path": str(path),
+                    "stream": stream,
                     "parts": {k: type(v) for k, v in request.items()},
                 },
             )
