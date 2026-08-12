@@ -21,6 +21,7 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
+    "pyright>=1.1.411",
     "pytest>=9.0.2",
     "pytest-cov>=7.0.0",
     "ruff>=0.14.10",
@@ -28,3 +29,9 @@ dev = [
 
 [tool.pytest.ini_options]
 addopts = "-vv --cov=clientx --cov-report=term-missing"
+
+[tool.pyright]
+include = ["src"]
+pythonVersion = "3.12"
+# "strict" currently reports 46 findings; revisit as a separate cleanup.
+typeCheckingMode = "standard"
