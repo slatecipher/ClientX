@@ -1,6 +1,6 @@
 from collections.abc import Iterator
 
-from httpx import Response
+from httpx2 import Response
 from pydantic import BaseModel, TypeAdapter
 
 from clientx.decoders import (

@@ -141,7 +141,7 @@ class RequestFactory:
 
         Returns:
             dict[str, Any]: Request mapping containing ``path`` plus merged
-                request parts suitable for ``httpx`` calls.
+                request parts suitable for ``httpx2`` calls.
         """
         cursor = ArgumentCursor(arguments)
 
@@ -185,7 +185,7 @@ class RequestFactory:
 
         Returns:
             list[dict[str, Any]]: Request part mappings suitable for
-                ``httpx.request(**kwargs)``.
+                ``httpx2.request(**kwargs)``.
 
             Parameters are converted into request parts using one of three strategies:
             - Parameter name matches a ``RequestPart`` (for example ``json`` or ``params``).

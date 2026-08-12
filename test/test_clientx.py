@@ -1,6 +1,6 @@
 import logging
 
-from httpx import Request, Response
+from httpx2 import Request, Response
 
 from clientx.__version__ import __version__
 from clientx._client import ClientX
@@ -104,7 +104,7 @@ def test_clientx_repr_includes_base_url_and_user_agent():
     assert rendered == "ClientX(base_url='https://example.test', user_agent='MyApp/1.0')"
 
 
-def test_clientx_enter_delegates_to_httpx_client(monkeypatch):
+def test_clientx_enter_delegates_to_httpx2_client(monkeypatch):
     client = ClientX("https://example.test")
     calls = {"entered": False}
 
@@ -120,7 +120,7 @@ def test_clientx_enter_delegates_to_httpx_client(monkeypatch):
     assert entered is client
 
 
-def test_clientx_exit_delegates_to_httpx_client_and_returns_false(monkeypatch):
+def test_clientx_exit_delegates_to_httpx2_client_and_returns_false(monkeypatch):
     client = ClientX("https://example.test")
     calls: dict[str, object] = {}
 

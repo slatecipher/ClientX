@@ -5,11 +5,11 @@ from collections.abc import Iterator
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
-from httpx import Response
+from httpx2 import Response
 from pydantic import BaseModel, TypeAdapter
 
 
-# vanilla httpx response decoders
+# vanilla httpx2 response decoders
 def json_decoder(response: Response) -> Any:
     return response.json()
 

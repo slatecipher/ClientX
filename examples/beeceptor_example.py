@@ -27,14 +27,14 @@ def setup_logging() -> None:
 
 setup_logging()
 
-# ClientX.setup_client wires an httpx.Client with the base URL and default headers.
+# ClientX.setup_client wires an httpx2.Client with the base URL and default headers.
 # Decorated API methods never run their bodies; ClientX builds the request from the
 # signature, formats path params, and injects request parts from annotated inputs.
 
 client = Beeceptor("https://fake-json-api.mock.beeceptor.com")
 
 # Returns typed models because the endpoint declares a return type and decoder.
-# If the return type were httpx.Response, you'd receive the raw response instead see example below.
+# If the return type were httpx2.Response, you'd receive the raw response instead see example below.
 yahoo_users = [user for user in client.get_users() if user.email.endswith("yahoo.com")]
 
 for user in yahoo_users:
@@ -48,7 +48,7 @@ for comapny in companies:
     print(f"{comapny.name}: {comapny.employee_count:,} employees")
 
 
-# Raw response example: return type is httpx.Response, so no decoder runs.
+# Raw response example: return type is httpx2.Response, so no decoder runs.
 # Use this path when you want direct access to status codes or response bodies.
 response = client.get_companies_raw()
 

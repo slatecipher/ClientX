@@ -2,7 +2,7 @@ from collections.abc import Iterator
 from typing import TypedDict
 
 import pytest
-from httpx import Request, Response
+from httpx2 import Request, Response
 
 import clientx._decorators as decorators_module
 from clientx._client import ClientX

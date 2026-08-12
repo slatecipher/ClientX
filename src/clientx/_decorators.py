@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from functools import wraps
 from typing import Concatenate, ParamSpec, TypeVar, cast
 
-import httpx
+import httpx2
 
 from clientx._client import ClientX
 from clientx._client_types import (
@@ -36,14 +36,14 @@ class ApiMethod:
         deprecated: DeprecatedType | None = None,
         tags: list[str] | None = None,
         stream: bool = False,
-        timeout: httpx.Timeout | float | None = None,
+        timeout: httpx2.Timeout | float | None = None,
     ) -> Callable:
         """Build a decorator that registers an endpoint for this HTTP method.
 
         Args:
             path: URL path template for the endpoint (e.g., ``/v1/users/{user_id}``).
             decoder: Optional response decoder used when the endpoint's return
-                type is neither ``httpx.Response`` nor ``None``.
+                type is neither ``httpx2.Response`` nor ``None``.
             deprecated: Optional deprecation metadata or callable that emits a
                 warning when the endpoint is invoked.
             tags: Optional metadata labels attached to the endpoint for

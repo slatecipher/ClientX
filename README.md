@@ -6,7 +6,7 @@ Typed, declarative HTTP API clients for Python 3.12+.
 
 ClientX is a declarative API client framework designed to make writing and maintaining API clients easier while keeping the client contract explicit and well documented.
 
-For client authors, ClientX reduces boilerplate by turning typed endpoint definitions into concrete `httpx` requests and centralizing request/response behavior. For client consumers, it pushes API contracts and guard rails into the client itself, helping prevent avoidable runtime mistakes and making integrations more predictable.
+For client authors, ClientX reduces boilerplate by turning typed endpoint definitions into concrete `httpx2` requests and centralizing request/response behavior. For client consumers, it pushes API contracts and guard rails into the client itself, helping prevent avoidable runtime mistakes and making integrations more predictable.
 
 The result is less scaffolding code and more focus on outcomes: authors spend less time on plumbing, and consumers spend less time guessing how to call your API correctly.
 
@@ -18,7 +18,7 @@ The result is less scaffolding code and more focus on outcomes: authors spend le
 - Request payload mapping from parameter names, `Annotated` metadata, or Pydantic models.
 - Built-in deprecation warnings per endpoint.
 - Endpoint metadata tags for registry filtering and sorting.
-- Full access to `httpx.Client` configuration through `ClientX(...)` kwargs.
+- Full access to `httpx2.Client` configuration through `ClientX(...)` kwargs.
 
 ## Install
 
@@ -115,11 +115,11 @@ class UsersClient(ClientX):
 
 ClientX enforces explicit return annotations:
 
-- `-> Response`: returns raw `httpx.Response`.
+- `-> Response`: returns raw `httpx2.Response`.
 - `-> None`: sends request and returns `None`.
 - Any other type: requires `decoder=...`.
 
-A decoder is a callable that receives the raw `httpx.Response` and returns the value that matches your method's return annotation. ClientX executes the HTTP request first, then passes the response into the decoder, and returns the decoder output to the caller.
+A decoder is a callable that receives the raw `httpx2.Response` and returns the value that matches your method's return annotation. ClientX executes the HTTP request first, then passes the response into the decoder, and returns the decoder output to the caller.
 
 In practice, decoders are where you define response parsing and validation behavior:
 
@@ -170,7 +170,7 @@ class UsersClient(ClientX):
 ### `FromResponseDecoder`
 
 ```python
-from httpx import Response
+from httpx2 import Response
 from pydantic import BaseModel
 
 from clientx import ClientX
@@ -221,12 +221,12 @@ class MetadataClient(ClientX):
 
 ### Bring Your Own Decoder (BYOD)
 
-You can pass any callable with signature `(response: httpx.Response) -> T` as `decoder=...`, where `T` matches your endpoint return type.
+You can pass any callable with signature `(response: httpx2.Response) -> T` as `decoder=...`, where `T` matches your endpoint return type.
 
 Use BYOD when you need behavior that is specific to your API contract, such as envelope unwrapping, fallback parsing, or custom validation rules.
 
 ```python
-from httpx import Response
+from httpx2 import Response
 from pydantic import BaseModel, TypeAdapter
 
 from clientx import ClientX
@@ -374,7 +374,7 @@ You can also pass any callable as `deprecated`, and it will run on endpoint invo
 
 ## Client Configuration
 
-`ClientX` initializes an internal `httpx.Client`:
+`ClientX` initializes an internal `httpx2.Client`:
 
 ```python
 ClientX(
@@ -386,7 +386,7 @@ ClientX(
 ```
 
 - `user_agent` defaults to `ClientX/<version>`.
-- Additional kwargs are forwarded to `httpx.Client(...)`.
+- Additional kwargs are forwarded to `httpx2.Client(...)`.
 
 ## Error Rules
 

@@ -1,7 +1,7 @@
 import inspect
 
 import pytest
-from httpx import Response
+from httpx2 import Response
 
 from clientx._endpoint_context import DeprecatedMessage, Endpoint, EndpointRegister, URLPath
 from clientx.exceptions import MissingDecoderError, MissingPathArgumentsError, MissingReturnTypeError

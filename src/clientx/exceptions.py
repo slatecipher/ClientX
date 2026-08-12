@@ -61,7 +61,7 @@ class MissingReturnTypeError(TypeError):
             "must declare a return type. "
             "QuickApiClient requires an explicit return annotation "
             "to determine response decoding behavior "
-            "(e.g. `-> httpx.Response`, `-> None`, or a typed value)."
+            "(e.g. `-> httpx2.Response`, `-> None`, or a typed value)."
         )
 
         super().__init__(message)
@@ -77,9 +77,9 @@ class MissingDecoderError(TypeError):
         message = (
             f"Endpoint function '{qualname}' (defined in {module}) "
             "requires a decoder because its return type is not "
-            "`httpx.Response` or `None`. "
+            "`httpx2.Response` or `None`. "
             "Provide a decoder callable via the endpoint decorator "
-            "or change the return type to `httpx.Response` or `None`."
+            "or change the return type to `httpx2.Response` or `None`."
         )
 
         super().__init__(message)

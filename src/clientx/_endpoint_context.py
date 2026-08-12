@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from inspect import BoundArguments
 from typing import Any, ClassVar, get_type_hints
 
-import httpx
+import httpx2
 
 from clientx._client import ClientX
 from clientx._client_types import (
@@ -105,7 +105,7 @@ class Endpoint:
         deprecated: DeprecatedType | None = None,
         tags: list[str] | None = None,
         stream: bool = False,
-        timeout: httpx.Timeout | float | None = None,
+        timeout: httpx2.Timeout | float | None = None,
     ) -> None:
         """Initialize endpoint metadata from decorator configuration.
 

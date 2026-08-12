@@ -1,11 +1,11 @@
-from httpx import Auth, Request, Response, Timeout
+from httpx2 import Auth, Request, Response, Timeout
 
 from clientx._annotations import DumpConfig, FieldX, RequestPart
 from clientx._client import ClientX
 from clientx._endpoint_context import DeprecatedMessage, EndpointRegister
 
 __all__ = [
-    # httpx
+    # httpx2
     "Auth",
     "Request",
     "Response",

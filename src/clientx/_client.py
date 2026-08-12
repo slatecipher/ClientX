@@ -4,7 +4,7 @@ import logging
 from types import TracebackType
 from typing import ClassVar, Self, Unpack
 
-from httpx import URL, Client, Response
+from httpx2 import URL, Client, Response
 
 from clientx.__version__ import __version__
 from clientx._client_types import HttpxClientKwargs
@@ -16,7 +16,7 @@ class ClientX:
     """Base HTTP client wrapper for declarative ClientX API clients.
 
     Attributes:
-        client: Underlying ``httpx.Client`` instance used to build and send requests.
+        client: Underlying ``httpx2.Client`` instance used to build and send requests.
     """
 
     _default_user_agent: ClassVar[str] = f"ClientX/{__version__}"
@@ -25,12 +25,12 @@ class ClientX:
     def __init__(
         self, base_url: URL | str, *, user_agent: str | None = None, **client_kwargs: Unpack[HttpxClientKwargs]
     ):
-        """Initialize a client with a base URL and optional ``httpx.Client`` configuration.
+        """Initialize a client with a base URL and optional ``httpx2.Client`` configuration.
 
         Args:
             base_url: Base URL used for all relative request paths.
             user_agent: Optional user agent header value. When ``None``, uses the default ClientX user agent.
-            **client_kwargs: Additional keyword arguments passed directly to ``httpx.Client``.
+            **client_kwargs: Additional keyword arguments passed directly to ``httpx2.Client``.
         """
         self.client = Client(base_url=URL(base_url), **client_kwargs)
         self.user_agent = user_agent
@@ -50,7 +50,7 @@ class ClientX:
         exc: BaseException | None,
         tb: TracebackType | None,
     ) -> bool:
-        """Exit the client context and close the underlying ``httpx.Client``.
+        """Exit the client context and close the underlying ``httpx2.Client``.
 
         Args:
             exc_type: Exception type raised inside the context, if any.
@@ -82,7 +82,7 @@ class ClientX:
 
     @user_agent.setter
     def user_agent(self, value: str | None):
-        """Set the ``User-Agent`` header used by the underlying ``httpx.Client``.
+        """Set the ``User-Agent`` header used by the underlying ``httpx2.Client``.
 
         Args:
             value: User agent string to apply. When ``None``, uses the default ClientX user agent.
@@ -91,16 +91,16 @@ class ClientX:
         self.client.headers.update({"User-Agent": self._user_agent})
 
     def send(self, method: str, path, *, stream: bool = False, **request) -> Response:
-        """Build and send a single HTTP request via the underlying ``httpx.Client``.
+        """Build and send a single HTTP request via the underlying ``httpx2.Client``.
 
         Args:
             method: HTTP method name, such as ``"GET"`` or ``"POST"``.
             path: Request URL path or URL object relative to ``base_url`` when applicable.
             stream: Whether to stream the response body instead of eagerly reading it.
-            **request: Additional request options forwarded to ``httpx.Client.build_request``.
+            **request: Additional request options forwarded to ``httpx2.Client.build_request``.
 
         Returns:
-            The HTTP response returned by ``httpx.Client.send``.
+            The HTTP response returned by ``httpx2.Client.send``.
         """
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(

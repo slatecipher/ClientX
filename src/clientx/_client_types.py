@@ -3,17 +3,17 @@ from collections.abc import Callable, Mapping
 from http.cookiejar import CookieJar
 from typing import Any, Literal, TypedDict
 
-import httpx
+import httpx2
 
-type Decoder = Callable[[httpx.Response], object]
+type Decoder = Callable[[httpx2.Response], object]
 
 type DeprecatedType = Callable[..., None]
 
 type MethodType = Literal["GET", "PUT", "POST", "PATCH", "DELETE", "HEAD", "OPTIONS"]
 
-type CookieTypes = httpx.Cookies | CookieJar | dict[str, str] | list[tuple[str, str]]
+type CookieTypes = httpx2.Cookies | CookieJar | dict[str, str] | list[tuple[str, str]]
 
-type EventHook = Callable[[httpx.Request | httpx.Response], None]
+type EventHook = Callable[[httpx2.Request | httpx2.Response], None]
 
 type EventHooks = Mapping[str, list[EventHook]]
 
@@ -31,20 +31,20 @@ def is_none_type(return_type: Any) -> bool:
 
 
 def is_response_type(return_type: Any) -> bool:
-    return return_type is httpx.Response
+    return return_type is httpx2.Response
 
 
 class HttpxClientKwargs(TypedDict, total=False):
-    """Keyword arguments supported by httpx.Client.
+    """Keyword arguments supported by httpx2.Client.
 
     Intended for use with **kwargs: Unpack[HttpxClientKwargs] to preserve
     IDE autocomplete and static type checking.
     """
 
-    auth: httpx.Auth | tuple[str, str] | tuple[bytes, bytes] | None
+    auth: httpx2.Auth | tuple[str, str] | tuple[bytes, bytes] | None
     """An authentication class or tuple to use when sending requests."""
 
-    params: httpx.QueryParams | None
+    params: httpx2.QueryParams | None
     """Query parameters to include in request URLs."""
 
     headers: Mapping[str, str] | None
@@ -59,19 +59,19 @@ class HttpxClientKwargs(TypedDict, total=False):
     http2: bool
     """Enable or disable HTTP/2 support."""
 
-    proxy: str | httpx.URL | httpx.Proxy | None
+    proxy: str | httpx2.URL | httpx2.Proxy | None
     """A proxy URL or configuration where all traffic should be routed."""
 
-    timeout: httpx.Timeout | float | None
+    timeout: httpx2.Timeout | float | None
     """Timeout configuration to use when sending requests."""
 
-    limits: httpx.Limits
+    limits: httpx2.Limits
     """Connection pool limits configuration."""
 
     max_redirects: int
     """Maximum number of redirect responses to follow."""
 
-    transport: httpx.BaseTransport
+    transport: httpx2.BaseTransport
     """Transport instance used to send requests over the network."""
 
     trust_env: bool
@@ -87,9 +87,9 @@ class HttpxClientKwargs(TypedDict, total=False):
     points in the request lifecycle.
 
     Supported hook types:
-    - "request": Called with an ``httpx.Request`` object immediately before
+    - "request": Called with an ``httpx2.Request`` object immediately before
         the request is sent.
-    - "response": Called with an ``httpx.Response`` object as soon as the
+    - "response": Called with an ``httpx2.Response`` object as soon as the
         response headers are received.
 
     Each hook value must be a list of callables. Hook callables are invoked in
