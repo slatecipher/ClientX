@@ -75,12 +75,17 @@ class ApiMethod:
             def wrapper(_self: T, *args: P.args, **kwargs: P.kwargs) -> R:
                 endpoint.check_deprecation()
 
-                request = request_factory(arguments=endpoint.bind(_self, args, kwargs))
+                spec = request_factory(arguments=endpoint.bind(_self, args, kwargs))
 
                 if endpoint.timeout is not None:
-                    request.setdefault("timeout", endpoint.timeout)
+                    spec.parts.setdefault("timeout", endpoint.timeout)
 
-                response = _self.send(method=endpoint.method, stream=endpoint.stream, **request)
+                response = _self.send(
+                    method=endpoint.method,
+                    path=spec.path,
+                    stream=endpoint.stream,
+                    **spec.parts,
+                )
 
                 if is_none_type(endpoint.return_type):
                     return cast(R, None)

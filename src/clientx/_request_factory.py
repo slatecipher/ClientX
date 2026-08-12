@@ -122,6 +122,21 @@ class ArgumentCursor:
 
 
 @dataclass(frozen=True)
+class RequestSpec:
+    """A rendered endpoint call, split into routing and payload.
+
+    Attributes:
+        path: Rendered request path with template placeholders applied.
+        parts: Merged request parts suitable for ``httpx2.Client.build_request``.
+            Never contains ``method``, ``path``, or ``stream`` — those are passed
+            to ``ClientX.send`` as named arguments.
+    """
+
+    path: str
+    parts: dict[str, Any]
+
+
+@dataclass(frozen=True)
 class RequestFactory:
     """Construct HTTP request inputs from a bound endpoint invocation.
 
@@ -133,15 +148,14 @@ class RequestFactory:
     endpoint: Endpoint
     warn_on_conflict: bool = False
 
-    def __call__(self, arguments: BoundArguments) -> dict[str, Any]:
-        """Build request kwargs and a rendered path from bound arguments.
+    def __call__(self, arguments: BoundArguments) -> RequestSpec:
+        """Build a rendered path and merged request parts from bound arguments.
 
         Args:
             arguments: Bound endpoint arguments produced from signature binding.
 
         Returns:
-            dict[str, Any]: Request mapping containing ``path`` plus merged
-                request parts suitable for ``httpx2`` calls.
+            RequestSpec: The rendered path and the merged request parts.
         """
         cursor = ArgumentCursor(arguments)
 
@@ -151,9 +165,7 @@ class RequestFactory:
 
         request_parts = self.extract_request_parts(cursor)
 
-        request = self.merge_request_parts(request_parts)
-
-        return {"path": rendered_path, **request}
+        return RequestSpec(path=rendered_path, parts=self.merge_request_parts(request_parts))
 
     def render_path(self, cursor: ArgumentCursor) -> str:
         """Render the endpoint path using bound arguments.

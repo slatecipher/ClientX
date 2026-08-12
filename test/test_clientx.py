@@ -2,8 +2,8 @@ import logging
 
 from httpx2 import Request, Response
 
-from clientx.__version__ import __version__
 from clientx._client import ClientX
+from clientx._version import __version__
 
 
 def test_clientx_sets_default_user_agent():

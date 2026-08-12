@@ -6,10 +6,32 @@ from typing import ClassVar, Self, Unpack
 
 from httpx2 import URL, Client, Response
 
-from clientx.__version__ import __version__
 from clientx._client_types import HttpxClientKwargs
+from clientx._version import __version__
 
 logger = logging.getLogger(__name__)
+
+
+def _log_request_parts(method: str, path, stream: bool, request_parts: dict) -> None:
+    """Log the raw request parts for a single request at debug level.
+
+    Args:
+        method: HTTP method name, such as ``"GET"`` or ``"POST"``.
+        path: Request URL path or URL object the request targets.
+        stream: Whether the response body will be streamed.
+        request_parts: Request options as passed to ``httpx2.Client.build_request``.
+    """
+    if not logger.isEnabledFor(logging.DEBUG):
+        return
+    logger.debug(
+        "HTTP request parts: %s",
+        {
+            "method": method,
+            "path": str(path),
+            "stream": stream,
+            "parts": {k: type(v) for k, v in request_parts.items()},
+        },
+    )
 
 
 class ClientX:
@@ -90,29 +112,20 @@ class ClientX:
         self._user_agent = value or type(self)._default_user_agent
         self.client.headers.update({"User-Agent": self._user_agent})
 
-    def send(self, method: str, path, *, stream: bool = False, **request) -> Response:
+    def send(self, method: str, path, *, stream: bool = False, **request_parts) -> Response:
         """Build and send a single HTTP request via the underlying ``httpx2.Client``.
 
         Args:
             method: HTTP method name, such as ``"GET"`` or ``"POST"``.
             path: Request URL path or URL object relative to ``base_url`` when applicable.
             stream: Whether to stream the response body instead of eagerly reading it.
-            **request: Additional request options forwarded to ``httpx2.Client.build_request``.
+            **request_parts: Additional request options forwarded to ``httpx2.Client.build_request``.
 
         Returns:
             The HTTP response returned by ``httpx2.Client.send``.
         """
-        if logger.isEnabledFor(logging.DEBUG):
-            logger.debug(
-                "HTTP request parts: %s",
-                {
-                    "method": method,
-                    "path": str(path),
-                    "stream": stream,
-                    "parts": {k: type(v) for k, v in request.items()},
-                },
-            )
-        request = self.client.build_request(method=method, url=path, **request)
+        _log_request_parts(method, path, stream, request_parts)
+        request = self.client.build_request(method=method, url=path, **request_parts)
         return self.client.send(request, stream=stream)
 
 

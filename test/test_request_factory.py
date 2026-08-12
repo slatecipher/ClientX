@@ -40,12 +40,12 @@ def test_request_factory_builds_request_parts():
     )
 
     factory = RequestFactory(endpoint=endpoint)
-    request = factory(arguments)
+    spec = factory(arguments)
 
-    assert request["path"] == "/v1/items/123"
-    assert request["headers"] == {"token": "t-1", "header": "h-1"}
-    assert request["params"] == {"q": 1, "limit": 5}
-    assert request["json"] == {"data": "d-1"}
+    assert spec.path == "/v1/items/123"
+    assert spec.parts["headers"] == {"token": "t-1", "header": "h-1"}
+    assert spec.parts["params"] == {"q": 1, "limit": 5}
+    assert spec.parts["json"] == {"data": "d-1"}
 
 
 def test_request_factory_uses_section_annotation_on_parameter():
@@ -59,9 +59,9 @@ def test_request_factory_uses_section_annotation_on_parameter():
     client = cast(ClientX, object())
     arguments = endpoint.bind(client=client, args=(payload,), kwargs={})
 
-    request = RequestFactory(endpoint=endpoint)(arguments)
+    spec = RequestFactory(endpoint=endpoint)(arguments)
 
-    assert request["json"] == {"headers": {"token": "t-1"}, "params": {"q": 1}, "data": "d-1"}
+    assert spec.parts["json"] == {"headers": {"token": "t-1"}, "params": {"q": 1}, "data": "d-1"}
 
 
 def test_request_factory_applies_fieldx_dump_config():
@@ -84,9 +84,9 @@ def test_request_factory_applies_fieldx_dump_config():
     client = cast(ClientX, object())
     arguments = endpoint.bind(client=client, args=(DataPayload(data="d-1"),), kwargs={})
 
-    request = RequestFactory(endpoint=endpoint)(arguments)
+    spec = RequestFactory(endpoint=endpoint)(arguments)
 
-    assert request["data"] == {"data": "d-1"}
+    assert spec.parts["data"] == {"data": "d-1"}
 
 
 def test_merge_request_parts_warns_on_shared_dict_keys():
@@ -195,9 +195,9 @@ def test_request_factory_maps_scalar_param_using_fieldx_key():
     client = cast(ClientX, object())
     arguments = endpoint.bind(client=client, args=("block",), kwargs={})
 
-    request = RequestFactory(endpoint=endpoint)(arguments)
+    spec = RequestFactory(endpoint=endpoint)(arguments)
 
-    assert request["params"] == {"type": "block"}
+    assert spec.parts["params"] == {"type": "block"}
 
 
 def test_request_factory_maps_enum_param_value_using_fieldx_key():
@@ -214,6 +214,6 @@ def test_request_factory_maps_enum_param_value_using_fieldx_key():
     client = cast(ClientX, object())
     arguments = endpoint.bind(client=client, args=(Kind.ALLOW,), kwargs={})
 
-    request = RequestFactory(endpoint=endpoint)(arguments)
+    spec = RequestFactory(endpoint=endpoint)(arguments)
 
-    assert request["params"] == {"type": "allow"}
+    assert spec.parts["params"] == {"type": "allow"}
