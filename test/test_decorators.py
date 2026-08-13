@@ -18,16 +18,6 @@ class SentCapture(TypedDict):
     stream: bool
 
 
-@pytest.fixture(autouse=True)
-def reset_endpoint_registry():
-    original = list(EndpointRegister.registry)
-    EndpointRegister.registry = []
-    try:
-        yield
-    finally:
-        EndpointRegister.registry = original
-
-
 def test_api_method_registers_endpoint_and_returns_response(monkeypatch):
     class API(ClientX):
         @ApiMethod("GET")("/v1/items/{item_id}")

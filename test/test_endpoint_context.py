@@ -146,25 +146,19 @@ def test_endpoint_func_requires_return_annotation():
 
 def test_endpoint_register_appends_endpoint():
     endpoint = Endpoint("GET", "/v1/users")
-    original = list(EndpointRegister.registry)
-    try:
-        EndpointRegister.register(endpoint)
-        assert EndpointRegister.registry[-1] is endpoint
-    finally:
-        EndpointRegister.registry = original
+
+    EndpointRegister.register(endpoint)
+
+    assert EndpointRegister.registry[-1] is endpoint
 
 
 def test_endpoint_register_iter_yields_registered_endpoints_in_order():
     first = Endpoint("GET", "/v1/users")
     second = Endpoint("POST", "/v1/users")
-    original = list(EndpointRegister.registry)
-    try:
-        EndpointRegister.registry = [first, second]
+    EndpointRegister.registry = [first, second]
 
-        endpoints = list(EndpointRegister.iter())
+    endpoints = list(EndpointRegister.iter())
 
-        assert endpoints == [first, second]
-        assert endpoints[0] is first
-        assert endpoints[1] is second
-    finally:
-        EndpointRegister.registry = original
+    assert endpoints == [first, second]
+    assert endpoints[0] is first
+    assert endpoints[1] is second
