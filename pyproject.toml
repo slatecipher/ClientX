@@ -44,7 +44,10 @@ dev = [
 addopts = "-vv --cov=clientx --cov-report=term-missing"
 
 [tool.pyright]
-include = ["src"]
+# Editors check both trees. CI splits them: `make typecheck` passes `src` on the
+# command line (which overrides this list) and gates the build, while
+# `make typecheck-tests` covers `test` as a non-blocking report.
+include = ["src", "test"]
 pythonVersion = "3.12"
 # "strict" currently reports 46 findings; revisit as a separate cleanup.
 typeCheckingMode = "standard"

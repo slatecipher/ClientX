@@ -1,4 +1,4 @@
-.PHONY: lint lint-ci typecheck test test-ci check
+.PHONY: lint lint-ci typecheck typecheck-tests test test-ci check
 
 lint:
 	uv run ruff format src test
@@ -8,8 +8,14 @@ lint-ci:
 	uv run ruff format --check src test
 	uv run ruff check src test
 
+# Gates CI. Paths on the command line override `include` in pyproject.toml,
+# so this stays scoped to the shipped package even though `include` is wider.
 typecheck:
-	uv run pyright
+	uv run pyright src
+
+# Advisory: reported in CI via continue-on-error, never blocks a merge.
+typecheck-tests:
+	uv run pyright test
 
 test:
 	uv run pytest
