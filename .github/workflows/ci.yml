@@ -85,3 +85,30 @@ jobs:
 
       - name: Run tests
         run: make test-ci
+
+  # Merge Dependabot patch/minor updates once all jobs pass; majors need manual review.
+  dependabot-auto-merge:
+    needs: [lint, typecheck, test]
+    if: github.event_name == 'pull_request' && github.event.pull_request.user.login == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Read Dependabot metadata
+        id: metadata
+        uses: dependabot/fetch-metadata@v3
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      # update-type is the largest change in the PR, so a grouped update with
+      # one major bump is left for review as a whole.
+      - name: Merge patch and minor updates
+        if: >-
+          steps.metadata.outputs.update-type == 'version-update:semver-patch' ||
+          steps.metadata.outputs.update-type == 'version-update:semver-minor'
+        run: gh pr merge --squash "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
