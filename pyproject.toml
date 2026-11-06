@@ -55,5 +55,6 @@ addopts = "-vv --cov=clientx --cov-report=term-missing"
 # `make typecheck-tests` covers `test` as a non-blocking report.
 include = ["src", "test"]
 pythonVersion = "3.12"
-# "strict" currently reports 46 findings; revisit as a separate cleanup.
 typeCheckingMode = "standard"
+# The shipped package is held to strict mode; tests stay on standard.
+strict = ["src"]

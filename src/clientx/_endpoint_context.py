@@ -57,7 +57,7 @@ class DeprecatedMessage:
 class URLPath:
     """Hold a URL path template and the regex for extracting parameters."""
 
-    pattern: ClassVar[re.Pattern] = re.compile(r"{(\w+)}")
+    pattern: ClassVar[re.Pattern[str]] = re.compile(r"{(\w+)}")
 
     path: str
 

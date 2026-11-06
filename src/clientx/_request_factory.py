@@ -6,7 +6,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from enum import Enum
 from inspect import BoundArguments
-from typing import Any
+from typing import Any, cast
 
 from pydantic import BaseModel
 
@@ -38,7 +38,7 @@ class ArgumentCursor:
     """
 
     bound: inspect.BoundArguments
-    consumed: dict[str, Any] = field(default_factory=dict)
+    consumed: dict[str, Any] = field(default_factory=dict[str, Any])
     bound_copy: dict[str, Any] = field(init=False)
 
     def __post_init__(self):
@@ -208,7 +208,7 @@ class RequestFactory:
             UnconsumableArgumentError: If a parameter cannot be mapped to a
                 request part.
         """
-        parts = []
+        parts: list[dict[str, Any]] = []
         annotation_map = NamedAnnotationExtractor.from_signature(self.endpoint.signature)
         model_extractor = ModelExtractor()
 
@@ -259,7 +259,7 @@ class RequestFactory:
                     merged[key] = value
                     continue
                 if isinstance(merged[key], dict) and isinstance(value, dict):
-                    self._warn_on_conflict(key, merged[key], value)
+                    self._warn_on_conflict(key, merged[key], cast(dict[str, Any], value))
                     merged[key].update(value)
                     continue
 
@@ -331,7 +331,7 @@ class ModelExtractor:
                 into that section and are expected to be mapping values.
                 Remaining fields default to ``RequestPart.JSON``.
         """
-        request = defaultdict(dict)
+        request: defaultdict[str, dict[str, Any]] = defaultdict(dict)
 
         for key in list(dump):
             annotation = annotation_map[key]

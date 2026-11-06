@@ -20,7 +20,7 @@ class AnnotationInfo:
     """
 
     annotation: Any = None
-    metadata: list[Any] = field(default_factory=list)
+    metadata: list[Any] = field(default_factory=list[Any])
 
     @property
     def fieldx(self) -> FieldX:
@@ -103,7 +103,8 @@ class AnnotationExtractor:
             # For computed fields, the annotation lives in return_type.
             return AnnotationExtractor.from_field_annotation(field_info.return_type)
 
-        if not isinstance(field_info, FieldInfo):
+        # Runtime guard for untyped callers; the annotation already rules this out for type checkers.
+        if not isinstance(field_info, FieldInfo):  # pyright: ignore[reportUnnecessaryIsInstance]
             raise TypeError(f"Expected FieldInfo or ComputedFieldInfo, got {type(field_info).__name__}")
         # FieldInfo.annotation is already the underlying type; metadata is separate.
         return AnnotationInfo(annotation=field_info.annotation, metadata=list(field_info.metadata))
@@ -135,7 +136,7 @@ class AnnotationExtractor:
         """
         model_type = model if isinstance(model, type) else type(model)
         fields = model_type.model_fields | model_type.model_computed_fields
-        result = {}
+        result: dict[str, AnnotationInfo] = {}
         for name, info in fields.items():
             annotation = AnnotationExtractor.from_field_info(info)
             result[name] = annotation

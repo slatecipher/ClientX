@@ -78,7 +78,7 @@ def _decode(decoder: Decoder, response: httpx2.Response) -> object:
         return decoder(response)
 
     try:
-        items = decoder(response)
+        items = cast(StreamDecoder[object], decoder)(response)
     except BaseException:
         response.close()
         raise

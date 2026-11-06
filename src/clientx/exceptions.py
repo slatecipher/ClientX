@@ -53,7 +53,7 @@ class MissingPathArgumentsError(ClientXError, ValueError):
 class MissingReturnTypeError(ClientXError, TypeError):
     """Raised when an endpoint function is missing a return annotation."""
 
-    def __init__(self, func: Callable):
+    def __init__(self, func: Callable[..., Any]):
         qualname = getattr(func, "__qualname__", func.__name__)
         module = getattr(func, "__module__", "<unknown>")
 
@@ -71,7 +71,7 @@ class MissingReturnTypeError(ClientXError, TypeError):
 class MissingDecoderError(ClientXError, TypeError):
     """Raised when a decoder is required but not provided."""
 
-    def __init__(self, func: Callable):
+    def __init__(self, func: Callable[..., Any]):
         qualname = getattr(func, "__qualname__", func.__name__)
         module = getattr(func, "__module__", "<unknown>")
 

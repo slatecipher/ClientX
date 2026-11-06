@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from types import TracebackType
-from typing import ClassVar, Self, Unpack
+from typing import Any, ClassVar, Self, Unpack
 
 from httpx2 import URL, Client, Response
 
@@ -12,7 +12,7 @@ from clientx._version import __version__
 logger = logging.getLogger(__name__)
 
 
-def _log_request_parts(method: str, path, stream: bool, request_parts: dict) -> None:
+def _log_request_parts(method: str, path: URL | str, stream: bool, request_parts: dict[str, Any]) -> None:
     """Log the raw request parts for a single request at debug level.
 
     Args:
@@ -23,13 +23,14 @@ def _log_request_parts(method: str, path, stream: bool, request_parts: dict) -> 
     """
     if not logger.isEnabledFor(logging.DEBUG):
         return
+    part_types: dict[str, type[Any]] = {k: type(v) for k, v in request_parts.items()}
     logger.debug(
         "HTTP request parts: %s",
         {
             "method": method,
             "path": str(path),
             "stream": stream,
-            "parts": {k: type(v) for k, v in request_parts.items()},
+            "parts": part_types,
         },
     )
 
@@ -112,7 +113,7 @@ class ClientX:
         self._user_agent = value or type(self)._default_user_agent
         self.client.headers.update({"User-Agent": self._user_agent})
 
-    def send(self, method: str, path, *, stream: bool = False, **request_parts) -> Response:
+    def send(self, method: str, path: URL | str, *, stream: bool = False, **request_parts: Any) -> Response:
         """Build and send a single HTTP request via the underlying ``httpx2.Client``.
 
         Args:
