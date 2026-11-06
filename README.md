@@ -64,6 +64,8 @@ Each decorator accepts:
 - `decoder` (required when return type is not `Response` or `None`)
 - `deprecated` (optional callable, including `DeprecatedMessage`)
 - `tags` (optional list of metadata labels for registry tooling)
+- `stream` (optional; defaults to the decoder's choice, see [Streaming responses](#streaming-responses))
+- `timeout` (optional per-endpoint `httpx2.Timeout` or seconds)
 
 ```python
 from clientx import ClientX, Response
@@ -260,6 +262,33 @@ class ItemsClient(ClientX):
 ```
 
 The only requirement is that your decoder output matches the declared return annotation.
+
+### Streaming responses
+
+Stream decoders read the body incrementally instead of loading it into memory. They turn on streaming by themselves, so `stream=True` is not needed:
+
+```python
+from collections.abc import Iterator
+
+from clientx import ClientX
+from clientx.decoders import StreamLinesDecoder
+from clientx.methods import get
+
+
+class EventsClient(ClientX):
+    @get("/events", decoder=StreamLinesDecoder())
+    def events(self) -> Iterator[str]:
+        ...
+
+
+for line in EventsClient("https://api.example.com").events():
+    print(line)
+```
+
+- `StreamLinesDecoder` yields text lines, and `StreamChunksDecoder(chunk_size=...)` yields byte chunks. To write your own, subclass `StreamDecoder`.
+- The connection is released when iteration finishes, when the loop exits early (`break` or an exception), or when you call `.close()` on the returned iterator. If you keep a partly consumed iterator around, close it when you are done.
+- With `stream=True` and a regular decoder such as `ModelDecoder`, ClientX reads the full body before decoding.
+- With `stream=True` and `-> Response`, you get the open response and own it: read it, iterate it to the end, or call `response.close()`.
 
 ## Building Request Payloads
 

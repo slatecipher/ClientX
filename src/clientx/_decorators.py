@@ -1,4 +1,4 @@
-from collections.abc import Callable
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
 from functools import wraps
 from typing import Any, Concatenate, ParamSpec, Protocol, TypeVar, cast, overload
@@ -61,6 +61,43 @@ class DecodedEndpointDecorator[D](Protocol):
     ) -> Callable[Concatenate[C, Q], S]:
         """Register ``func`` as an endpoint and return its request-sending replacement."""
         ...
+
+
+def _decode(decoder: Decoder, response: httpx2.Response, *, streamed: bool) -> object:
+    """Run ``decoder`` on ``response``, making sure a streamed response gets closed.
+
+    - Not streamed: httpx2 already read and closed the body, so decode directly.
+    - Streamed, buffered decoder (no truthy ``stream`` attribute, e.g. ``ModelDecoder``):
+      read the body first. Reading consumes the stream, which closes the response.
+    - Streamed, stream decoder: close the response if the decoder raises, and wrap its
+      iterator so the response closes when iteration finishes, stops early, or fails.
+    """
+    if not streamed:
+        return decoder(response)
+
+    if not getattr(decoder, "stream", False):
+        response.read()
+        return decoder(response)
+
+    try:
+        items = decoder(response)
+    except BaseException:
+        response.close()
+        raise
+    return _close_when_done(cast(Iterable[object], items), response)
+
+
+def _close_when_done[T](items: Iterable[T], response: httpx2.Response) -> Iterator[T]:
+    """Yield from ``items``, then close ``response`` however iteration ends.
+
+    The finally block runs on exhaustion, on an exception, and when the generator is
+    closed (explicitly, or by a ``for`` loop that breaks early). An iterator that is
+    never started or is kept alive stays open until it is closed or garbage-collected.
+    """
+    try:
+        yield from items
+    finally:
+        response.close()
 
 
 @dataclass(frozen=True)
@@ -153,15 +190,18 @@ class ApiMethod:
                 )
 
                 if is_none_type(endpoint.return_type):
+                    # A streamed body is never read here, so release the connection.
+                    response.close()
                     return cast(R, None)
 
                 if is_response_type(endpoint.return_type):
+                    # The caller owns the response; a streamed one stays open until they read or close it.
                     return cast(R, response)
 
                 if decoder is None:
                     raise RuntimeError("Internal error: decoder was None for a decodable return type.")
 
-                return cast(R, decoder(response))
+                return cast(R, _decode(decoder, response, streamed=endpoint.stream))
 
             endpoint.func = wrapper
             EndpointRegister.register(endpoint)

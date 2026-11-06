@@ -46,7 +46,7 @@ The public API is `clientx/__init__.py`, which also re-exports `httpx2.Response`
    - Each remaining parameter is mapped to a request part, in this priority order: (a) the parameter name is itself a `RequestPart` (`params`, `json`, `headers`, `data`, `files`); (b) `Annotated[..., FieldX(part, key=..., dump_config=...)]` metadata; (c) the value is a Pydantic model, which `ModelExtractor` expands field by field. Unannotated model fields go to JSON. Anything else raises `UnconsumableArgumentError`.
    - The resulting part dicts are merged: dict values are shallow-merged and later parts win. The result is a `RequestSpec(path, parts)`.
 4. `ClientX.send()` builds and sends the request on the wrapped `httpx2.Client`.
-5. The return value depends on the annotation: `None` returns nothing, `Response` returns the raw response, and any other type returns `decoder(response)`.
+5. The return value depends on the annotation: `None` returns nothing, `Response` returns the raw response, and any other type returns `decoder(response)`. For streamed endpoints, `_decode` in `_decorators.py` makes sure the connection is released: `None` closes the response, buffered decoders read the body first, and stream decoders' iterators are wrapped so the response closes when iteration ends. A streamed `Response` return is left open for the caller.
 
 `_annotation_extractor.py` normalizes `Annotated` metadata from function signatures and from Pydantic `FieldInfo`/computed fields, including aliases, into `AnnotationInfo`/`NamedAnnotation`. Both the signature path and the model path use it.
 
