@@ -64,7 +64,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.12"]
+        python-version: ["3.12", "3.13", "3.14"]
+    # Without this, uv sync/run use .python-version (3.12) whatever the matrix says.
+    env:
+      UV_PYTHON: ${{ matrix.python-version }}
 
     steps:
       - uses: actions/checkout@v7
@@ -86,9 +89,34 @@ jobs:
       - name: Run tests
         run: make test-ci
 
+  # Test the lowest versions pyproject.toml allows; env is job-wide so `uv run` keeps them.
+  test-lowest:
+    runs-on: ubuntu-latest
+    env:
+      UV_PYTHON: "3.12"
+      UV_RESOLUTION: lowest-direct
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Set up Python
+        run: uv python install
+
+      - name: Install lowest direct dependencies
+        run: uv sync --all-groups --reinstall-package clientx
+
+      - name: Run tests
+        run: make test-ci
+
   # Merge Dependabot patch/minor updates once all jobs pass; majors need manual review.
   dependabot-auto-merge:
-    needs: [lint, typecheck, test]
+    needs: [lint, typecheck, test, test-lowest]
     if: github.event_name == 'pull_request' && github.event.pull_request.user.login == 'dependabot[bot]'
     runs-on: ubuntu-latest
     permissions:
