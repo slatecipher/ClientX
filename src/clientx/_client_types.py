@@ -37,6 +37,8 @@ def is_response_type(return_type: Any) -> bool:
     return return_type is httpx2.Response
 
 
+# Parameter descriptions adapted from the httpx2.Client docstring.
+# httpx2: BSD-3-Clause, Copyright © 2019 Encode OSS Ltd; © 2026 Pydantic Services Inc. and contributors.
 class HttpxClientKwargs(TypedDict, total=False):
     """Keyword arguments supported by httpx2.Client.
 
