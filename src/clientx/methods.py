@@ -8,4 +8,4 @@ delete = method.delete
 head = method.head
 options = method.options
 
-__all__ = ["delete", "get", "head", "options", "patch", "post", "put", "method"]
+__all__ = ["delete", "get", "head", "options", "patch", "post", "put"]

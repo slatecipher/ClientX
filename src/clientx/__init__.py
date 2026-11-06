@@ -2,8 +2,9 @@ from httpx2 import Auth, Request, Response, Timeout
 
 from clientx._annotations import DumpConfig, FieldX, RequestPart
 from clientx._client import ClientX
-from clientx._endpoint_context import DeprecatedMessage, EndpointRegister
+from clientx._endpoint_context import DeprecatedMessage, Endpoint, EndpointRegister, URLPath
 from clientx._version import __version__
+from clientx.exceptions import ClientXError
 
 __all__ = [
     # clientx._version
@@ -21,5 +22,9 @@ __all__ = [
     "ClientX",
     # clientx._endpoint_context
     "DeprecatedMessage",
+    "Endpoint",
     "EndpointRegister",
+    "URLPath",
+    # clientx.exceptions
+    "ClientXError",
 ]

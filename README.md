@@ -403,6 +403,8 @@ ClientX raises explicit errors for common contract violations:
 - path placeholders not provided -> `MissingPathArgumentsError`
 - argument cannot map to request parts -> `UnconsumableArgumentError`
 
+All of them derive from `ClientXError` (importable from `clientx`), so `except ClientXError` catches any of them. Each also keeps its built-in base (`TypeError` or `ValueError`).
+
 ## Development
 
 ```bash

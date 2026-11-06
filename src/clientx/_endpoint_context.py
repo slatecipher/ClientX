@@ -200,7 +200,7 @@ class Endpoint:
             RuntimeError: If the callable signature has not been set yet.
         """
         if self._signature is None:
-            raise RuntimeError("EndpointContext.signature is not set")
+            raise RuntimeError("Endpoint.signature is not set")
         return self._signature
 
     @property

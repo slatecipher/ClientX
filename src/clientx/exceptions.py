@@ -1,8 +1,19 @@
+"""Exceptions raised by ClientX.
+
+Every exception derives from ``ClientXError``, so ``except ClientXError`` catches
+them all. Each one also keeps a built-in base (``TypeError`` or ``ValueError``),
+so existing ``except TypeError`` / ``except ValueError`` handlers keep working.
+"""
+
 from collections.abc import Callable
 from typing import Any
 
 
-class UnconsumableArgumentError(TypeError):
+class ClientXError(Exception):
+    """Base class for all ClientX exceptions."""
+
+
+class UnconsumableArgumentError(ClientXError, TypeError):
     """Raised when an argument cannot be mapped into an HTTP request part."""
 
     def __init__(self, *, field: str, annotation: Any, value: Any) -> None:
@@ -17,28 +28,18 @@ class UnconsumableArgumentError(TypeError):
             f"  value_type: {value_type}\n"
             f"  annotation: {annotation!r}\n"
             "Expected one of:\n"
-            "  • argument name is a RequestSection "
+            "  • argument name is a RequestPart "
             "(e.g. 'json', 'params', 'data', 'files', 'headers')\n"
-            "  • argument is Annotated[..., RequestSection.*]\n"
-            "  • argument value is a pydantic BaseModel "
-            "(expanded via ModelExtractor)\n"
-            "Fix: rename the parameter, annotate it with RequestSection, "
+            "  • argument is Annotated[..., FieldX(RequestPart.*)]\n"
+            "  • argument value is a pydantic BaseModel\n"
+            "Fix: rename the parameter, annotate it with FieldX(RequestPart.*), "
             "or wrap it in a BaseModel."
         )
 
         super().__init__(message)
 
 
-class UnprocessedArgumentsError(ValueError):
-    """Raised when call arguments remain unprocessed."""
-
-    def __init__(self, leftovers: dict[str, Any]) -> None:
-        detail = ", ".join(f"{key}={value!r}" for key, value in leftovers.items())
-        super().__init__(f"Unprocessed arguments: {detail}")
-        self.leftovers = leftovers
-
-
-class MissingPathArgumentsError(ValueError):
+class MissingPathArgumentsError(ClientXError, ValueError):
     """Raised when a path template is missing required arguments."""
 
     def __init__(self, path: str, missing_args: list[str]) -> None:
@@ -49,7 +50,7 @@ class MissingPathArgumentsError(ValueError):
         super().__init__(f"Missing path arguments for {repr(path)}: {missing}")
 
 
-class MissingReturnTypeError(TypeError):
+class MissingReturnTypeError(ClientXError, TypeError):
     """Raised when an endpoint function is missing a return annotation."""
 
     def __init__(self, func: Callable):
@@ -59,7 +60,7 @@ class MissingReturnTypeError(TypeError):
         message = (
             f"Endpoint function '{qualname}' (defined in {module}) "
             "must declare a return type. "
-            "QuickApiClient requires an explicit return annotation "
+            "ClientX requires an explicit return annotation "
             "to determine response decoding behavior "
             "(e.g. `-> httpx2.Response`, `-> None`, or a typed value)."
         )
@@ -67,7 +68,7 @@ class MissingReturnTypeError(TypeError):
         super().__init__(message)
 
 
-class MissingDecoderError(TypeError):
+class MissingDecoderError(ClientXError, TypeError):
     """Raised when a decoder is required but not provided."""
 
     def __init__(self, func: Callable):
@@ -83,3 +84,12 @@ class MissingDecoderError(TypeError):
         )
 
         super().__init__(message)
+
+
+__all__ = [
+    "ClientXError",
+    "MissingDecoderError",
+    "MissingPathArgumentsError",
+    "MissingReturnTypeError",
+    "UnconsumableArgumentError",
+]

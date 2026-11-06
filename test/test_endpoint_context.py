@@ -22,7 +22,7 @@ def test_endpoint_context_requires_func_for_signature():
     with pytest.raises(AttributeError, match="_func is not set"):
         _ = endpoint.func
 
-    with pytest.raises(RuntimeError, match="EndpointContext.signature is not set"):
+    with pytest.raises(RuntimeError, match="Endpoint.signature is not set"):
         _ = endpoint.signature
 
 
