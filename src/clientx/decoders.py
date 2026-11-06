@@ -27,6 +27,12 @@ class StreamDecoder[T](ABC):
 
     Subclasses should yield data incrementally and must not materialize the
     full response payload in memory.
+
+    Attributes:
+        stream: Read by the endpoint decorators. When an endpoint does not pass
+            ``stream=`` explicitly, a decoder with a truthy ``stream`` attribute
+            makes the request use streaming mode, so the body is not buffered
+            before decoding. Custom decoders can opt in by defining it too.
     """
 
     stream: bool = True
@@ -61,12 +67,12 @@ class StreamChunksDecoder(StreamDecoder[bytes]):
 
 # Pydantic base model decoders
 @dataclass
-class ModelDecoder[T: type[BaseModel]]:
+class ModelDecoder[M: BaseModel]:
     """Decode a response body into a Pydantic model instance."""
 
-    model: T
+    model: type[M]
 
-    def __call__(self, response: Response) -> T:
+    def __call__(self, response: Response) -> M:
         """Parse JSON content and validate it against the configured model.
 
         Args:
@@ -81,10 +87,10 @@ class ModelDecoder[T: type[BaseModel]]:
 
 
 @dataclass
-class TypeAdapterDecoder[T: TypeAdapter]:
+class TypeAdapterDecoder[T]:
     """Decode a response body using a Pydantic TypeAdapter."""
 
-    adapter: T
+    adapter: TypeAdapter[T]
     key: str | None = field(default=None, kw_only=True)
 
     def __call__(self, response: Response) -> T:

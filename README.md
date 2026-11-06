@@ -121,6 +121,8 @@ ClientX enforces explicit return annotations:
 
 A decoder is a callable that receives the raw `httpx2.Response` and returns the value that matches your method's return annotation. ClientX executes the HTTP request first, then passes the response into the decoder, and returns the decoder output to the caller.
 
+Type checkers enforce the match: `decoder=ModelDecoder(User)` on a method annotated `-> str` is reported as an error, and so is a method annotated with anything other than `Response` or `None` that has no decoder.
+
 In practice, decoders are where you define response parsing and validation behavior:
 
 - Parse JSON/text/bytes from the response body.
@@ -202,6 +204,8 @@ For lightweight cases, ClientX also ships simple function decoders:
 - `text_decoder`: returns `response.text` (`str`).
 
 ```python
+from typing import Any
+
 from clientx import ClientX
 from clientx.decoders import json_decoder, text_decoder
 from clientx.methods import get
@@ -215,13 +219,15 @@ class HealthClient(ClientX):
 
 class MetadataClient(ClientX):
     @get("/metadata", decoder=json_decoder)
-    def metadata(self) -> dict[str, object]:
+    def metadata(self) -> Any:
         ...
 ```
 
+`json_decoder` does no validation, so its result is `Any`. For a typed result, validate it with `TypeAdapterDecoder(TypeAdapter(dict[str, object]))` or a `ModelDecoder`.
+
 ### Bring Your Own Decoder (BYOD)
 
-You can pass any callable with signature `(response: httpx2.Response) -> T` as `decoder=...`, where `T` matches your endpoint return type.
+You can pass any callable with signature `(response: httpx2.Response) -> T` as `decoder=...`. Type checkers require `T` to match your endpoint's return annotation.
 
 Use BYOD when you need behavior that is specific to your API contract, such as envelope unwrapping, fallback parsing, or custom validation rules.
 

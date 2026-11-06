@@ -104,7 +104,7 @@ class Endpoint:
         decoder: Decoder | None = None,
         deprecated: DeprecatedType | None = None,
         tags: list[str] | None = None,
-        stream: bool = False,
+        stream: bool | None = None,
         timeout: httpx2.Timeout | float | None = None,
     ) -> None:
         """Initialize endpoint metadata from decorator configuration.
@@ -120,7 +120,9 @@ class Endpoint:
             tags: Optional metadata labels for endpoint registry filtering and
                 sorting. Defaults to None.
             stream: Whether this endpoint should use HTTP response streaming.
-                Defaults to False.
+                When ``None`` (the default), follows the decoder's ``stream``
+                attribute, so stream decoders such as ``StreamLinesDecoder``
+                stream without extra configuration; otherwise False.
             timeout: Optional request timeout override for this endpoint.
                 Defaults to None.
         """
@@ -128,7 +130,7 @@ class Endpoint:
         self.path = path
         self.decoder = decoder
         self.deprecated = deprecated
-        self.stream = stream
+        self.stream = stream if stream is not None else bool(getattr(decoder, "stream", False))
         self.timeout = timeout
         # Dedupe tags while preserving insertion order.
         self.tags = list(dict.fromkeys(tags or []))

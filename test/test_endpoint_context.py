@@ -4,6 +4,7 @@ import pytest
 from httpx2 import Response
 
 from clientx._endpoint_context import DeprecatedMessage, Endpoint, EndpointRegister, URLPath
+from clientx.decoders import StreamLinesDecoder
 from clientx.exceptions import MissingDecoderError, MissingPathArgumentsError, MissingReturnTypeError
 
 
@@ -105,6 +106,12 @@ def test_endpoint_defaults_stream_to_false():
     endpoint = Endpoint("GET", "/v1/users")
 
     assert endpoint.stream is False
+
+
+def test_endpoint_stream_follows_decoder_when_unset():
+    assert Endpoint("GET", "/v1/events", decoder=StreamLinesDecoder()).stream is True
+    assert Endpoint("GET", "/v1/events", decoder=StreamLinesDecoder(), stream=False).stream is False
+    assert Endpoint("GET", "/v1/items", decoder=lambda response: response.text).stream is False
 
 
 def test_endpoint_defaults_timeout_to_none():

@@ -109,6 +109,36 @@ def test_api_method_uses_stream_send_for_stream_decoder(monkeypatch):
     assert "timeout" not in sent["request"]
 
 
+def test_api_method_streams_when_decoder_requests_it(monkeypatch):
+    class API(ClientX):
+        @ApiMethod("GET")("/v1/stream", decoder=StreamLinesDecoder())
+        def stream(self) -> Iterator[str]: ...
+
+    endpoint = EndpointRegister.registry[-1]
+    api = API("https://example.test")
+    sent: SentCapture = {"method": "", "path": "", "request": {}, "stream": False}
+
+    def fake_send(method: str, path: str, stream: bool, **request) -> Response:
+        sent["stream"] = stream
+        return Response(200, request=Request(method, f"https://example.test{path}"), content=b"a\nb\n")
+
+    monkeypatch.setattr(api, "send", fake_send)
+
+    assert list(api.stream()) == ["a", "b"]
+    assert endpoint.stream is True
+    assert sent["stream"] is True
+
+
+def test_api_method_explicit_stream_false_overrides_stream_decoder():
+    class API(ClientX):
+        @ApiMethod("GET")("/v1/stream", decoder=StreamLinesDecoder(), stream=False)
+        def stream(self) -> Iterator[str]: ...
+
+    endpoint = EndpointRegister.registry[-1]
+
+    assert endpoint.stream is False
+
+
 def test_api_method_defaults_stream_to_false():
     class API(ClientX):
         @ApiMethod("GET")("/v1/items")
