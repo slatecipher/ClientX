@@ -102,6 +102,31 @@ def test_endpoint_copies_tags_on_initialization():
     assert endpoint.tags == ["one", "two"]
 
 
+def test_endpoint_repr_works_before_a_function_is_bound():
+    rendered = repr(Endpoint("GET", "/v1/items"))
+
+    assert "function=None" in rendered
+    assert "return_type=None" in rendered
+
+
+def test_endpoint_repr_renders_generic_and_union_return_types():
+    class User:
+        pass
+
+    def list_users(self) -> list[User]: ...
+
+    def find_user(self) -> User | None: ...
+
+    listing = Endpoint("GET", "/v1/users", decoder=lambda response: [])
+    listing.func = list_users
+    lookup = Endpoint("GET", "/v1/users/me", decoder=lambda response: None)
+    lookup.func = find_user
+
+    assert "return_type='list[" in repr(listing)
+    assert "User]'" in repr(listing)
+    assert "User | None'" in repr(lookup)
+
+
 def test_endpoint_defaults_stream_to_false():
     endpoint = Endpoint("GET", "/v1/users")
 

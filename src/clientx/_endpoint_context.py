@@ -21,6 +21,20 @@ from clientx._client_types import (
 from clientx.exceptions import MissingDecoderError, MissingPathArgumentsError, MissingReturnTypeError
 
 
+def _type_name(annotation: Any) -> str | None:
+    """Return a readable name for a resolved return annotation, or ``None`` if unset.
+
+    Plain classes use their ``__qualname__`` (``"User"``). Everything else, such as
+    generic aliases (``list[User]``) and unions (``User | None``), has no
+    ``__qualname__`` of its own, so its ``repr`` is used instead.
+    """
+    if annotation is None:
+        return None
+    if isinstance(annotation, type):
+        return annotation.__qualname__
+    return repr(annotation)
+
+
 @dataclass(frozen=True)
 class DeprecatedMessage:
     """Encapsulate deprecation metadata for an endpoint.
@@ -141,13 +155,12 @@ class Endpoint:
     def __repr__(self) -> str:
         """Return a dataclass-like summary of the endpoint configuration."""
         func_qualname = self._func.__qualname__ if self._func is not None else None
-        return_type = self._return_type if self._return_type is not None else None
         return (
             f"{type(self).__name__}(method={self.method!r}, path={str(self.path)!r}, "
             f"function={func_qualname!r}, has_decoder={self.decoder is not None!r}, "
             f"deprecated={self.deprecated is not None!r}, stream={self.stream!r}, "
             f"timeout={self.timeout!r}, tags={self.tags!r}, "
-            f"return_type={return_type.__qualname__!r})"
+            f"return_type={_type_name(self._return_type)!r})"
         )
 
     def check_deprecation(self):
