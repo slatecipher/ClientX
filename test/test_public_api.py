@@ -40,6 +40,7 @@ def test_submodule_exports():
         "StreamChunksDecoder",
         "StreamDecoder",
         "StreamLinesDecoder",
+        "StreamResponseDecoder",
         "TypeAdapterDecoder",
         "content_decoder",
         "json_decoder",

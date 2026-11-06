@@ -23,7 +23,14 @@ import pytest
 from pydantic import BaseModel, TypeAdapter
 
 from clientx import ClientX, Response
-from clientx.decoders import ModelDecoder, StreamLinesDecoder, TypeAdapterDecoder, json_decoder, text_decoder
+from clientx.decoders import (
+    ModelDecoder,
+    StreamLinesDecoder,
+    StreamResponseDecoder,
+    TypeAdapterDecoder,
+    json_decoder,
+    text_decoder,
+)
 from clientx.exceptions import MissingDecoderError
 from clientx.methods import delete, get, post
 
@@ -55,6 +62,9 @@ class UsersClient(ClientX):
 
     @get("/users/events", decoder=StreamLinesDecoder())
     def events(self) -> Iterator[str]: ...
+
+    @get("/users/export", decoder=StreamResponseDecoder())
+    def export(self) -> Response: ...
 
     # The decoder produces a User, so declaring a str return is rejected.
     @get("/users/{user_id}/name", decoder=ModelDecoder(User))  # pyright: ignore[reportArgumentType]
@@ -94,6 +104,9 @@ def test_decoded_methods_return_the_decoder_output_type() -> None:
     assert_type(client.list_users(), list[User])
     assert_type(client.get_bio("1"), str)
     assert_type(client.events(), Iterator[str])
+    response = client.export()
+    assert_type(response, Response)
+    response.close()
 
 
 def test_decoders_called_directly_return_the_decoded_type() -> None:
@@ -108,4 +121,12 @@ def test_methods_without_decoder_must_return_response_or_none() -> None:
 
         class Broken(ClientX):
             @get("/users/{user_id}")  # pyright: ignore[reportArgumentType]
+            def get_user(self, user_id: str) -> User: ...
+
+
+def test_stream_is_decided_by_the_decoder_not_a_flag() -> None:
+    with pytest.raises(TypeError):
+
+        class Broken(ClientX):
+            @get("/users/{user_id}", decoder=ModelDecoder(User), stream=True)  # pyright: ignore[reportCallIssue, reportUntypedFunctionDecorator]
             def get_user(self, user_id: str) -> User: ...

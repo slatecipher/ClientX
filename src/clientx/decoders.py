@@ -25,17 +25,13 @@ def text_decoder(response: Response) -> str:
 class StreamDecoder[T](ABC):
     """Base decoder for streamed HTTP responses.
 
+    Endpoints that use a ``StreamDecoder`` send their request in streaming mode,
+    so the body is not loaded into memory first. ClientX closes the response when
+    iteration over the decoder's output finishes, stops early, or fails.
+
     Subclasses should yield data incrementally and must not materialize the
     full response payload in memory.
-
-    Attributes:
-        stream: Read by the endpoint decorators. When an endpoint does not pass
-            ``stream=`` explicitly, a decoder with a truthy ``stream`` attribute
-            makes the request use streaming mode, so the body is not buffered
-            before decoding. Custom decoders can opt in by defining it too.
     """
-
-    stream: bool = True
 
     @abstractmethod
     def __call__(self, response: Response) -> Iterator[T]:
@@ -63,6 +59,19 @@ class StreamChunksDecoder(StreamDecoder[bytes]):
 
     def __call__(self, response: Response) -> Iterator[bytes]:
         yield from response.iter_bytes(chunk_size=self.chunk_size)
+
+
+@dataclass(frozen=True)
+class StreamResponseDecoder:
+    """Return the open streamed response itself, for endpoints annotated ``-> Response``.
+
+    The request is sent in streaming mode and the caller owns the response: read
+    it, iterate it to the end, or call ``response.close()`` to release the
+    connection.
+    """
+
+    def __call__(self, response: Response) -> Response:
+        return response
 
 
 # Pydantic base model decoders
@@ -138,6 +147,7 @@ __all__ = [
     "StreamChunksDecoder",
     "StreamDecoder",
     "StreamLinesDecoder",
+    "StreamResponseDecoder",
     "TypeAdapterDecoder",
     "content_decoder",
     "json_decoder",

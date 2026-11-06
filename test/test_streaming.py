@@ -12,7 +12,7 @@ import pytest
 from pydantic import BaseModel
 
 from clientx import ClientX, Response
-from clientx.decoders import ModelDecoder, StreamDecoder, StreamLinesDecoder
+from clientx.decoders import ModelDecoder, StreamDecoder, StreamLinesDecoder, StreamResponseDecoder
 from clientx.methods import get
 
 
@@ -47,20 +47,20 @@ class FailingDecoder(StreamDecoder[str]):
 
 
 class StreamingAPI(ClientX):
-    @get("/fire", stream=True)
-    def fire(self) -> None: ...
-
     @get("/events", decoder=StreamLinesDecoder())
     def events(self) -> Iterator[str]: ...
 
     @get("/header", decoder=HeaderDecoder())
     def header(self) -> Iterator[str]: ...
 
-    @get("/user", decoder=ModelDecoder(User), stream=True)
+    @get("/user", decoder=ModelDecoder(User))
     def user(self) -> User: ...
 
-    @get("/raw", stream=True)
+    @get("/raw", decoder=StreamResponseDecoder())
     def raw(self) -> Response: ...
+
+    @get("/buffered")
+    def buffered(self) -> Response: ...
 
     @get("/fail", decoder=FailingDecoder())
     def fail(self) -> Iterator[str]: ...
@@ -80,11 +80,6 @@ def api(streams: list[TrackedStream]) -> StreamingAPI:
         return httpx2.Response(200, headers={"x-id": "42"}, stream=stream)
 
     return StreamingAPI("https://example.test", transport=httpx2.MockTransport(handler))
-
-
-def test_none_return_closes_streamed_response(api: StreamingAPI, streams: list[TrackedStream]):
-    assert api.fire() is None
-    assert streams[0].closed
 
 
 def test_stream_decoder_closes_after_full_iteration(api: StreamingAPI, streams: list[TrackedStream]):
@@ -115,8 +110,13 @@ def test_stream_decoder_that_ignores_the_body_still_closes(api: StreamingAPI, st
     assert streams[0].closed
 
 
-def test_buffered_decoder_on_streamed_endpoint_reads_and_closes(api: StreamingAPI, streams: list[TrackedStream]):
+def test_buffered_decoder_reads_and_closes(api: StreamingAPI, streams: list[TrackedStream]):
     assert api.user() == User(name="Ada")
+    assert streams[0].closed
+
+
+def test_response_return_without_decoder_is_read_and_closed(api: StreamingAPI, streams: list[TrackedStream]):
+    assert api.buffered().text == "a\nb\nc\n"
     assert streams[0].closed
 
 
@@ -127,7 +127,9 @@ def test_decoder_error_closes_streamed_response(api: StreamingAPI, streams: list
     assert streams[0].closed
 
 
-def test_response_return_leaves_streamed_response_open_for_the_caller(api: StreamingAPI, streams: list[TrackedStream]):
+def test_stream_response_decoder_leaves_the_response_open_for_the_caller(
+    api: StreamingAPI, streams: list[TrackedStream]
+):
     response = api.raw()
     assert not streams[0].closed
 

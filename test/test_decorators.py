@@ -2,7 +2,7 @@ from collections.abc import Iterator
 from typing import TypedDict
 
 import pytest
-from httpx2 import Request, Response
+from httpx2 import HTTPStatusError, Request, Response
 
 import clientx._decorators as decorators_module
 from clientx._client import ClientX
@@ -85,9 +85,50 @@ def test_api_method_decodes_non_response_return(monkeypatch):
     assert result == 7
 
 
+def test_api_method_runs_decoder_for_response_return(monkeypatch):
+    def checked(response: Response) -> Response:
+        response.raise_for_status()
+        return response
+
+    class API(ClientX):
+        @ApiMethod("GET")("/v1/items", decoder=checked)
+        def list_items(self) -> Response: ...
+
+    api = API("https://example.test")
+
+    def fake_send(method: str, path: str, **request) -> Response:
+        return Response(404, request=Request(method, f"https://example.test{path}"))
+
+    monkeypatch.setattr(api, "send", fake_send)
+
+    with pytest.raises(HTTPStatusError):
+        api.list_items()
+
+
+def test_api_method_runs_decoder_for_none_return(monkeypatch):
+    calls: list[int] = []
+
+    def record(response: Response) -> None:
+        calls.append(response.status_code)
+
+    class API(ClientX):
+        @ApiMethod("DELETE")("/v1/items/{item_id}", decoder=record)
+        def delete_item(self, item_id: str) -> None: ...
+
+    api = API("https://example.test")
+
+    def fake_send(method: str, path: str, **request) -> Response:
+        return Response(204, request=Request(method, f"https://example.test{path}"))
+
+    monkeypatch.setattr(api, "send", fake_send)
+
+    assert api.delete_item("1") is None
+    assert calls == [204]
+
+
 def test_api_method_uses_stream_send_for_stream_decoder(monkeypatch):
     class API(ClientX):
-        @ApiMethod("GET")("/v1/stream", decoder=StreamLinesDecoder(), stream=True)
+        @ApiMethod("GET")("/v1/stream", decoder=StreamLinesDecoder())
         def stream(self) -> Iterator[str]: ...
 
     api = API("https://example.test")
@@ -127,16 +168,6 @@ def test_api_method_streams_when_decoder_requests_it(monkeypatch):
     assert list(api.stream()) == ["a", "b"]
     assert endpoint.stream is True
     assert sent["stream"] is True
-
-
-def test_api_method_explicit_stream_false_overrides_stream_decoder():
-    class API(ClientX):
-        @ApiMethod("GET")("/v1/stream", decoder=StreamLinesDecoder(), stream=False)
-        def stream(self) -> Iterator[str]: ...
-
-    endpoint = EndpointRegister.registry[-1]
-
-    assert endpoint.stream is False
 
 
 def test_api_method_defaults_stream_to_false():
@@ -179,9 +210,9 @@ def test_api_method_applies_endpoint_timeout(monkeypatch):
     assert sent["request"]["timeout"] == 12.5
 
 
-def test_api_method_prefers_explicit_timeout_over_stream_default(monkeypatch):
+def test_api_method_applies_timeout_to_streamed_requests(monkeypatch):
     class API(ClientX):
-        @ApiMethod("GET")("/v1/stream", decoder=StreamLinesDecoder(), stream=True, timeout=15.0)
+        @ApiMethod("GET")("/v1/stream", decoder=StreamLinesDecoder(), timeout=15.0)
         def stream(self) -> Iterator[str]: ...
 
     api = API("https://example.test")

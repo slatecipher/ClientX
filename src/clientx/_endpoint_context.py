@@ -18,6 +18,7 @@ from clientx._client_types import (
     is_none_type,
     is_response_type,
 )
+from clientx.decoders import StreamDecoder, StreamResponseDecoder
 from clientx.exceptions import MissingDecoderError, MissingPathArgumentsError, MissingReturnTypeError
 
 
@@ -118,7 +119,6 @@ class Endpoint:
         decoder: Decoder | None = None,
         deprecated: DeprecatedType | None = None,
         tags: list[str] | None = None,
-        stream: bool | None = None,
         timeout: httpx2.Timeout | float | None = None,
     ) -> None:
         """Initialize endpoint metadata from decorator configuration.
@@ -133,10 +133,6 @@ class Endpoint:
                 the endpoint is invoked. Defaults to None.
             tags: Optional metadata labels for endpoint registry filtering and
                 sorting. Defaults to None.
-            stream: Whether this endpoint should use HTTP response streaming.
-                When ``None`` (the default), follows the decoder's ``stream``
-                attribute, so stream decoders such as ``StreamLinesDecoder``
-                stream without extra configuration; otherwise False.
             timeout: Optional request timeout override for this endpoint.
                 Defaults to None.
         """
@@ -144,7 +140,6 @@ class Endpoint:
         self.path = path
         self.decoder = decoder
         self.deprecated = deprecated
-        self.stream = stream if stream is not None else bool(getattr(decoder, "stream", False))
         self.timeout = timeout
         # Dedupe tags while preserving insertion order.
         self.tags = list(dict.fromkeys(tags or []))
@@ -174,6 +169,19 @@ class Endpoint:
         """
         if callable(self.deprecated):
             self.deprecated()
+
+    @property
+    def stream(self) -> bool:
+        """Return whether requests to this endpoint are sent in streaming mode.
+
+        The decoder decides: ``StreamDecoder`` subclasses (such as
+        ``StreamLinesDecoder``) and ``StreamResponseDecoder`` stream; any other
+        decoder, or no decoder, does not.
+
+        Returns:
+            bool: True when the endpoint's decoder needs a streamed response.
+        """
+        return isinstance(self.decoder, StreamDecoder | StreamResponseDecoder)
 
     @property
     def func(self) -> Callable[..., Any]:

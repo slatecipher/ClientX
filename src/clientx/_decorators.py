@@ -18,6 +18,7 @@ from clientx._endpoint_context import (
     EndpointRegister,
 )
 from clientx._request_factory import RequestFactory
+from clientx.decoders import StreamDecoder
 
 P = ParamSpec("P")
 T = TypeVar("T", bound=ClientX)
@@ -63,20 +64,17 @@ class DecodedEndpointDecorator[D](Protocol):
         ...
 
 
-def _decode(decoder: Decoder, response: httpx2.Response, *, streamed: bool) -> object:
+def _decode(decoder: Decoder, response: httpx2.Response) -> object:
     """Run ``decoder`` on ``response``, making sure a streamed response gets closed.
 
-    - Not streamed: httpx2 already read and closed the body, so decode directly.
-    - Streamed, buffered decoder (no truthy ``stream`` attribute, e.g. ``ModelDecoder``):
-      read the body first. Reading consumes the stream, which closes the response.
-    - Streamed, stream decoder: close the response if the decoder raises, and wrap its
-      iterator so the response closes when iteration finishes, stops early, or fails.
+    - ``StreamDecoder``: the response is streamed. Close it if the decoder raises,
+      and wrap its iterator so the response closes when iteration finishes, stops
+      early, or fails.
+    - ``StreamResponseDecoder``: the response is streamed and handed to the caller,
+      who owns it.
+    - Any other decoder: httpx2 already read and closed the body, so decode directly.
     """
-    if not streamed:
-        return decoder(response)
-
-    if not getattr(decoder, "stream", False):
-        response.read()
+    if not isinstance(decoder, StreamDecoder):
         return decoder(response)
 
     try:
@@ -84,7 +82,7 @@ def _decode(decoder: Decoder, response: httpx2.Response, *, streamed: bool) -> o
     except BaseException:
         response.close()
         raise
-    return _close_when_done(cast(Iterable[object], items), response)
+    return _close_when_done(items, response)
 
 
 def _close_when_done[T](items: Iterable[T], response: httpx2.Response) -> Iterator[T]:
@@ -112,7 +110,6 @@ class ApiMethod:
         decoder: Callable[[httpx2.Response], D],
         deprecated: DeprecatedType | None = None,
         tags: list[str] | None = None,
-        stream: bool | None = None,
         timeout: httpx2.Timeout | float | None = None,
     ) -> DecodedEndpointDecorator[D]: ...
 
@@ -124,7 +121,6 @@ class ApiMethod:
         decoder: None = None,
         deprecated: DeprecatedType | None = None,
         tags: list[str] | None = None,
-        stream: bool | None = None,
         timeout: httpx2.Timeout | float | None = None,
     ) -> RawEndpointDecorator: ...
 
@@ -135,22 +131,20 @@ class ApiMethod:
         decoder: Decoder | None = None,
         deprecated: DeprecatedType | None = None,
         tags: list[str] | None = None,
-        stream: bool | None = None,
         timeout: httpx2.Timeout | float | None = None,
     ) -> DecodedEndpointDecorator[Any] | RawEndpointDecorator:
         """Build a decorator that registers an endpoint for this HTTP method.
 
         Args:
             path: URL path template for the endpoint (e.g., ``/v1/users/{user_id}``).
-            decoder: Optional response decoder used when the endpoint's return
-                type is neither ``httpx2.Response`` nor ``None``.
+            decoder: Response decoder. Required when the endpoint's return type is
+                neither ``httpx2.Response`` nor ``None``. It also decides streaming:
+                ``StreamDecoder`` subclasses and ``StreamResponseDecoder`` send the
+                request in streaming mode.
             deprecated: Optional deprecation metadata or callable that emits a
                 warning when the endpoint is invoked.
             tags: Optional metadata labels attached to the endpoint for
                 registry filtering and sorting. Defaults to None.
-            stream: Whether to send the request in streamed mode. When ``None``
-                (the default), follows the decoder's ``stream`` attribute, so
-                stream decoders stream automatically; otherwise False.
             timeout: Optional timeout override applied to requests sent to this
                 endpoint. Defaults to None.
 
@@ -168,7 +162,6 @@ class ApiMethod:
                 decoder=decoder,
                 deprecated=deprecated,
                 tags=tags,
-                stream=stream,
                 timeout=timeout,
             )
             request_factory = RequestFactory(endpoint)
@@ -189,19 +182,17 @@ class ApiMethod:
                     **spec.parts,
                 )
 
+                # A decoder, when given, always runs, whatever the return annotation.
+                if decoder is not None:
+                    return cast(R, _decode(decoder, response))
+
                 if is_none_type(endpoint.return_type):
-                    # A streamed body is never read here, so release the connection.
-                    response.close()
                     return cast(R, None)
 
                 if is_response_type(endpoint.return_type):
-                    # The caller owns the response; a streamed one stays open until they read or close it.
                     return cast(R, response)
 
-                if decoder is None:
-                    raise RuntimeError("Internal error: decoder was None for a decodable return type.")
-
-                return cast(R, _decode(decoder, response, streamed=endpoint.stream))
+                raise RuntimeError("Internal error: decoder was None for a decodable return type.")
 
             endpoint.func = wrapper
             EndpointRegister.register(endpoint)

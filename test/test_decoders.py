@@ -9,6 +9,7 @@ from clientx.decoders import (
     StreamChunksDecoder,
     StreamDecoder,
     StreamLinesDecoder,
+    StreamResponseDecoder,
     TypeAdapterDecoder,
     content_decoder,
     json_decoder,
@@ -52,10 +53,15 @@ def test_stream_chunks_decoder_yields_chunks():
     assert list(result) == [b"al", b"ph", b"a"]
 
 
-def test_stream_decoders_opt_into_stream_mode():
-    assert StreamLinesDecoder().stream is True
-    assert StreamChunksDecoder().stream is True
+def test_builtin_stream_decoders_are_stream_decoders():
     assert isinstance(StreamLinesDecoder(), StreamDecoder)
+    assert isinstance(StreamChunksDecoder(), StreamDecoder)
+
+
+def test_stream_response_decoder_returns_the_response_itself():
+    response = Response(200, content=b"payload")
+
+    assert StreamResponseDecoder()(response) is response
 
 
 def test_model_decoder_validates_with_model():

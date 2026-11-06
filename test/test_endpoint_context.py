@@ -4,7 +4,7 @@ import pytest
 from httpx2 import Response
 
 from clientx._endpoint_context import DeprecatedMessage, Endpoint, EndpointRegister, URLPath
-from clientx.decoders import StreamLinesDecoder
+from clientx.decoders import StreamLinesDecoder, StreamResponseDecoder
 from clientx.exceptions import MissingDecoderError, MissingPathArgumentsError, MissingReturnTypeError
 
 
@@ -76,7 +76,7 @@ def test_deprecated_emits_deprecation_warning():
 
 
 def test_endpoint_repr_includes_method_path_function_and_return_type():
-    endpoint = Endpoint("GET", "/v1/users/{user_id}", tags=["users"], stream=True, timeout=30.0)
+    endpoint = Endpoint("GET", "/v1/users/{user_id}", decoder=StreamResponseDecoder(), tags=["users"], timeout=30.0)
 
     def handler(user_id: str) -> Response: ...
 
@@ -133,10 +133,18 @@ def test_endpoint_defaults_stream_to_false():
     assert endpoint.stream is False
 
 
-def test_endpoint_stream_follows_decoder_when_unset():
+def test_endpoint_stream_is_decided_by_the_decoder():
     assert Endpoint("GET", "/v1/events", decoder=StreamLinesDecoder()).stream is True
-    assert Endpoint("GET", "/v1/events", decoder=StreamLinesDecoder(), stream=False).stream is False
+    assert Endpoint("GET", "/v1/download", decoder=StreamResponseDecoder()).stream is True
     assert Endpoint("GET", "/v1/items", decoder=lambda response: response.text).stream is False
+    assert Endpoint("GET", "/v1/items").stream is False
+
+
+def test_endpoint_stream_is_read_only():
+    endpoint = Endpoint("GET", "/v1/items")
+
+    with pytest.raises(AttributeError):
+        endpoint.stream = True  # type: ignore[misc]
 
 
 def test_endpoint_defaults_timeout_to_none():

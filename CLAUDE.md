@@ -34,7 +34,7 @@ uv run pytest -k "deprecat" --no-cov                        # by keyword, skip c
 The public API is `clientx/__init__.py`, which also re-exports `httpx2.Response` and related types, plus the `clientx.methods`, `clientx.decoders` and `clientx.exceptions` modules. Modules whose names start with `_` are internal.
 
 **Decoration time** (`_decorators.py`, `ApiMethod.__call__`): each verb decorator does the following:
-1. Builds an `Endpoint` (`_endpoint_context.py`) that holds the method, a `URLPath` template, the decoder, the deprecation hook, tags, the stream flag and the timeout.
+1. Builds an `Endpoint` (`_endpoint_context.py`) that holds the method, a `URLPath` template, the decoder, the deprecation hook, tags and the timeout. `Endpoint.stream` is derived from the decoder: `StreamDecoder` subclasses and `StreamResponseDecoder` stream; there is no `stream=` option.
 2. Sets `endpoint.func = wrapper`. The `func` setter captures the signature, resolves the return type with `get_type_hints`, and validates the decoder. As a result, `MissingReturnTypeError` and `MissingDecoderError` are raised **when the class is defined**, not when the method is called.
 3. Appends the endpoint to `EndpointRegister.registry`, a process-wide `ClassVar` list. `test/conftest.py` has an autouse fixture that resets this list for every test, so tests that define client classes stay isolated.
 
@@ -46,7 +46,7 @@ The public API is `clientx/__init__.py`, which also re-exports `httpx2.Response`
    - Each remaining parameter is mapped to a request part, in this priority order: (a) the parameter name is itself a `RequestPart` (`params`, `json`, `headers`, `data`, `files`); (b) `Annotated[..., FieldX(part, key=..., dump_config=...)]` metadata; (c) the value is a Pydantic model, which `ModelExtractor` expands field by field. Unannotated model fields go to JSON. Anything else raises `UnconsumableArgumentError`.
    - The resulting part dicts are merged: dict values are shallow-merged and later parts win. The result is a `RequestSpec(path, parts)`.
 4. `ClientX.send()` builds and sends the request on the wrapped `httpx2.Client`.
-5. The return value depends on the annotation: `None` returns nothing, `Response` returns the raw response, and any other type returns `decoder(response)`. For streamed endpoints, `_decode` in `_decorators.py` makes sure the connection is released: `None` closes the response, buffered decoders read the body first, and stream decoders' iterators are wrapped so the response closes when iteration ends. A streamed `Response` return is left open for the caller.
+5. If a decoder was given, it always runs and its output is returned (`_decode` in `_decorators.py`). A `StreamDecoder`'s iterator is wrapped so the response closes when iteration ends; a `StreamResponseDecoder` hands the open response to the caller. Without a decoder, `None` returns nothing and `Response` returns the raw (already read) response.
 
 `_annotation_extractor.py` normalizes `Annotated` metadata from function signatures and from Pydantic `FieldInfo`/computed fields, including aliases, into `AnnotationInfo`/`NamedAnnotation`. Both the signature path and the model path use it.
 
