@@ -130,3 +130,32 @@ def test_stream_is_decided_by_the_decoder_not_a_flag() -> None:
         class Broken(ClientX):
             @get("/users/{user_id}", decoder=ModelDecoder(User), stream=True)  # pyright: ignore[reportCallIssue, reportUntypedFunctionDecorator]
             def get_user(self, user_id: str) -> User: ...
+
+
+def _construct_with_every_httpx2_option() -> ClientX:
+    """Static check only (never called): every httpx2.Client option type-checks, typos don't.
+
+    Not run under pytest because a real ``cert`` would be loaded from disk.
+    """
+    ClientX("https://example.test", timout=5.0)  # pyright: ignore[reportCallIssue]
+    return ClientX(
+        "https://example.test",
+        auth=("user", "secret"),
+        params=httpx2.QueryParams({"q": "1"}),
+        headers={"X-Env": "dev"},
+        cookies={"session": "abc"},
+        verify=True,
+        cert=("client.pem", "client.key"),
+        trust_env=False,
+        http1=True,
+        http2=False,
+        proxy=None,
+        mounts={"https://internal.test": httpx2.HTTPTransport()},
+        timeout=5.0,
+        follow_redirects=True,
+        limits=httpx2.Limits(max_connections=10),
+        max_redirects=5,
+        event_hooks={"request": []},
+        transport=httpx2.HTTPTransport(),
+        default_encoding="utf-8",
+    )

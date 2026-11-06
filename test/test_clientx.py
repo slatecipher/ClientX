@@ -1,8 +1,11 @@
+import inspect
 import logging
 
+import httpx2
 from httpx2 import Request, Response
 
 from clientx._client import ClientX
+from clientx._client_types import HttpxClientKwargs
 from clientx._version import __version__
 
 
@@ -139,3 +142,17 @@ def test_clientx_exit_delegates_to_httpx2_client_and_returns_false(monkeypatch):
     assert calls["exc_type"] is RuntimeError
     assert calls["exc"] is error
     assert calls["tb"] is None
+
+
+def test_httpx_client_kwargs_match_httpx2_client_signature():
+    """HttpxClientKwargs is a hand-written mirror of httpx2.Client's options; catch drift.
+
+    If httpx2 adds an option, add it to HttpxClientKwargs. If this fails under the
+    lowest-versions CI job, an option we list is newer than our httpx2 lower bound.
+    """
+    parameters = inspect.signature(httpx2.Client.__init__).parameters
+    client_options = {name for name, p in parameters.items() if name != "self" and p.kind is not p.VAR_KEYWORD}
+    client_options -= {"base_url"}  # ClientX takes base_url as its own positional argument
+
+    assert HttpxClientKwargs.__required_keys__ == frozenset()
+    assert set(HttpxClientKwargs.__optional_keys__) == client_options

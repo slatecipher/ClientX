@@ -13,6 +13,9 @@ type MethodType = Literal["GET", "PUT", "POST", "PATCH", "DELETE", "HEAD", "OPTI
 
 type CookieTypes = httpx2.Cookies | CookieJar | dict[str, str] | list[tuple[str, str]]
 
+# Mirrors httpx2's private CertTypes: a cert file, (cert, key), or (cert, key, password).
+type CertTypes = str | tuple[str, str] | tuple[str, str, str]
+
 type EventHook = Callable[[httpx2.Request | httpx2.Response], None]
 
 type EventHooks = Mapping[str, list[EventHook]]
@@ -56,14 +59,26 @@ class HttpxClientKwargs(TypedDict, total=False):
     verify: bool | str | ssl.SSLContext
     """TLS verification configuration (True, False, or SSLContext)."""
 
+    cert: CertTypes | None
+    """Client certificate for TLS: a cert file, (cert, key), or (cert, key, password)."""
+
+    http1: bool
+    """Enable or disable HTTP/1.1 support."""
+
     http2: bool
     """Enable or disable HTTP/2 support."""
 
     proxy: str | httpx2.URL | httpx2.Proxy | None
     """A proxy URL or configuration where all traffic should be routed."""
 
+    mounts: Mapping[str, httpx2.BaseTransport | None] | None
+    """Transports to use for requests matching URL patterns, keyed by pattern."""
+
     timeout: httpx2.Timeout | float | None
     """Timeout configuration to use when sending requests."""
+
+    follow_redirects: bool
+    """Whether to follow HTTP redirect responses."""
 
     limits: httpx2.Limits
     """Connection pool limits configuration."""
