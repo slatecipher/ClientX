@@ -1,7 +1,7 @@
 from collections.abc import Callable
 from dataclasses import dataclass
 from functools import wraps
-from typing import Concatenate, ParamSpec, TypeVar, cast
+from typing import Concatenate, ParamSpec, Protocol, TypeVar, cast
 
 import httpx2
 
@@ -24,6 +24,19 @@ T = TypeVar("T", bound=ClientX)
 R = TypeVar("R")
 
 
+class EndpointDecorator(Protocol):
+    """Type of the decorator returned by an HTTP verb call such as ``get("/users")``.
+
+    Spelling the type out (instead of a bare ``Callable``) keeps each decorated
+    method's parameters and return type visible to type checkers. With a bare
+    ``Callable``, mypy sees every endpoint as ``Any``.
+    """
+
+    def __call__[C: ClientX, **Q, S](self, func: Callable[Concatenate[C, Q], S], /) -> Callable[Concatenate[C, Q], S]:
+        """Register ``func`` as an endpoint and return its request-sending replacement."""
+        ...
+
+
 @dataclass(frozen=True)
 class ApiMethod:
     method: MethodType
@@ -37,7 +50,7 @@ class ApiMethod:
         tags: list[str] | None = None,
         stream: bool = False,
         timeout: httpx2.Timeout | float | None = None,
-    ) -> Callable:
+    ) -> EndpointDecorator:
         """Build a decorator that registers an endpoint for this HTTP method.
 
         Args:
@@ -54,7 +67,7 @@ class ApiMethod:
                 endpoint. Defaults to None.
 
         Returns:
-            Callable: A decorator that wraps and registers the endpoint.
+            EndpointDecorator: A decorator that wraps and registers the endpoint.
         """
 
         def decorator(
