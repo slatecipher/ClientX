@@ -137,11 +137,9 @@ def test_argument_cursor_consumption_and_state():
     assert cursor.consume_optional("a", default=99) == 1
     assert cursor.consume_optional("missing", default=99) == 99
     assert cursor.is_consumed("a") is True
-    assert cursor.leftovers() == {"b": 2, "c": 3}
-    assert cursor.consumed_items() == {"a": 1}
-
-    with pytest.raises(TypeError, match="Unhandled arguments"):
-        cursor.assert_empty()
+    assert cursor.is_consumed("b") is False
+    assert cursor.consumed == {"a": 1}
+    assert cursor.bound_copy == {"b": 2, "c": 3}
 
 
 def test_argument_cursor_consume_errors():

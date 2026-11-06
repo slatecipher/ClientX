@@ -15,8 +15,6 @@ from clientx._annotations import DumpConfig, RequestPart
 from clientx._endpoint_context import Endpoint
 from clientx.exceptions import UnconsumableArgumentError
 
-type PartMap = dict[RequestPart, set[tuple[str, None]]]
-
 
 @dataclass
 class ArgumentCursor:
@@ -94,31 +92,6 @@ class ArgumentCursor:
             True if the argument has been consumed, otherwise False.
         """
         return name in self.consumed
-
-    def leftovers(self) -> dict[str, Any]:
-        """Return remaining unconsumed arguments.
-
-        Returns:
-            Mapping of remaining argument names to values.
-        """
-        return dict(self.bound_copy)
-
-    def consumed_items(self) -> dict[str, Any]:
-        """Return consumed arguments.
-
-        Returns:
-            Mapping of consumed argument names to values.
-        """
-        return dict(self.consumed)
-
-    def assert_empty(self) -> None:
-        """Assert that all arguments were consumed.
-
-        Raises:
-            TypeError: If any unconsumed arguments remain.
-        """
-        if self.bound_copy:
-            raise TypeError(f"Unhandled arguments: {', '.join(self.bound_copy)}")
 
 
 @dataclass(frozen=True)
@@ -214,7 +187,7 @@ class RequestFactory:
 
         for field_name, annotation in annotation_map.items():
             # already consumed (e.g., self or path parameters)
-            if field_name in cursor.consumed:
+            if cursor.is_consumed(field_name):
                 continue
 
             value = cursor.consume(field_name)
