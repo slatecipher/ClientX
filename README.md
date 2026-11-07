@@ -1,5 +1,10 @@
 # ClientX
 
+[![PyPI](https://img.shields.io/pypi/v/clientx)](https://pypi.org/project/clientx/)
+[![Python versions](https://img.shields.io/pypi/pyversions/clientx)](https://pypi.org/project/clientx/)
+[![CI](https://github.com/slatecipher/ClientX/actions/workflows/ci.yml/badge.svg?branch=mainline)](https://github.com/slatecipher/ClientX/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](https://github.com/slatecipher/ClientX/blob/mainline/LICENSE)
+
 Typed, declarative HTTP API clients for Python 3.12+.
 
 ## Overview
@@ -9,6 +14,18 @@ ClientX is a declarative API client framework designed to make writing and maint
 For client authors, ClientX reduces boilerplate by turning typed endpoint definitions into concrete `httpx2` requests and centralizing request/response behavior. For client consumers, it pushes API contracts and guard rails into the client itself, helping prevent avoidable runtime mistakes and making integrations more predictable.
 
 The result is less scaffolding code and more focus on outcomes: authors spend less time on plumbing, and consumers spend less time guessing how to call your API correctly.
+
+## Why ClientX
+
+ClientX is inspired by FastAPI, which reads type hints to define server endpoints. ClientX applies the same idea to the client side:
+
+- **The method signature is the contract.** Path placeholders, query parameters, headers, and bodies come from the method's parameters and annotations, so there's no request-building code to keep in sync.
+- **Type checkers see real types.** Decorated methods keep their signatures, so editors and type checkers see the actual parameters and return types.
+- **Mistakes surface early.** A missing return annotation or decoder raises an error when the class is defined, not on the first request.
+- **Pydantic v2 throughout.** Send models as request bodies, query parameters, or headers, and decode responses into models.
+- **Built on httpx2.** Every `httpx2.Client` option is available, including auth, timeouts, proxies, and custom transports, and responses can be streamed.
+
+ClientX is an independent project. It isn't affiliated with or endorsed by the FastAPI, Pydantic, or httpx2 projects.
 
 ## Features
 
@@ -82,6 +99,24 @@ class ItemsClient(ClientX):
     def create_item(self, json: dict[str, object]) -> Response:
         ...
 ```
+
+### Empty method bodies and mypy
+
+Endpoint bodies never run, so `...` is all they need. Pyright accepts this, but mypy reports `Missing return statement  [empty-body]` for every endpoint whose return type isn't `None`. Turn that one check off for your client modules, either at the top of the file:
+
+```python
+# mypy: disable-error-code="empty-body"
+```
+
+or in `pyproject.toml`:
+
+```toml
+[[tool.mypy.overrides]]
+module = "myapp.clients"
+disable_error_code = ["empty-body"]
+```
+
+Mypy still checks everything else in those modules, including the return types of calls to your endpoints.
 
 ## Endpoint Registry (`EndpointRegister`)
 
@@ -322,10 +357,10 @@ finally:
 ClientX maps method arguments into request parts in this order:
 
 1. Path placeholders (e.g. `{user_id}`) are consumed from arguments.
-2. Remaining arguments map to request parts via one of:
-   - parameter name equals a request part: `json`, `params`, `data`, `files`, `headers`
-   - `Annotated[..., FieldX(RequestPart.*)]`
-   - Pydantic model expansion
+2. Each remaining argument goes to the first of these that matches:
+   1. Its name is a request part: `json`, `params`, `data`, `files`, or `headers`. The name wins even over a `FieldX` annotation, so a parameter named `data` is always sent as form data.
+   2. `Annotated[..., FieldX(RequestPart.*)]`.
+   3. Its value is a Pydantic model, which is expanded field by field.
 
 ### By parameter name
 
@@ -342,22 +377,45 @@ class SearchClient(ClientX):
 
 ### By `Annotated` + `FieldX`
 
+`FieldX` sends a parameter to a specific request part. To send a single value as a query parameter, header, or form field, set `key` to the name it should be sent under. The key can differ from the Python parameter name:
+
 ```python
+from enum import Enum
 from typing import Annotated
 
 from clientx import ClientX, FieldX, RequestPart, Response
-from clientx.methods import post
+from clientx.methods import get, post
 
 
-class UploadClient(ClientX):
-    @post("/upload")
-    def upload(
+class Sort(Enum):
+    NEWEST = "newest"
+    OLDEST = "oldest"
+
+
+class ItemsClient(ClientX):
+    @get("/items")
+    def list_items(
         self,
-        auth: Annotated[str, FieldX(RequestPart.HEADERS)],
+        item_type: Annotated[str, FieldX(RequestPart.PARAMS, key="type")],
+        sort: Annotated[Sort, FieldX(RequestPart.PARAMS, key="sort")] = Sort.NEWEST,
+    ) -> Response:
+        ...
+
+    @post("/items")
+    def create_item(
+        self,
+        token: Annotated[str, FieldX(RequestPart.HEADERS, key="Authorization")],
         payload: Annotated[dict[str, object], FieldX(RequestPart.JSON)],
     ) -> Response:
         ...
 ```
+
+`list_items("book", Sort.OLDEST)` sends `GET /items?type=book&sort=oldest`.
+
+- `key` works with `PARAMS`, `HEADERS`, and `DATA`. The value is sent as `{key: value}`, and an `Enum` member is sent as its `.value`.
+- Without `key`, the value must already be a mapping, such as `dict[str, str]`. A single string or number fails when the request is built.
+- `key` is ignored for `JSON` and `FILES`, which send the value as given.
+- `key` only works on method parameters. Inside a Pydantic model, fields routed to a request part must be mappings (see below).
 
 ### By Pydantic model
 
@@ -406,7 +464,7 @@ class UsersClient(ClientX):
     def patch_user(
         self,
         user_id: str,
-        data: Annotated[
+        payload: Annotated[
             PatchPayload,
             FieldX(RequestPart.JSON, dump_config=DumpConfig(exclude_none=True)),
         ],
@@ -439,7 +497,9 @@ You can also pass any callable as `deprecated`, and it will run on endpoint invo
 `ClientX` initializes an internal `httpx2.Client`:
 
 ```python
-ClientX(
+from clientx import ClientX
+
+client = ClientX(
     "https://api.example.com",
     user_agent="MyApp/1.0",
     timeout=5.0,
@@ -463,15 +523,4 @@ All of them derive from `ClientXError` (importable from `clientx`), so `except C
 
 ## Development
 
-```bash
-make lint
-make test
-```
-
-or directly:
-
-```bash
-uv run ruff format src test
-uv run ruff check --fix src test
-uv run pytest
-```
+See [CONTRIBUTING.md](https://github.com/slatecipher/ClientX/blob/mainline/CONTRIBUTING.md) for setup, checks, and conventions.
