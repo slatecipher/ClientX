@@ -20,6 +20,12 @@ The result is less scaffolding code and more focus on outcomes: authors spend le
 - Endpoint metadata tags for registry filtering and sorting.
 - Full access to `httpx2.Client` configuration through `ClientX(...)` kwargs.
 
+## Project status
+
+ClientX is a personal project that I maintain in my spare time. Issues and pull requests are welcome, but replies may take a while, and there is no guaranteed response time.
+
+ClientX is pre-1.0, so the API may change between minor versions. Changes are listed in the [changelog](https://github.com/slatecipher/ClientX/blob/mainline/CHANGELOG.md).
+
 ## Install
 
 ```bash
