@@ -9,6 +9,8 @@ Thanks for your interest in ClientX. It's a personal project maintained in spare
 
 For anything bigger than a small fix, please open an issue to discuss it before you start on a pull request.
 
+To report a security vulnerability, follow [SECURITY.md](SECURITY.md) instead of opening a public issue.
+
 ## Development setup
 
 You need Python 3.12 or newer and [uv](https://docs.astral.sh/uv/). Fork the repository, clone your fork, and run:
