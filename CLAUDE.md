@@ -54,10 +54,6 @@ The public API is `clientx/__init__.py`, which also re-exports `httpx2.Response`
 
 `examples/beeceptor/` contains a complete example client.
 
-## Releasing
+## Conventions and releasing
 
-`.github/workflows/release.yml` publishes with PyPI Trusted Publishing, so no tokens are stored.
-
-1. Open a PR that sets `version` in `pyproject.toml` (then run `uv lock`) and renames `## [Unreleased]` in `CHANGELOG.md` to `## [X.Y.Z] - YYYY-MM-DD`. Merge it.
-2. Optional dry run: manually run the **Release** workflow (`gh workflow run release.yml`). It builds and publishes to TestPyPI only.
-3. Publish a GitHub release tagged `vX.Y.Z` on `mainline`, for example `gh release create vX.Y.Z --target mainline --title vX.Y.Z --notes "..."`. The workflow checks that the tag matches the project version, builds, smoke-tests the wheel, and publishes to TestPyPI and then PyPI.
+`CONTRIBUTING.md` is the source of truth for commit messages, branch names, pull request descriptions, labels, and the release steps. Follow it for every commit and pull request.
