@@ -34,13 +34,17 @@ uv run pytest -k "deprecat" --no-cov                        # by keyword, skip c
 The public API is `clientx/__init__.py`, which also re-exports `httpx2.Response` and related types, plus the `clientx.methods`, `clientx.decoders` and `clientx.exceptions` modules. Modules whose names start with `_` are internal.
 
 **Decoration time** (`_decorators.py`, `ApiMethod.__call__`): each verb decorator does the following:
-0. Rejects method names that `ClientX` already uses (`user_agent`, `client`, dunders; computed from `dir(ClientX)` and its annotations) with `EndpointNameConflictError`. Keep `ClientX`'s surface small, since every attribute on it is a name endpoints can't use; that's why sending is the module function `send_request()` in `_client.py`, not a method.
 1. Builds an `Endpoint` (`_endpoint_context.py`) that holds the method, a `URLPath` template, the decoder, the deprecation hook, tags and the timeout. `Endpoint.stream` is derived from the decoder: `StreamDecoder` subclasses and `StreamResponseDecoder` stream; there is no `stream=` option.
 2. Sets `endpoint.func = wrapper`. The `func` setter captures the signature, resolves the return type with `get_type_hints`, and validates the decoder. As a result, `MissingReturnTypeError` and `MissingDecoderError` are raised **when the class is defined**, not when the method is called.
-3. Appends the endpoint to `EndpointRegister.registry`, a process-wide `ClassVar` list. `test/conftest.py` has an autouse fixture that resets this list for every test, so tests that define client classes stay isolated.
+3. Records `wrapper -> endpoint` in `_registry.py` (so classes can find their endpoints) and appends the endpoint to `EndpointRegister.registry`, a process-wide `ClassVar` list. `test/conftest.py` has an autouse fixture that resets this list for every test, so tests that define client classes stay isolated.
+
+**Class creation** (`_client.py`, `__init_subclass__`):
+- `ClientX` and `Resource` subclasses reject endpoints and mounted resources whose names the base class already uses (`EndpointNameConflictError`; reserved names are `dir(base)` plus its annotations). Keep both bases' surfaces small, since every attribute is a name endpoints can't use: that's why sending is the module function `send_request()`, not a method, and why `Resource` keeps its state in `__clientx_*__` dunders.
+- `Resource` subclasses (`prefix=`, `tags=` class arguments; inherited when omitted) join the prefix onto the path of each endpoint defined in the class body and prepend their tags. Prefixes are absolute, not composed through nesting.
+- A `Resource` instance mounted as a class attribute is a descriptor: instance access returns a copy bound to the client (or parent resource) via `__clientx_parent__`; class access returns the unbound resource.
 
 **Call time** (the `wrapper` inside the decorator):
-1. `endpoint.check_deprecation()`.
+1. `client_of(self)` walks resource parents to the `ClientX` instance (`UnboundResourceError` if a resource isn't mounted), then `endpoint.check_deprecation()`.
 2. `endpoint.bind(self, args, kwargs)` returns `inspect.BoundArguments`.
 3. `RequestFactory` (`_request_factory.py`) consumes the arguments through an `ArgumentCursor`. Each argument can be consumed only once, and any argument left over is an error. It does this in two passes:
    - Path placeholders `{name}` are consumed first and rendered.

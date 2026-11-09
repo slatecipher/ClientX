@@ -118,6 +118,53 @@ disable_error_code = ["empty-body"]
 
 Mypy still checks everything else in those modules, including the return types of calls to your endpoints.
 
+## Grouping Endpoints with Resources
+
+For larger APIs, group related endpoints into `Resource` classes, much like FastAPI's `APIRouter`. Mount an instance on your client, and its endpoints send through the client's connection and configuration, so there's no second client to create or pass around:
+
+```python
+from pydantic import BaseModel
+
+from clientx import ClientX, Resource, Response
+from clientx.decoders import ModelDecoder
+from clientx.methods import get, post
+
+
+class User(BaseModel):
+    id: int
+    name: str
+
+
+class Users(Resource, prefix="/users", tags=["users"]):
+    @get("/{user_id}", decoder=ModelDecoder(User))
+    def retrieve(self, user_id: int) -> User:
+        ...
+
+    @post("")
+    def create(self, json: dict[str, str]) -> Response:
+        ...
+
+
+class ExampleAPI(ClientX):
+    users = Users()
+
+
+api = ExampleAPI("https://api.example.com")
+user = api.users.retrieve(42)  # GET /users/42
+```
+
+Type checkers see `api.users` as `Users`, and its endpoints keep their signatures.
+
+- `prefix` is joined to the path of each endpoint in the class when the class is defined, so `EndpointRegister` shows full paths. It's absolute: a resource's paths don't depend on where it's mounted. Put a prefix shared by the whole API, such as `/v1`, in the client's base URL instead.
+- Placeholders in a prefix are filled from method arguments like any other: with `prefix="/repos/{owner}/{repo}"`, each endpoint needs `owner` and `repo` parameters.
+- `tags` are added before each endpoint's own tags.
+- Mount resources on other resources to nest them, for example `api.repos.issues.retrieve(...)`. Each keeps its own prefix.
+- A resource doesn't refer to the client class, so resources can live in their own modules.
+- Names that `ClientX` itself uses, such as `client` and `user_agent`, are free for endpoints on a resource.
+- A subclass keeps its parent's prefix and tags unless it sets its own.
+- If an endpoint is named like a decorator, such as `get`, later decorators in the same class body refer to that method instead. Import the module (`from clientx import methods`) and write `@methods.get(...)` in that case.
+- Mount an instance (`users = Users()`), not the class. Calling an endpoint on a resource that isn't mounted on a client, such as `Users().retrieve(42)`, raises `UnboundResourceError`.
+
 ## Endpoint Registry (`EndpointRegister`)
 
 `EndpointRegister` is a developer-facing introspection tool that collects decorated endpoints at import time. It is useful when you want to build metadata-driven tooling around your client classes.
@@ -585,7 +632,8 @@ ClientX raises explicit errors for common contract violations:
 
 - missing return annotation -> `MissingReturnTypeError`
 - typed return without decoder -> `MissingDecoderError`
-- endpoint method named like something `ClientX` already has (`user_agent`, `client`, or a dunder method) -> `EndpointNameConflictError`
+- endpoint or mounted resource named like something `ClientX` already has (`user_agent`, `client`, or a dunder method) -> `EndpointNameConflictError`
+- endpoint called on a resource that isn't mounted on a client -> `UnboundResourceError`
 - path placeholders not provided -> `MissingPathArgumentsError`
 - argument cannot map to request parts -> `UnconsumableArgumentError`
 

@@ -87,16 +87,32 @@ class MissingDecoderError(ClientXError, TypeError):
 
 
 class EndpointNameConflictError(ClientXError, TypeError):
-    """Raised when an endpoint method uses a name that ClientX already uses."""
+    """Raised when an endpoint or mounted resource uses a name that its base class already uses.
 
-    def __init__(self, func: Callable[..., Any]):
-        qualname = getattr(func, "__qualname__", func.__name__)
-        module = getattr(func, "__module__", "<unknown>")
+    Endpoints and resources on a ``ClientX`` subclass can't reuse names that
+    ``ClientX`` defines (such as ``user_agent`` or ``client``); on a ``Resource``
+    subclass, only the names ``Resource`` itself defines are reserved.
+    """
 
+    def __init__(self, *, owner: type, name: str, base: str) -> None:
         message = (
-            f"Endpoint function '{qualname}' (defined in {module}) "
-            f"can't be named '{func.__name__}': ClientX already uses that name, "
-            "and overriding it breaks the client. Rename the method."
+            f"'{owner.__qualname__}.{name}' (defined in {owner.__module__}) "
+            f"can't be named '{name}': {base} already uses that name, "
+            "and overriding it breaks the client. Rename it."
+        )
+
+        super().__init__(message)
+
+
+class UnboundResourceError(ClientXError, TypeError):
+    """Raised when an endpoint is called on a resource that isn't mounted on a client."""
+
+    def __init__(self, resource: type) -> None:
+        name = resource.__qualname__
+        message = (
+            f"Resource '{name}' isn't mounted on a client. Mount an instance as a class "
+            f"attribute of a ClientX subclass (for example, `items = {name}()`) and call "
+            "its endpoints through a client instance (`client.items.<endpoint>(...)`)."
         )
 
         super().__init__(message)
@@ -108,5 +124,6 @@ __all__ = [
     "MissingDecoderError",
     "MissingPathArgumentsError",
     "MissingReturnTypeError",
+    "UnboundResourceError",
     "UnconsumableArgumentError",
 ]

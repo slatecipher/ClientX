@@ -335,5 +335,5 @@ def test_endpoint_cannot_use_a_name_clientx_already_uses(name: str):
 
     endpoint.__name__ = endpoint.__qualname__ = name
 
-    with pytest.raises(EndpointNameConflictError, match=f"can't be named '{name}'"):
-        method.get("/items")(endpoint)
+    with pytest.raises(EndpointNameConflictError, match=f"'Dynamic.{name}' .* can't be named '{name}'"):
+        type("Dynamic", (ClientX,), {name: method.get("/items")(endpoint)})

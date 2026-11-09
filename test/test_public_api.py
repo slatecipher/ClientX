@@ -21,6 +21,7 @@ def test_top_level_exports():
             "FieldX",
             "RequestPart",
             "ClientX",
+            "Resource",
             "DeprecatedMessage",
             "Endpoint",
             "EndpointRegister",
@@ -52,6 +53,7 @@ def test_submodule_exports():
         "MissingDecoderError",
         "MissingPathArgumentsError",
         "MissingReturnTypeError",
+        "UnboundResourceError",
         "UnconsumableArgumentError",
     ]
     for module in (methods, decoders, exceptions):

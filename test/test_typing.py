@@ -22,7 +22,7 @@ import httpx2
 import pytest
 from pydantic import BaseModel, TypeAdapter
 
-from clientx import ClientX, Response
+from clientx import ClientX, Resource, Response
 from clientx.decoders import (
     ModelDecoder,
     StreamLinesDecoder,
@@ -71,6 +71,23 @@ class UsersClient(ClientX):
     def get_user_name(self, user_id: str) -> str: ...
 
 
+class UsersResource(Resource, prefix="/users"):
+    @get("/{user_id}", decoder=ModelDecoder(User))
+    def retrieve(self, user_id: str) -> User: ...
+
+    @post("")
+    def create(self, json: dict[str, object]) -> Response: ...
+
+
+class GroupsResource(Resource, prefix="/groups"):
+    members = UsersResource()
+
+
+class ResourcesClient(ClientX):
+    users = UsersResource()
+    groups = GroupsResource()
+
+
 def _transport() -> httpx2.MockTransport:
     payloads: dict[str, object] = {
         "/users/1": {"name": "Ada"},
@@ -95,6 +112,19 @@ def test_decorated_methods_reject_wrong_arguments() -> None:
     client.create_item(json="not a dict")  # pyright: ignore[reportArgumentType]
     with pytest.raises(TypeError):
         client.delete_item()  # pyright: ignore[reportCallIssue]
+
+
+def test_resources_are_typed_attributes_and_keep_endpoint_signatures() -> None:
+    client = ResourcesClient("https://example.test", transport=_transport())
+
+    assert_type(client.users, UsersResource)
+    assert_type(ResourcesClient.users, UsersResource)
+    assert_type(client.groups.members, UsersResource)
+    assert_type(client.users.retrieve("1"), User)
+    assert_type(client.users.create({"name": "x"}), Response)
+    client.users.retrieve(1)  # pyright: ignore[reportArgumentType]
+    with pytest.raises(TypeError):
+        client.users.create()  # pyright: ignore[reportCallIssue]
 
 
 def test_decoded_methods_return_the_decoder_output_type() -> None:
