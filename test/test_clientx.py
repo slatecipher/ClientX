@@ -3,7 +3,7 @@ import inspect
 import httpx2
 from httpx2 import Request, Response
 
-from clientx._client import ClientX
+from clientx._client import ClientX, send_request
 from clientx._client_types import HttpxClientKwargs
 from clientx._version import __version__
 
@@ -31,7 +31,7 @@ def test_clientx_user_agent_setter_updates_headers():
     assert client.client.headers["User-Agent"] == "AnotherApp/2.0"
 
 
-def test_clientx_send_builds_and_sends_request(monkeypatch):
+def test_send_request_builds_and_sends_request(monkeypatch):
     client = ClientX("https://example.test")
     call_log: dict[str, object] = {}
 
@@ -49,7 +49,7 @@ def test_clientx_send_builds_and_sends_request(monkeypatch):
     monkeypatch.setattr(client.client, "build_request", fake_build_request)
     monkeypatch.setattr(client.client, "send", fake_send)
 
-    response = client.send("DELETE", "/v1/items/123", params={"dry_run": 1})
+    response = send_request(client, "DELETE", "/v1/items/123", params={"dry_run": 1})
 
     assert response.status_code == 204
     assert call_log["method"] == "DELETE"
@@ -58,7 +58,7 @@ def test_clientx_send_builds_and_sends_request(monkeypatch):
     assert call_log["stream"] is False
 
 
-def test_clientx_send_can_enable_stream_mode(monkeypatch):
+def test_send_request_can_enable_stream_mode(monkeypatch):
     client = ClientX("https://example.test")
     call_log: dict[str, object] = {}
 
@@ -72,7 +72,7 @@ def test_clientx_send_can_enable_stream_mode(monkeypatch):
     monkeypatch.setattr(client.client, "build_request", fake_build_request)
     monkeypatch.setattr(client.client, "send", fake_send)
 
-    response = client.send("GET", "/v1/stream", stream=True)
+    response = send_request(client, "GET", "/v1/stream", stream=True)
 
     assert response.status_code == 200
     assert call_log["stream"] is True

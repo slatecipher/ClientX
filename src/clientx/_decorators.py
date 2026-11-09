@@ -7,7 +7,7 @@ from typing import Any, Concatenate, ParamSpec, Protocol, TypeVar, cast, overloa
 
 import httpx2
 
-from clientx._client import ClientX
+from clientx._client import ClientX, send_request
 from clientx._client_types import (
     Decoder,
     DeprecatedType,
@@ -26,7 +26,7 @@ from clientx.exceptions import EndpointNameConflictError
 
 # Names an endpoint method can't use: everything ClientX defines, including the
 # instance attributes it declares. Overriding them breaks the client; for example,
-# the wrapper calls `send()` for every request and `__init__` sets `client`.
+# `__init__` sets `client` and `user_agent`, which would hide an endpoint of that name.
 _RESERVED_NAMES = frozenset(dir(ClientX)) | frozenset(inspect.get_annotations(ClientX))
 
 P = ParamSpec("P")
@@ -199,7 +199,8 @@ class ApiMethod:
 
                 started = time.perf_counter()
                 try:
-                    response = _self.send(
+                    response = send_request(
+                        _self,
                         method=endpoint.method,
                         path=spec.path,
                         stream=endpoint.stream,

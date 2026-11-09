@@ -28,14 +28,14 @@ def test_api_method_registers_endpoint_and_returns_response(monkeypatch):
     api = API("https://example.test")
     sent: SentCapture = {"method": "", "path": "", "request": {}, "stream": False}
 
-    def fake_send(method: str, path: str, stream: bool, **request) -> Response:
+    def fake_send(client: ClientX, method: str, path: str, stream: bool, **request) -> Response:
         sent["method"] = method
         sent["path"] = path
         sent["request"] = request
         sent["stream"] = stream
         return Response(200, request=Request(method, f"https://example.test{path}"), json={"id": 42})
 
-    monkeypatch.setattr(api, "send", fake_send)
+    monkeypatch.setattr(decorators_module, "send_request", fake_send)
 
     response = api.get_item("42")
 
@@ -57,10 +57,10 @@ def test_api_method_returns_none_for_none_annotation(monkeypatch):
 
     api = API("https://example.test")
 
-    def fake_send(method: str, path: str, **request) -> Response:
+    def fake_send(client: ClientX, method: str, path: str, **request) -> Response:
         return Response(201, request=Request(method, f"https://example.test{path}"))
 
-    monkeypatch.setattr(api, "send", fake_send)
+    monkeypatch.setattr(decorators_module, "send_request", fake_send)
 
     result = api.create_item({"id": 1})
 
@@ -77,10 +77,10 @@ def test_api_method_decodes_non_response_return(monkeypatch):
 
     api = API("https://example.test")
 
-    def fake_send(method: str, path: str, **request) -> Response:
+    def fake_send(client: ClientX, method: str, path: str, **request) -> Response:
         return Response(200, request=Request(method, f"https://example.test{path}"), json={"count": 7})
 
-    monkeypatch.setattr(api, "send", fake_send)
+    monkeypatch.setattr(decorators_module, "send_request", fake_send)
 
     result = api.get_count()
 
@@ -98,10 +98,10 @@ def test_api_method_runs_decoder_for_response_return(monkeypatch):
 
     api = API("https://example.test")
 
-    def fake_send(method: str, path: str, **request) -> Response:
+    def fake_send(client: ClientX, method: str, path: str, **request) -> Response:
         return Response(404, request=Request(method, f"https://example.test{path}"))
 
-    monkeypatch.setattr(api, "send", fake_send)
+    monkeypatch.setattr(decorators_module, "send_request", fake_send)
 
     with pytest.raises(HTTPStatusError):
         api.list_items()
@@ -119,10 +119,10 @@ def test_api_method_runs_decoder_for_none_return(monkeypatch):
 
     api = API("https://example.test")
 
-    def fake_send(method: str, path: str, **request) -> Response:
+    def fake_send(client: ClientX, method: str, path: str, **request) -> Response:
         return Response(204, request=Request(method, f"https://example.test{path}"))
 
-    monkeypatch.setattr(api, "send", fake_send)
+    monkeypatch.setattr(decorators_module, "send_request", fake_send)
 
     assert api.delete_item("1") is None
     assert calls == [204]
@@ -136,14 +136,14 @@ def test_api_method_uses_stream_send_for_stream_decoder(monkeypatch):
     api = API("https://example.test")
     sent: SentCapture = {"method": "", "path": "", "request": {}, "stream": False}
 
-    def fake_send(method: str, path: str, stream: bool, **request) -> Response:
+    def fake_send(client: ClientX, method: str, path: str, stream: bool, **request) -> Response:
         sent["method"] = method
         sent["path"] = path
         sent["request"] = request
         sent["stream"] = stream
         return Response(200, request=Request(method, f"https://example.test{path}"), content=b"ok\n")
 
-    monkeypatch.setattr(api, "send", fake_send)
+    monkeypatch.setattr(decorators_module, "send_request", fake_send)
 
     result = api.stream()
 
@@ -161,11 +161,11 @@ def test_api_method_streams_when_decoder_requests_it(monkeypatch):
     api = API("https://example.test")
     sent: SentCapture = {"method": "", "path": "", "request": {}, "stream": False}
 
-    def fake_send(method: str, path: str, stream: bool, **request) -> Response:
+    def fake_send(client: ClientX, method: str, path: str, stream: bool, **request) -> Response:
         sent["stream"] = stream
         return Response(200, request=Request(method, f"https://example.test{path}"), content=b"a\nb\n")
 
-    monkeypatch.setattr(api, "send", fake_send)
+    monkeypatch.setattr(decorators_module, "send_request", fake_send)
 
     assert list(api.stream()) == ["a", "b"]
     assert endpoint.stream is True
@@ -200,12 +200,12 @@ def test_api_method_applies_endpoint_timeout(monkeypatch):
     api = API("https://example.test")
     sent: SentCapture = {"method": "", "path": "", "request": {}, "stream": False}
 
-    def fake_send(method: str, path: str, stream: bool, **request) -> Response:
+    def fake_send(client: ClientX, method: str, path: str, stream: bool, **request) -> Response:
         sent["request"] = request
         sent["stream"] = stream
         return Response(200, request=Request(method, f"https://example.test{path}"))
 
-    monkeypatch.setattr(api, "send", fake_send)
+    monkeypatch.setattr(decorators_module, "send_request", fake_send)
 
     api.list_items()
 
@@ -220,12 +220,12 @@ def test_api_method_applies_timeout_to_streamed_requests(monkeypatch):
     api = API("https://example.test")
     sent: SentCapture = {"method": "", "path": "", "request": {}, "stream": False}
 
-    def fake_send(method: str, path: str, stream: bool, **request) -> Response:
+    def fake_send(client: ClientX, method: str, path: str, stream: bool, **request) -> Response:
         sent["request"] = request
         sent["stream"] = stream
         return Response(200, request=Request(method, f"https://example.test{path}"), content=b"ok\n")
 
-    monkeypatch.setattr(api, "send", fake_send)
+    monkeypatch.setattr(decorators_module, "send_request", fake_send)
 
     list(api.stream())
 
@@ -245,10 +245,10 @@ def test_api_method_calls_deprecation_handler(monkeypatch):
 
     api = API("https://example.test")
 
-    def fake_send(method: str, path: str, **request) -> Response:
+    def fake_send(client: ClientX, method: str, path: str, **request) -> Response:
         return Response(200, request=Request(method, f"https://example.test{path}"))
 
-    monkeypatch.setattr(api, "send", fake_send)
+    monkeypatch.setattr(decorators_module, "send_request", fake_send)
 
     api.get_status()
 
@@ -277,10 +277,10 @@ def test_api_method_raises_internal_error_when_type_checks_are_forced_false(monk
 
     api = API("https://example.test")
 
-    def fake_send(method: str, path: str, **request) -> Response:
+    def fake_send(client: ClientX, method: str, path: str, **request) -> Response:
         return Response(200, request=Request(method, f"https://example.test{path}"))
 
-    monkeypatch.setattr(api, "send", fake_send)
+    monkeypatch.setattr(decorators_module, "send_request", fake_send)
     monkeypatch.setattr(decorators_module, "is_none_type", lambda _: False)
     monkeypatch.setattr(decorators_module, "is_response_type", lambda _: False)
 
@@ -298,19 +298,38 @@ def test_method_container_exposes_http_methods():
     assert method.put.method == "PUT"
 
 
-def test_endpoint_named_send_is_rejected_when_the_class_is_defined():
+def test_endpoint_can_be_named_send():
+    sent: list[httpx2.Request] = []
+
+    def handler(request: httpx2.Request) -> Response:
+        sent.append(request)
+        return Response(201)
+
+    class MessagesClient(ClientX):
+        @method.post("/messages")
+        def send(self, json: dict[str, str]) -> Response: ...
+
+    client = MessagesClient("https://example.test", transport=httpx2.MockTransport(handler))
+
+    assert client.send({"text": "hi"}).status_code == 201
+    assert [(request.method, request.url.path, request.content) for request in sent] == [
+        ("POST", "/messages", b'{"text":"hi"}')
+    ]
+
+
+def test_endpoint_named_user_agent_is_rejected_when_the_class_is_defined():
     with pytest.raises(EndpointNameConflictError) as excinfo:
 
-        class MessagesClient(ClientX):
-            @method.post("/messages")
-            def send(self, json: dict[str, str]) -> Response: ...  # pyright: ignore[reportIncompatibleMethodOverride]
+        class ProfileClient(ClientX):
+            @method.get("/user-agent")
+            def user_agent(self) -> Response: ...  # pyright: ignore[reportIncompatibleMethodOverride]
 
     message = str(excinfo.value)
-    assert "MessagesClient.send" in message
-    assert "can't be named 'send'" in message
+    assert "ProfileClient.user_agent" in message
+    assert "can't be named 'user_agent'" in message
 
 
-@pytest.mark.parametrize("name", ["send", "user_agent", "client", "_user_agent", "__enter__"])
+@pytest.mark.parametrize("name", ["user_agent", "client", "_user_agent", "_default_user_agent", "__enter__"])
 def test_endpoint_cannot_use_a_name_clientx_already_uses(name: str):
     def endpoint(self: ClientX) -> Response: ...
 
@@ -318,22 +337,3 @@ def test_endpoint_cannot_use_a_name_clientx_already_uses(name: str):
 
     with pytest.raises(EndpointNameConflictError, match=f"can't be named '{name}'"):
         method.get("/items")(endpoint)
-
-
-def test_overriding_send_without_the_decorator_is_allowed():
-    sent: list[str] = []
-
-    class RecordingClient(ClientX):
-        def send(
-            self, method: str, path: httpx2.URL | str, *, stream: bool = False, **request_parts: object
-        ) -> Response:
-            sent.append(f"{method} {path}")
-            return super().send(method, path, stream=stream, **request_parts)
-
-        @method.get("/items")
-        def list_items(self) -> Response: ...
-
-    client = RecordingClient("https://example.test", transport=httpx2.MockTransport(lambda request: Response(200)))
-
-    assert client.list_items().status_code == 200
-    assert sent == ["GET /items"]
