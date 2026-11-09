@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from clientx import ClientX, DeprecatedMessage, Response
+from clientx.decoders import ModelDecoder, TypeAdapterDecoder
 from clientx.methods import get
-from clientx.decoders import TypeAdapterDecoder
 
 from .beeceptor_models import Companies, Company, User, Users
 
@@ -15,11 +15,8 @@ class Beeceptor(ClientX):
     Use the Beeceptor web UI to create an endpoint, define the response format,
     and then plug the endpoint URL into this client for fast integration tests.
 
-    Refernce: https://beeceptor.com/docs/sample-api-for-testing/
+    Reference: https://beeceptor.com/docs/sample-api-for-testing/
     """
-
-    # Default User-Agent for all Beeceptor sample API requests from this client.
-    _default_user_agent = "Beeceptor/0.1.0"
 
     @get("/users", decoder=TypeAdapterDecoder(Users))
     def get_users(self) -> list[User]:
@@ -29,6 +26,15 @@ class Beeceptor(ClientX):
         company, username, email, address, zip, state, country, phone, photo),
         which the client validates and returns as a typed list for demos or
         quick integration tests.
+        """
+        ...
+
+    @get("/users/{user_id}", decoder=ModelDecoder(User))
+    def get_user(self, user_id: int) -> User:
+        """Return one Beeceptor sample user as a `User` model.
+
+        `user_id` fills the `{user_id}` placeholder in the path, so
+        `get_user(1)` requests `/users/1`.
         """
         ...
 
@@ -61,7 +67,7 @@ class Beeceptor(ClientX):
         ),
     )
     def get_companies_dep(self) -> Response:
-        """Deprecated Warning: return the raw Beeceptor companies response.
+        """Deprecated: return the raw Beeceptor companies response.
 
         The endpoint responds with a JSON array of company records (id, name,
         address, zip, country, employeeCount, industry, marketCap, domain,
