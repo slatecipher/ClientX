@@ -10,7 +10,7 @@ import httpx2
 import pytest
 from mcp import Client, types
 from mcp.server.lowlevel import Server
-from pydantic import BaseModel, TypeAdapter
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
 import clientx.mcp
 from clientx import ClientX, Resource, Response
@@ -152,6 +152,27 @@ def test_each_kind_of_result_is_returned(name: str, arguments: dict[str, Any], s
     assert result.is_error is False
     assert result.structured_content == structured
     assert text_of(result) == text
+
+
+def test_results_of_aliased_models_pass_the_mcp_clients_schema_check():
+    class Company(BaseModel):
+        model_config = ConfigDict(populate_by_name=True)
+
+        employee_count: int = Field(alias="employeeCount")
+
+    class CompaniesAPI(ClientX):
+        @get("/companies", decoder=TypeAdapterDecoder(TypeAdapter(list[Company])))
+        def list_all(self) -> list[Company]: ...
+
+    api = CompaniesAPI(
+        "https://api.example.com",
+        transport=httpx2.MockTransport(lambda r: httpx2.Response(200, json=[{"employeeCount": 3187}])),
+    )
+    # The MCP client checks structured content against the tool's output schema.
+    result = call_over_mcp(create_mcp_server(api), "list_all", {})
+
+    assert result.is_error is False
+    assert result.structured_content == {"result": [{"employeeCount": 3187}]}
 
 
 def test_invalid_arguments_come_back_as_an_error_result_without_a_request():
