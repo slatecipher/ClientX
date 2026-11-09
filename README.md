@@ -468,9 +468,9 @@ class ItemsClient(ClientX):
 
 - `key` works with `PARAMS`, `HEADERS`, and `DATA`. The value is sent as `{key: value}`, converted the way a model field is (see `DumpConfig` below): an `Enum` member becomes its `.value`, a `datetime` an ISO 8601 string, and a `UUID` a string. Numbers and booleans in headers are sent as text (`2`, `true`).
 - A value of `None` is left out of the request, so an optional query parameter, header, or form field can default to `None`: `user_id: Annotated[int | None, FieldX(RequestPart.PARAMS, key="userId")] = None` adds `?userId=...` only when a user ID is given. To send an empty value, pass `""`.
-- Without `key`, the value must already be a mapping, such as `dict[str, str]`. A single string or number fails when the request is built.
+- Without `key`, a single value (a string, number, or list) is sent under the parameter name: `page: Annotated[int, FieldX(RequestPart.PARAMS)]` sends `?page=2`, and a list repeats the name (`?tag=a&tag=b`). Header names use hyphens instead of underscores, so `request_id` is sent as `request-id`; use `key` for an exact name. A mapping, such as `dict[str, str]`, or a Pydantic model is merged into the part.
 - `key` is ignored for `JSON` and `FILES`, which send the value as given.
-- `key` only works on method parameters. Inside a Pydantic model, fields routed to a request part must be mappings (see below).
+- Model fields follow the same rules (see below).
 
 ### By Pydantic model
 
@@ -496,7 +496,7 @@ class UsersClient(ClientX):
         ...
 ```
 
-In model extraction, fields explicitly routed to `HEADERS`, `PARAMS`, `DATA`, or `FILES` should be mappings. Unassigned fields default to JSON.
+In model extraction, a field routed to `PARAMS`, `HEADERS`, or `DATA` follows the same rules as a parameter: a mapping is merged into the part, and a single value is sent under its `key`, or under its alias or field name. Fields routed to `JSON` or `FILES` must be mappings. Unassigned fields default to JSON.
 
 `None` values are never sent as query parameters, headers, or form fields, whether they come from a single value, a mapping, or a model field. A JSON body keeps them as `null`. To leave them out of a JSON body too, use `DumpConfig(exclude_none=True)`, shown below.
 

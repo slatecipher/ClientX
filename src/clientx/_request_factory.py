@@ -4,6 +4,7 @@ import inspect
 import json
 import warnings
 from collections import defaultdict
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from inspect import BoundArguments
 from typing import Any, cast
@@ -37,6 +38,27 @@ def dump_model(model: BaseModel, dump_config: DumpConfig) -> dict[str, Any]:
     """
     config: DumpConfig = {**_DUMP_DEFAULTS, **dump_config}
     return model.model_dump(**config)
+
+
+def _sends_single_value(part: RequestPart | str, key: str | None, value: object, *, whole_part: bool) -> bool:
+    """Whether ``value`` is sent as one named value in ``part``, rather than merged into it.
+
+    Query parameters, headers, and form fields are name-value pairs. A value with a ``key``
+    is always one named value. Without a key, a mapping (or a value for a parameter named
+    after the part) is the whole part, and anything else is one named value.
+    """
+    if part not in _KEYED_PARTS:
+        return False
+    return key is not None or not (whole_part or isinstance(value, Mapping))
+
+
+def _default_name(name: str, part: RequestPart | str) -> str:
+    """The name a single value is sent under without a ``key``.
+
+    It's the parameter or field name. For headers, underscores become hyphens, like
+    FastAPI's ``Header()``: many proxies drop headers with underscores.
+    """
+    return name.replace("_", "-") if part == RequestPart.HEADERS else name
 
 
 def _clean_keyed_part(part: RequestPart, values: dict[str, Any]) -> dict[str, Any]:
@@ -215,8 +237,10 @@ class RequestFactory:
             - Parameter is annotated with a ``RequestPart`` via ``Annotated`` metadata.
             - Parameter value is a Pydantic model, expanded by ``ModelExtractor``.
 
-            A ``FieldX`` value with a ``key`` is left out when it is ``None``, so
-            optional query parameters, headers, and form fields can default to ``None``.
+            In ``params``, ``headers``, and ``data``, a ``FieldX`` value that isn't a
+            mapping is sent under its ``key``, or under the parameter name (with
+            hyphens for headers). It's left out when it is ``None``, so optional
+            query parameters, headers, and form fields can default to ``None``.
             ``merge_request_parts`` leaves out ``None`` values from mappings and models too.
 
         Raises:
@@ -236,19 +260,20 @@ class RequestFactory:
 
             fieldx = annotation.fieldx
 
-            if key := RequestPart.get(field_name) or fieldx.request_part:
+            named_part = RequestPart.get(field_name)
+            if part := named_part or fieldx.request_part:
                 if isinstance(value, BaseModel):
                     payload = dump_model(value, fieldx.dump_config)
-                elif fieldx.key is not None and key in _KEYED_PARTS:
+                elif _sends_single_value(part, fieldx.key, value, whole_part=named_part is not None):
                     if value is None:
                         # Leave it out: httpx2 sends None as an empty query or form value and rejects it as a header.
                         continue
                     # Like a model field in JSON mode: an Enum becomes its value, a datetime ISO 8601.
-                    payload = {fieldx.key: to_jsonable_python(value)}
+                    payload = {fieldx.key or _default_name(field_name, part): to_jsonable_python(value)}
                 else:
                     payload = value
 
-                parts.append({key: payload})
+                parts.append({part: payload})
                 continue
 
             elif isinstance(value, BaseModel):
@@ -354,16 +379,21 @@ class ModelExtractor:
 
         Returns:
             dict[str, dict[str, Any]]: Request-part mapping grouped by
-                ``RequestPart``. Fields marked with a request part are merged
-                into that section and are expected to be mapping values.
-                Remaining fields default to ``RequestPart.JSON``.
+                ``RequestPart``. A field marked with a request part is merged into
+                that section if it's a mapping. In ``params``, ``headers``, and
+                ``data``, any other value is sent under the field's ``key``, or
+                under its dumped name. Remaining fields default to ``RequestPart.JSON``.
         """
         request: defaultdict[str, dict[str, Any]] = defaultdict(dict)
 
         for key in list(dump):
-            annotation = annotation_map[key]
-            if part := annotation.fieldx.request_part:
-                request[part].update(dump.pop(key))
+            fieldx = annotation_map[key].fieldx
+            if part := fieldx.request_part:
+                value = dump.pop(key)
+                if _sends_single_value(part, fieldx.key, value, whole_part=False):
+                    request[part][fieldx.key or _default_name(key, part)] = value
+                else:
+                    request[part].update(value)
 
         if dump:
             request[RequestPart.JSON].update(**dump)
