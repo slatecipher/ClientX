@@ -12,9 +12,9 @@ All tooling runs through `uv`:
 
 ```bash
 uv sync --all-groups --reinstall-package clientx   # install/refresh deps + the package
-make lint             # ruff format + ruff check --fix on src and test
+make lint             # ruff format + ruff check --fix on src, test and examples
 make lint-ci          # check-only variant used in CI
-make typecheck        # pyright src + test/test_typing.py (gates CI)
+make typecheck        # pyright src + test/test_typing.py + examples (gates CI)
 make typecheck-tests  # pyright test (advisory only in CI, never blocks)
 make test             # pytest (coverage flags come from pyproject addopts)
 make check            # lint + typecheck + test
