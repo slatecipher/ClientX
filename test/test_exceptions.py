@@ -7,6 +7,7 @@ from clientx.exceptions import (
     MissingDecoderError,
     MissingPathArgumentsError,
     MissingReturnTypeError,
+    UnboundResourceError,
     UnconsumableArgumentError,
 )
 from clientx.methods import get
@@ -20,6 +21,7 @@ from clientx.methods import get
         (MissingReturnTypeError, TypeError),
         (MissingDecoderError, TypeError),
         (EndpointNameConflictError, TypeError),
+        (UnboundResourceError, TypeError),
     ],
 )
 def test_errors_share_clientx_base_and_keep_builtin_base(error: type[Exception], builtin_base: type[Exception]):

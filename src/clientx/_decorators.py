@@ -1,4 +1,3 @@
-import inspect
 import time
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
@@ -7,7 +6,7 @@ from typing import Any, Concatenate, ParamSpec, Protocol, TypeVar, cast, overloa
 
 import httpx2
 
-from clientx._client import ClientX, send_request
+from clientx._client import ClientX, Resource, client_of, send_request
 from clientx._client_types import (
     Decoder,
     DeprecatedType,
@@ -20,17 +19,12 @@ from clientx._endpoint_context import (
     EndpointRegister,
 )
 from clientx._logging import EndpointCall, log_endpoint_call
+from clientx._registry import register_endpoint_function
 from clientx._request_factory import RequestFactory
 from clientx.decoders import StreamDecoder
-from clientx.exceptions import EndpointNameConflictError
-
-# Names an endpoint method can't use: everything ClientX defines, including the
-# instance attributes it declares. Overriding them breaks the client; for example,
-# `__init__` sets `client` and `user_agent`, which would hide an endpoint of that name.
-_RESERVED_NAMES = frozenset(dir(ClientX)) | frozenset(inspect.get_annotations(ClientX))
 
 P = ParamSpec("P")
-T = TypeVar("T", bound=ClientX)
+T = TypeVar("T", bound=ClientX | Resource)
 R = TypeVar("R")
 
 
@@ -46,7 +40,7 @@ class RawEndpointDecorator(Protocol):
     a bare ``Callable``, mypy sees every endpoint as ``Any``.
     """
 
-    def __call__[C: ClientX, **Q, S: (httpx2.Response, None)](
+    def __call__[C: ClientX | Resource, **Q, S: (httpx2.Response, None)](
         self, func: Callable[Concatenate[C, Q], S], /
     ) -> Callable[Concatenate[C, Q], S]:
         """Register ``func`` as an endpoint and return its request-sending replacement."""
@@ -66,7 +60,7 @@ class DecodedEndpointDecorator[D](Protocol):
     as ``Any`` while mypy keeps the annotation.
     """
 
-    def __call__[C: ClientX, **Q, S](
+    def __call__[C: ClientX | Resource, **Q, S](
         self: "DecodedEndpointDecorator[S]", func: Callable[Concatenate[C, Q], S], /
     ) -> Callable[Concatenate[C, Q], S]:
         """Register ``func`` as an endpoint and return its request-sending replacement."""
@@ -165,9 +159,6 @@ class ApiMethod:
         def decorator(
             func: Callable[Concatenate[T, P], R],
         ) -> Callable[Concatenate[T, P], R]:
-            if func.__name__ in _RESERVED_NAMES:
-                raise EndpointNameConflictError(func)
-
             endpoint = Endpoint(
                 method=self.method,
                 path=path,
@@ -181,6 +172,8 @@ class ApiMethod:
 
             @wraps(func)
             def wrapper(_self: T, *args: P.args, **kwargs: P.kwargs) -> R:
+                # The client whose connection sends the request; `_self` may be a mounted resource.
+                client = client_of(_self)
                 endpoint.check_deprecation()
 
                 spec = request_factory(arguments=endpoint.bind(_self, args, kwargs))
@@ -200,7 +193,7 @@ class ApiMethod:
                 started = time.perf_counter()
                 try:
                     response = send_request(
-                        _self,
+                        client,
                         method=endpoint.method,
                         path=spec.path,
                         stream=endpoint.stream,
@@ -224,6 +217,7 @@ class ApiMethod:
                 raise RuntimeError("Internal error: decoder was None for a decodable return type.")
 
             endpoint.func = wrapper
+            register_endpoint_function(wrapper, endpoint)
             EndpointRegister.register(endpoint)
             return wrapper
 

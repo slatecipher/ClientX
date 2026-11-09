@@ -10,7 +10,7 @@ from typing import Any, ClassVar, get_type_hints
 
 import httpx2
 
-from clientx._client import ClientX
+from clientx._client import ClientX, Resource
 from clientx._client_types import (
     Decoder,
     DeprecatedType,
@@ -295,7 +295,7 @@ class Endpoint:
         """
         return self._return_type
 
-    def bind(self, client: ClientX, args: tuple[Any, ...], kwargs: dict[str, Any]) -> BoundArguments:
+    def bind(self, client: ClientX | Resource, args: tuple[Any, ...], kwargs: dict[str, Any]) -> BoundArguments:
         """Bind call arguments to the endpoint function signature.
 
         This helper binds the provided ``client``, positional arguments, and
@@ -303,7 +303,7 @@ class Endpoint:
         applies default values.
 
         Args:
-            client: Client instance passed as the first argument (``self``).
+            client: Client or mounted resource passed as the first argument (``self``).
             args: Positional arguments supplied by the caller.
             kwargs: Keyword arguments supplied by the caller.
 
