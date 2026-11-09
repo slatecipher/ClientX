@@ -6,15 +6,20 @@ from pydantic import BaseModel, Field, computed_field
 
 from clientx._annotation_extractor import AnnotationExtractor, AnnotationInfo, NamedAnnotation, NamedAnnotationExtractor
 from clientx._annotations import (
+    Body,
     DumpConfig,
-    FieldX,
+    File,
+    Form,
+    Header,
+    Part,
+    Query,
     RequestPart,
 )
 
-type UserIdParam = Annotated[int, FieldX(RequestPart.PARAMS, key="userId")]
-type QueryParam[T] = Annotated[T, FieldX(RequestPart.PARAMS)]
+type UserIdParam = Annotated[int, Part(RequestPart.PARAMS, key="userId")]
+type QueryParam[T] = Annotated[T, Part(RequestPart.PARAMS)]
 type DescribedUserId = Annotated[UserIdParam, "described"]
-type IgnoresItsParameter[T] = Annotated[int, FieldX(RequestPart.HEADERS)]
+type IgnoresItsParameter[T] = Annotated[int, Part(RequestPart.HEADERS)]
 type Cycle = OtherCycle
 type OtherCycle = Cycle
 
@@ -25,70 +30,70 @@ def test_request_section_get():
     assert RequestPart.get("missing") is None
 
 
-def test_annotation_info_fieldx_first_match():
-    first = FieldX(RequestPart.PARAMS)
-    second = FieldX(RequestPart.JSON)
+def test_annotation_info_part_first_match():
+    first = Part(RequestPart.PARAMS)
+    second = Part(RequestPart.JSON)
     info = AnnotationInfo(metadata=["meta", first, second])
 
-    assert info.fieldx is first
+    assert info.part is first
 
 
-def test_annotation_info_fieldx_defaults_when_missing():
+def test_annotation_info_part_defaults_when_missing():
     info = AnnotationInfo(metadata=["meta"])
 
-    assert info.fieldx.request_part is None
-    assert info.fieldx.dump_config == {}
+    assert info.part.request_part is None
+    assert info.part.dump_config == {}
 
 
-def test_annotation_info_fieldx_dump_config_first_match():
-    first = FieldX(RequestPart.DATA, dump_config=DumpConfig(exclude_none=True))
-    second = FieldX(RequestPart.JSON, dump_config=DumpConfig(exclude_unset=True))
+def test_annotation_info_part_dump_config_first_match():
+    first = Part(RequestPart.DATA, dump_config=DumpConfig(exclude_none=True))
+    second = Part(RequestPart.JSON, dump_config=DumpConfig(exclude_unset=True))
     info = AnnotationInfo(metadata=["meta", first, second])
 
-    assert info.fieldx.dump_config == {"exclude_none": True}
+    assert info.part.dump_config == {"exclude_none": True}
 
 
 def test_annotation_extractor_from_field_annotation_with_annotated_metadata():
     info = AnnotationExtractor.from_field_annotation(
-        Annotated[int, FieldX(RequestPart.HEADERS, dump_config=DumpConfig(exclude_none=True))]
+        Annotated[int, Part(RequestPart.HEADERS, dump_config=DumpConfig(exclude_none=True))]
     )
 
     assert info.annotation is int
-    assert info.metadata == [FieldX(RequestPart.HEADERS, dump_config=DumpConfig(exclude_none=True))]
+    assert info.metadata == [Part(RequestPart.HEADERS, dump_config=DumpConfig(exclude_none=True))]
 
 
 def test_annotation_extractor_from_signature_maps_annotations():
-    def handler(a: int, b: Annotated[str, FieldX(RequestPart.PARAMS)]) -> None: ...
+    def handler(a: int, b: Annotated[str, Part(RequestPart.PARAMS)]) -> None: ...
 
     mapping = AnnotationExtractor.from_signature(inspect.signature(handler))
 
     assert mapping["a"].annotation is int
-    assert mapping["b"].fieldx.request_part is RequestPart.PARAMS
+    assert mapping["b"].part.request_part is RequestPart.PARAMS
 
 
 def test_annotation_extractor_from_base_model_includes_aliases_and_computed_fields():
     class Example(BaseModel):
-        token: Annotated[str, FieldX(RequestPart.HEADERS)] = Field(alias="auth")
+        token: Annotated[str, Part(RequestPart.HEADERS)] = Field(alias="auth")
 
         @computed_field
         @property
-        def qs(self) -> Annotated[dict[str, int], FieldX(RequestPart.PARAMS)]:
+        def qs(self) -> Annotated[dict[str, int], Part(RequestPart.PARAMS)]:
             return {"q": 1}
 
     mapping = AnnotationExtractor.from_base_model(Example)
 
-    assert mapping["token"].fieldx.request_part is RequestPart.HEADERS
-    assert mapping["auth"].fieldx.request_part is RequestPart.HEADERS
-    assert mapping["qs"].fieldx.request_part is RequestPart.PARAMS
+    assert mapping["token"].part.request_part is RequestPart.HEADERS
+    assert mapping["auth"].part.request_part is RequestPart.HEADERS
+    assert mapping["qs"].part.request_part is RequestPart.PARAMS
 
 
 def test_annotation_extractor_from_base_model_includes_serialization_aliases():
     class Example(BaseModel):
-        token: Annotated[str, FieldX(RequestPart.HEADERS)] = Field(serialization_alias="authToken")
+        token: Annotated[str, Part(RequestPart.HEADERS)] = Field(serialization_alias="authToken")
 
     mapping = AnnotationExtractor.from_base_model(Example)
 
-    assert mapping["authToken"].fieldx.request_part is RequestPart.HEADERS
+    assert mapping["authToken"].part.request_part is RequestPart.HEADERS
 
 
 def test_named_annotation_validation_wraps_errors():
@@ -125,14 +130,14 @@ def test_annotation_extractor_reads_metadata_through_a_type_alias():
     info = AnnotationExtractor.from_field_annotation(UserIdParam)
 
     assert info.annotation is int
-    assert info.fieldx.key == "userId"
+    assert info.part.key == "userId"
 
 
 def test_annotation_extractor_reads_metadata_through_a_generic_type_alias():
     info = AnnotationExtractor.from_field_annotation(QueryParam[list[str]])
 
     assert info.annotation == list[str]
-    assert info.fieldx.request_part is RequestPart.PARAMS
+    assert info.part.request_part is RequestPart.PARAMS
 
 
 def test_annotation_extractor_puts_inner_alias_metadata_first():
@@ -141,8 +146,8 @@ def test_annotation_extractor_puts_inner_alias_metadata_first():
     alias_of_alias = AnnotationExtractor.from_field_annotation(DescribedUserId)
 
     assert nested.annotation is int
-    assert nested.metadata == [FieldX(RequestPart.PARAMS, key="userId"), "outer"]
-    assert alias_of_alias.metadata == [FieldX(RequestPart.PARAMS, key="userId"), "described"]
+    assert nested.metadata == [Part(RequestPart.PARAMS, key="userId"), "outer"]
+    assert alias_of_alias.metadata == [Part(RequestPart.PARAMS, key="userId"), "described"]
 
 
 def test_annotation_extractor_reads_alias_metadata_on_model_fields():
@@ -152,8 +157,8 @@ def test_annotation_extractor_reads_alias_metadata_on_model_fields():
 
     mapping = AnnotationExtractor.from_base_model(Filters)
 
-    assert mapping["user_id"].fieldx.key == "userId"
-    assert mapping["tags"].fieldx.request_part is RequestPart.PARAMS
+    assert mapping["user_id"].part.key == "userId"
+    assert mapping["tags"].part.request_part is RequestPart.PARAMS
     assert mapping["tags"].annotation == list[str]
 
 
@@ -167,4 +172,46 @@ def test_annotation_extractor_reads_a_generic_alias_whose_value_takes_no_argumen
     info = AnnotationExtractor.from_field_annotation(IgnoresItsParameter[str])
 
     assert info.annotation is int
-    assert info.fieldx.request_part is RequestPart.HEADERS
+    assert info.part.request_part is RequestPart.HEADERS
+
+
+@pytest.mark.parametrize(
+    ("helper", "request_part"),
+    [
+        (Query, RequestPart.PARAMS),
+        (Header, RequestPart.HEADERS),
+        (Form, RequestPart.DATA),
+        (Body, RequestPart.JSON),
+        (File, RequestPart.FILES),
+    ],
+)
+def test_each_helper_is_a_part_with_a_fixed_request_part(helper: type[Part], request_part: RequestPart):
+    marker = helper()
+
+    assert isinstance(marker, Part)
+    assert marker.request_part is request_part
+    assert marker.key is None
+    assert marker.dump_config == {}
+
+
+@pytest.mark.parametrize("helper", [Query, Header, Form])
+def test_keyed_helpers_take_the_key_first(helper: type[Query]):
+    marker = helper("userId", dump_config=DumpConfig(exclude_none=True))
+
+    assert list(inspect.signature(helper).parameters) == ["key", "dump_config"]
+    assert marker.key == "userId"
+    assert marker.dump_config == {"exclude_none": True}
+
+
+@pytest.mark.parametrize("helper", [Body, File])
+def test_body_and_file_take_no_key(helper: type[Body]):
+    assert list(inspect.signature(helper).parameters) == ["dump_config"]
+    with pytest.raises(TypeError):
+        helper("key")  # pyright: ignore[reportCallIssue]
+
+
+def test_part_takes_a_request_part_chosen_in_code():
+    marker = Part("params", "userId")
+
+    assert marker.request_part is RequestPart.PARAMS
+    assert marker.key == "userId"

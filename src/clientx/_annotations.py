@@ -46,17 +46,25 @@ class DumpConfig(TypedDict, total=False):
 
 
 @dataclass
-class FieldX:
-    """Field-level metadata used by the client request builder.
+class Part:
+    """Send a parameter or model field to a request part.
+
+    Use the helper for the part you want: ``Query``, ``Header``, ``Form``, ``Body``,
+    or ``File``. ``Part`` itself is for a request part chosen in code, and for
+    ``isinstance`` checks in tooling: every helper is a ``Part``.
+
+    In query parameters, headers, and form data, a mapping or a Pydantic model is
+    merged into the part, and any other value is sent under ``key``, or under the
+    parameter or field name without one (with hyphens instead of underscores for
+    headers). A ``None`` value is left out.
 
     Attributes:
-        request_part: Target request payload section for a field. Accepts either
-            a ``RequestPart`` member, a supported string value, or ``None``.
-            Defaults to ``None``.
-        dump_config: Optional Pydantic dump options used when serializing the
-            field value. Defaults to an empty ``DumpConfig``.
-        key: Optional key name used when mapping scalar values into keyed request
-            sections such as query params or headers. Defaults to ``None``.
+        request_part: The request part: a ``RequestPart`` member, its string value,
+            or ``None``. Strings are converted to ``RequestPart``.
+        key: The name a single value is sent under in query parameters, headers,
+            or form data. Ignored for ``json`` and ``files``.
+        dump_config: Options for ``model_dump`` when the value is a Pydantic model,
+            on top of ClientX's defaults (``mode="json"``, ``by_alias=True``).
     """
 
     request_part: RequestPartName | RequestPart | None = field(default=None)
@@ -97,3 +105,84 @@ class RequestPart(StrEnum):
             The matching ``RequestPart`` member, or ``None`` when there is no match.
         """
         return cls(value) if value in RequestPart else None
+
+
+@dataclass
+class Query(Part):
+    """Send the value as query parameters.
+
+    ``Annotated[int | None, Query("userId")]`` sends ``?userId=1``, and nothing when
+    the value is ``None``. Without a key, a single value is sent under the parameter
+    name, and a mapping or model is merged into the query parameters.
+
+    Attributes:
+        key: The query parameter name. Defaults to the parameter or field name.
+        dump_config: Options for ``model_dump`` when the value is a Pydantic model.
+    """
+
+    request_part: RequestPartName | RequestPart | None = field(default=RequestPart.PARAMS, init=False)
+
+
+@dataclass
+class Header(Part):
+    """Send the value as headers.
+
+    ``Annotated[str, Header("Authorization")]`` sends an ``Authorization`` header.
+    Without a key, a single value is sent under the parameter name with hyphens
+    instead of underscores (``request_id`` becomes ``request-id``), and a mapping or
+    model is merged into the headers. Numbers and booleans are sent as text.
+
+    Attributes:
+        key: The header name, used as given. Defaults to the parameter or field name,
+            with hyphens instead of underscores.
+        dump_config: Options for ``model_dump`` when the value is a Pydantic model.
+    """
+
+    request_part: RequestPartName | RequestPart | None = field(default=RequestPart.HEADERS, init=False)
+
+
+@dataclass
+class Form(Part):
+    """Send the value as form data (``application/x-www-form-urlencoded``).
+
+    ``Annotated[str, Form("username")]`` sends ``username=...``. Without a key, a
+    single value is sent under the parameter name, and a mapping or model is merged
+    into the form data.
+
+    Attributes:
+        key: The form field name. Defaults to the parameter or field name.
+        dump_config: Options for ``model_dump`` when the value is a Pydantic model.
+    """
+
+    request_part: RequestPartName | RequestPart | None = field(default=RequestPart.DATA, init=False)
+
+
+@dataclass
+class Body(Part):
+    """Send the value as the JSON body.
+
+    The value is sent as given: a Pydantic model is dumped (by alias, in JSON mode),
+    and any other value must be JSON-serializable. For a PATCH, send only the fields
+    that were set with ``Body(dump_config=DumpConfig(exclude_unset=True))``.
+
+    Attributes:
+        dump_config: Options for ``model_dump`` when the value is a Pydantic model.
+    """
+
+    request_part: RequestPartName | RequestPart | None = field(default=RequestPart.JSON, init=False)
+    key: str | None = field(default=None, init=False)
+
+
+@dataclass
+class File(Part):
+    """Send the value as multipart file uploads.
+
+    The value is passed to httpx2 as ``files``: a mapping of field names to file
+    contents, file objects, or ``(filename, content, content_type)`` tuples.
+
+    Attributes:
+        dump_config: Options for ``model_dump`` when the value is a Pydantic model.
+    """
+
+    request_part: RequestPartName | RequestPart | None = field(default=RequestPart.FILES, init=False)
+    key: str | None = field(default=None, init=False)

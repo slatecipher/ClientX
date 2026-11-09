@@ -30,9 +30,10 @@ class UnconsumableArgumentError(ClientXError, TypeError):
             "Expected one of:\n"
             "  • argument name is a RequestPart "
             "(e.g. 'json', 'params', 'data', 'files', 'headers')\n"
-            "  • argument is Annotated[..., FieldX(RequestPart.*)]\n"
+            "  • argument is annotated with a request part: "
+            "Annotated[..., Query()], Header(), Form(), Body(), File(), or Part(RequestPart.*)\n"
             "  • argument value is a pydantic BaseModel\n"
-            "Fix: rename the parameter, annotate it with FieldX(RequestPart.*), "
+            "Fix: rename the parameter, annotate it with Query(...), Header(...), Form(...), Body() or File(), "
             "or wrap it in a BaseModel."
         )
 

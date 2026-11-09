@@ -234,10 +234,10 @@ class RequestFactory:
 
             Parameters are converted into request parts using one of three strategies:
             - Parameter name matches a ``RequestPart`` (for example ``json`` or ``params``).
-            - Parameter is annotated with a ``RequestPart`` via ``Annotated`` metadata.
+            - Parameter is annotated with a ``Part``, such as ``Query()`` or ``Body()``, via ``Annotated``.
             - Parameter value is a Pydantic model, expanded by ``ModelExtractor``.
 
-            In ``params``, ``headers``, and ``data``, a ``FieldX`` value that isn't a
+            In ``params``, ``headers``, and ``data``, a ``Part`` value that isn't a
             mapping is sent under its ``key``, or under the parameter name (with
             hyphens for headers). It's left out when it is ``None``, so optional
             query parameters, headers, and form fields can default to ``None``.
@@ -258,18 +258,18 @@ class RequestFactory:
 
             value = cursor.consume(field_name)
 
-            fieldx = annotation.fieldx
+            marker = annotation.part
 
             named_part = RequestPart.get(field_name)
-            if part := named_part or fieldx.request_part:
+            if part := named_part or marker.request_part:
                 if isinstance(value, BaseModel):
-                    payload = dump_model(value, fieldx.dump_config)
-                elif _sends_single_value(part, fieldx.key, value, whole_part=named_part is not None):
+                    payload = dump_model(value, marker.dump_config)
+                elif _sends_single_value(part, marker.key, value, whole_part=named_part is not None):
                     if value is None:
                         # Leave it out: httpx2 sends None as an empty query or form value and rejects it as a header.
                         continue
                     # Like a model field in JSON mode: an Enum becomes its value, a datetime ISO 8601.
-                    payload = {fieldx.key or _default_name(field_name, part): to_jsonable_python(value)}
+                    payload = {marker.key or _default_name(field_name, part): to_jsonable_python(value)}
                 else:
                     payload = value
 
@@ -277,7 +277,7 @@ class RequestFactory:
                 continue
 
             elif isinstance(value, BaseModel):
-                parts.append(model_extractor(model=value, dump_config=fieldx.dump_config))
+                parts.append(model_extractor(model=value, dump_config=marker.dump_config))
                 continue
 
             raise UnconsumableArgumentError(field=field_name, annotation=annotation, value=value)
@@ -387,11 +387,11 @@ class ModelExtractor:
         request: defaultdict[str, dict[str, Any]] = defaultdict(dict)
 
         for key in list(dump):
-            fieldx = annotation_map[key].fieldx
-            if part := fieldx.request_part:
+            marker = annotation_map[key].part
+            if part := marker.request_part:
                 value = dump.pop(key)
-                if _sends_single_value(part, fieldx.key, value, whole_part=False):
-                    request[part][fieldx.key or _default_name(key, part)] = value
+                if _sends_single_value(part, marker.key, value, whole_part=False):
+                    request[part][marker.key or _default_name(key, part)] = value
                 else:
                     request[part].update(value)
 
