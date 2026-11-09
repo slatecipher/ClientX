@@ -585,7 +585,7 @@ ClientX raises explicit errors for common contract violations:
 
 - missing return annotation -> `MissingReturnTypeError`
 - typed return without decoder -> `MissingDecoderError`
-- endpoint method named like something `ClientX` already has (`send`, `user_agent`, `client`, or a dunder method) -> `EndpointNameConflictError`
+- endpoint method named like something `ClientX` already has (`user_agent`, `client`, or a dunder method) -> `EndpointNameConflictError`
 - path placeholders not provided -> `MissingPathArgumentsError`
 - argument cannot map to request parts -> `UnconsumableArgumentError`
 

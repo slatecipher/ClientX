@@ -88,20 +88,28 @@ class ClientX:
         self._user_agent = value or type(self)._default_user_agent
         self.client.headers.update({"User-Agent": self._user_agent})
 
-    def send(self, method: str, path: URL | str, *, stream: bool = False, **request_parts: Any) -> Response:
-        """Build and send a single HTTP request via the underlying ``httpx2.Client``.
 
-        Args:
-            method: HTTP method name, such as ``"GET"`` or ``"POST"``.
-            path: Request URL path or URL object relative to ``base_url`` when applicable.
-            stream: Whether to stream the response body instead of eagerly reading it.
-            **request_parts: Additional request options forwarded to ``httpx2.Client.build_request``.
+def send_request(
+    client: ClientX, method: str, path: URL | str, *, stream: bool = False, **request_parts: Any
+) -> Response:
+    """Build and send one request on ``client``'s underlying ``httpx2.Client``.
 
-        Returns:
-            The HTTP response returned by ``httpx2.Client.send``.
-        """
-        request = self.client.build_request(method=method, url=path, **request_parts)
-        return self.client.send(request, stream=stream)
+    Endpoint wrappers call this for every request. It's a module function rather
+    than a ``ClientX`` method because every attribute on ``ClientX`` is a name that
+    endpoints can't use; as a function, it leaves names such as ``send`` free.
+
+    Args:
+        client: The ClientX instance whose ``httpx2.Client`` sends the request.
+        method: HTTP method name, such as ``"GET"`` or ``"POST"``.
+        path: Request URL path or URL object relative to ``base_url`` when applicable.
+        stream: Whether to stream the response body instead of eagerly reading it.
+        **request_parts: Additional request options forwarded to ``httpx2.Client.build_request``.
+
+    Returns:
+        The HTTP response returned by ``httpx2.Client.send``.
+    """
+    request = client.client.build_request(method=method, url=path, **request_parts)
+    return client.client.send(request, stream=stream)
 
 
 __all__ = ["ClientX"]

@@ -1,6 +1,6 @@
 """Streamed responses must always release their connection.
 
-These tests go through the real ``ClientX.send`` with a mock transport whose
+These tests go through the real ``send_request`` with a mock transport whose
 byte stream records when it is closed, which is what returns the connection
 to the pool.
 """
