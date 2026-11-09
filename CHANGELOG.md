@@ -16,4 +16,5 @@ First public release.
 - Streaming with `StreamLinesDecoder`, `StreamChunksDecoder` and custom `StreamDecoder` subclasses. ClientX releases the connection when iteration ends. `StreamResponseDecoder` returns the open streamed response, which the caller reads to the end or closes.
 - Endpoint metadata: an `EndpointRegister` of `Endpoint` objects for tooling, tags, per-endpoint timeouts, and deprecation warnings with `DeprecatedMessage`.
 - A `ClientXError` base class for all ClientX exceptions.
+- Structured debug logging: one `DEBUG` record per endpoint call on the `clientx` logger, with `clientx_*` attributes for the endpoint, method, path, request parts, status, elapsed time, and error. Values such as header values, bodies, and query strings are never logged.
 - Support for Python 3.12, 3.13 and 3.14, with inline type information (`py.typed`).

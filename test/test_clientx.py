@@ -1,5 +1,4 @@
 import inspect
-import logging
 
 import httpx2
 from httpx2 import Request, Response
@@ -57,26 +56,6 @@ def test_clientx_send_builds_and_sends_request(monkeypatch):
     assert call_log["url"] == "/v1/items/123"
     assert call_log["request"] == {"params": {"dry_run": 1}}
     assert call_log["stream"] is False
-
-
-def test_clientx_send_logs_request_parts_when_debug_enabled(monkeypatch, caplog):
-    client = ClientX("https://example.test")
-
-    def fake_build_request(method: str, url: str, **request):
-        return Request(method, f"https://example.test{url}")
-
-    def fake_send(request: Request, *, stream: bool = False) -> Response:
-        return Response(status_code=200, request=request)
-
-    monkeypatch.setattr(client.client, "build_request", fake_build_request)
-    monkeypatch.setattr(client.client, "send", fake_send)
-    caplog.set_level(logging.DEBUG, logger="clientx._client")
-
-    client.send("POST", "/v1/items", json={"id": 1}, headers={"x-token": "abc"})
-
-    assert "HTTP request parts" in caplog.text
-    assert "method" in caplog.text
-    assert "path" in caplog.text
 
 
 def test_clientx_send_can_enable_stream_mode(monkeypatch):

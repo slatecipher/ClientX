@@ -4,7 +4,7 @@ from beeceptor import Beeceptor
 
 
 def main() -> None:
-    # Print the request ClientX builds for each call; it logs them at DEBUG level.
+    # Print a line for each endpoint call; ClientX logs them on the `clientx` logger at DEBUG level.
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(name)s %(message)s")
     logging.getLogger("clientx").setLevel(logging.DEBUG)
 
