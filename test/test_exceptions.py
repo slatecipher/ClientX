@@ -3,6 +3,7 @@ import pytest
 from clientx import ClientX
 from clientx.exceptions import (
     ClientXError,
+    EndpointNameConflictError,
     MissingDecoderError,
     MissingPathArgumentsError,
     MissingReturnTypeError,
@@ -18,6 +19,7 @@ from clientx.methods import get
         (MissingPathArgumentsError, ValueError),
         (MissingReturnTypeError, TypeError),
         (MissingDecoderError, TypeError),
+        (EndpointNameConflictError, TypeError),
     ],
 )
 def test_errors_share_clientx_base_and_keep_builtin_base(error: type[Exception], builtin_base: type[Exception]):

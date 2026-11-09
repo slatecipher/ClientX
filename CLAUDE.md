@@ -34,6 +34,7 @@ uv run pytest -k "deprecat" --no-cov                        # by keyword, skip c
 The public API is `clientx/__init__.py`, which also re-exports `httpx2.Response` and related types, plus the `clientx.methods`, `clientx.decoders` and `clientx.exceptions` modules. Modules whose names start with `_` are internal.
 
 **Decoration time** (`_decorators.py`, `ApiMethod.__call__`): each verb decorator does the following:
+0. Rejects method names that `ClientX` already uses (`send`, `user_agent`, `client`, dunders; computed from `dir(ClientX)` and its annotations) with `EndpointNameConflictError`. Overriding `send()` without the decorator is still allowed.
 1. Builds an `Endpoint` (`_endpoint_context.py`) that holds the method, a `URLPath` template, the decoder, the deprecation hook, tags and the timeout. `Endpoint.stream` is derived from the decoder: `StreamDecoder` subclasses and `StreamResponseDecoder` stream; there is no `stream=` option.
 2. Sets `endpoint.func = wrapper`. The `func` setter captures the signature, resolves the return type with `get_type_hints`, and validates the decoder. As a result, `MissingReturnTypeError` and `MissingDecoderError` are raised **when the class is defined**, not when the method is called.
 3. Appends the endpoint to `EndpointRegister.registry`, a process-wide `ClassVar` list. `test/conftest.py` has an autouse fixture that resets this list for every test, so tests that define client classes stay isolated.
