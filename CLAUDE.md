@@ -45,7 +45,7 @@ The public API is `clientx/__init__.py`, which also re-exports `httpx2.Response`
    - Path placeholders `{name}` are consumed first and rendered.
    - Each remaining parameter is mapped to a request part, in this priority order: (a) the parameter name is itself a `RequestPart` (`params`, `json`, `headers`, `data`, `files`); (b) `Annotated[..., FieldX(part, key=..., dump_config=...)]` metadata; (c) the value is a Pydantic model, which `ModelExtractor` expands field by field. Unannotated model fields go to JSON. Anything else raises `UnconsumableArgumentError`.
    - The resulting part dicts are merged: dict values are shallow-merged and later parts win. The result is a `RequestSpec(path, parts)`.
-4. `ClientX.send()` builds and sends the request on the wrapped `httpx2.Client`.
+4. `ClientX.send()` builds and sends the request on the wrapped `httpx2.Client`. The wrapper times the call and logs one DEBUG record on the `clientx` logger (`_logging.py`) after the response or the failure (which it re-raises). The record has fixed `clientx_*` attributes and must never include values (header values, bodies, query strings); `test/test_logging.py` checks this.
 5. If a decoder was given, it always runs and its output is returned (`_decode` in `_decorators.py`). A `StreamDecoder`'s iterator is wrapped so the response closes when iteration ends; a `StreamResponseDecoder` hands the open response to the caller. Without a decoder, `None` returns nothing and `Response` returns the raw (already read) response.
 
 `_annotation_extractor.py` normalizes `Annotated` metadata from function signatures and from Pydantic `FieldInfo`/computed fields, including aliases, into `AnnotationInfo`/`NamedAnnotation`. Both the signature path and the model path use it.

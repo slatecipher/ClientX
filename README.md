@@ -510,6 +510,42 @@ client = ClientX(
 - `user_agent` defaults to `ClientX/<version>`.
 - Additional kwargs are forwarded to `httpx2.Client(...)`.
 
+## Logging
+
+ClientX logs one record per endpoint call on the `clientx` logger, at `DEBUG` level, after the response arrives or the request fails:
+
+```
+DEBUG:clientx:ClientX request: POST /users/42 -> 201 in 12.3 ms (UsersClient.update_user)
+```
+
+To see these records:
+
+```python
+import logging
+
+logging.basicConfig(level=logging.WARNING)
+logging.getLogger("clientx").setLevel(logging.DEBUG)
+```
+
+Each record also has these attributes, for structured log handlers such as JSON formatters:
+
+| Attribute | Example | Meaning |
+|---|---|---|
+| `clientx_endpoint` | `"UsersClient.update_user"` | The endpoint method. |
+| `clientx_method` | `"POST"` | The HTTP method. |
+| `clientx_path` | `"/users/42"` | The rendered path, without the query string. |
+| `clientx_parts` | `["headers", "json"]` | The names of the request parts sent. |
+| `clientx_stream` | `False` | Whether the response is streamed. For a stream, the elapsed time covers the response headers only. |
+| `clientx_status` | `201` | The status code, or `None` if the request failed. |
+| `clientx_elapsed_ms` | `12.3` | Time to send the request and receive the response, in milliseconds. |
+| `clientx_error` | `None` | The exception's class name if the request failed, such as `"ConnectTimeout"`. ClientX re-raises the exception. |
+
+ClientX never logs values: no header values, request bodies, or query strings.
+
+httpx2 also logs every request, at `INFO` level on the `httpx2` logger, and its message includes the full URL with the query string. To hide those records, use `logging.getLogger("httpx2").setLevel(logging.WARNING)`.
+
+Deprecated endpoints emit a `DeprecationWarning` through Python's `warnings` module, not a log record. Python hides `DeprecationWarning` by default unless it's triggered by code in `__main__` or under a test runner such as pytest. To send warnings to your logs, call `logging.captureWarnings(True)`; they then appear on the `py.warnings` logger.
+
 ## Error Rules
 
 ClientX raises explicit errors for common contract violations:

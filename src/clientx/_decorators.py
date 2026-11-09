@@ -1,3 +1,4 @@
+import time
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
 from functools import wraps
@@ -17,6 +18,7 @@ from clientx._endpoint_context import (
     Endpoint,
     EndpointRegister,
 )
+from clientx._logging import EndpointCall, log_endpoint_call
 from clientx._request_factory import RequestFactory
 from clientx.decoders import StreamDecoder
 
@@ -165,6 +167,7 @@ class ApiMethod:
                 timeout=timeout,
             )
             request_factory = RequestFactory(endpoint)
+            endpoint_name = func.__qualname__
 
             @wraps(func)
             def wrapper(_self: T, *args: P.args, **kwargs: P.kwargs) -> R:
@@ -172,15 +175,30 @@ class ApiMethod:
 
                 spec = request_factory(arguments=endpoint.bind(_self, args, kwargs))
 
+                # Taken before `timeout` is added: it's a request option, not a request part.
+                call = EndpointCall(
+                    endpoint=endpoint_name,
+                    method=endpoint.method,
+                    path=spec.path,
+                    parts=tuple(str(part) for part in spec.parts),
+                    stream=endpoint.stream,
+                )
+
                 if endpoint.timeout is not None:
                     spec.parts.setdefault("timeout", endpoint.timeout)
 
-                response = _self.send(
-                    method=endpoint.method,
-                    path=spec.path,
-                    stream=endpoint.stream,
-                    **spec.parts,
-                )
+                started = time.perf_counter()
+                try:
+                    response = _self.send(
+                        method=endpoint.method,
+                        path=spec.path,
+                        stream=endpoint.stream,
+                        **spec.parts,
+                    )
+                except Exception as error:
+                    log_endpoint_call(call, started=started, error=error)
+                    raise
+                log_endpoint_call(call, started=started, status=response.status_code)
 
                 # A decoder, when given, always runs, whatever the return annotation.
                 if decoder is not None:
