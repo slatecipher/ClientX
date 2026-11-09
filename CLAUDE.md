@@ -57,6 +57,8 @@ The public API is `clientx/__init__.py`, which also re-exports `httpx2.Response`
 
 `ClientX.__init__` forwards `**kwargs` to `httpx2.Client`. They are typed by the `HttpxClientKwargs` TypedDict in `_client_types.py`. `user_agent` is a property that writes the `User-Agent` header.
 
+`tools.py` (public, `clientx.tools`) turns a client's endpoints into AI tools: it walks the client's class (and mounted resources) with `_registry.endpoint_for`, builds an argument model per endpoint (internal field names with parameter-name aliases, so `json` can't clash with `BaseModel`), and serializes results to JSON-friendly values. It must stay free of AI-SDK dependencies; protocol adapters build on it.
+
 `examples/beeceptor/` contains a complete example client.
 
 ## Conventions and releasing
