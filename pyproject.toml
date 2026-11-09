@@ -9,7 +9,7 @@ authors = [
 requires-python = ">=3.12"
 license = "MIT"
 license-files = ["LICENSE"]
-keywords = ["http", "api", "client", "httpx", "httpx2", "pydantic", "typed", "declarative"]
+keywords = ["http", "api", "client", "httpx", "httpx2", "pydantic", "typed", "declarative", "mcp", "ai-agents"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Framework :: Pydantic :: 2",
@@ -29,6 +29,10 @@ dependencies = [
     "pydantic>=2.12.5",
 ]
 
+[project.optional-dependencies]
+# Serve a client as an MCP server: `pip install "clientx[mcp]"`.
+mcp = ["mcp>=2.3,<3"]
+
 [project.urls]
 Repository = "https://github.com/slatecipher/ClientX"
 Issues = "https://github.com/slatecipher/ClientX/issues"
@@ -40,6 +44,7 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
+    "mcp>=2.3,<3",
     "pyright>=1.1.411",
     "pytest>=9.0.2",
     "pytest-cov>=7.0.0",

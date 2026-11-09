@@ -1,0 +1,174 @@
+"""Serve a ClientX client as an MCP server.
+
+Requires the ``mcp`` extra: ``pip install "clientx[mcp]"``.
+
+Each tool from ``clientx.tools.list_tools`` becomes an MCP tool with the same name,
+description, and JSON Schemas, and the HTTP-method hints become MCP tool
+annotations. Tool calls run through the client, so its auth, decoders, and
+logging apply, and errors come back to the MCP client as error results instead of
+stopping the server::
+
+    from clientx.mcp import run_mcp_server
+
+    run_mcp_server(ExampleAPI("https://api.example.com"), read_only=True)
+"""
+
+from __future__ import annotations
+
+import json
+from collections.abc import Iterable
+from typing import Any
+
+try:
+    import anyio
+    from mcp import types
+    from mcp.server.lowlevel import Server
+    from mcp.server.stdio import stdio_server
+except ImportError as error:
+    raise ImportError('clientx.mcp requires the "mcp" extra: pip install "clientx[mcp]"') from error
+
+from clientx._client import ClientX
+from clientx.tools import Tool, list_tools
+
+
+def create_mcp_server(
+    client: ClientX,
+    *,
+    name: str | None = None,
+    instructions: str | None = None,
+    read_only: bool = False,
+    include_tags: Iterable[str] | None = None,
+    exclude_tags: Iterable[str] = (),
+    include_deprecated: bool = False,
+) -> Server[Any]:
+    """Create an MCP server whose tools are the client's endpoints.
+
+    The tool filters work as in ``clientx.tools.list_tools``. To serve over stdio,
+    use ``run_mcp_server``; for other transports, run the returned low-level
+    ``mcp.server.lowlevel.Server`` yourself.
+
+    Args:
+        client: The client whose endpoints become tools. Tools call through it.
+        name: Server name reported to MCP clients. Defaults to the client's class name.
+        instructions: Optional instructions that MCP clients may show to the model.
+        read_only: Only include endpoints whose HTTP method is read-only.
+        include_tags: Only include endpoints with at least one of these tags.
+        exclude_tags: Leave out endpoints with any of these tags.
+        include_deprecated: Include deprecated endpoints, which are left out by default.
+
+    Returns:
+        The MCP server.
+    """
+    tools = {
+        tool.name: tool
+        for tool in list_tools(
+            client,
+            read_only=read_only,
+            include_tags=include_tags,
+            exclude_tags=exclude_tags,
+            include_deprecated=include_deprecated,
+        )
+    }
+    definitions = [_definition(tool) for tool in tools.values()]
+
+    async def on_list_tools(context: object, params: types.PaginatedRequestParams | None) -> types.ListToolsResult:
+        return types.ListToolsResult(tools=definitions)
+
+    async def on_call_tool(context: object, params: types.CallToolRequestParams) -> types.CallToolResult:
+        tool = tools.get(params.name)
+        if tool is None:
+            return _error_result(f"Unknown tool: {params.name}")
+        try:
+            # Endpoints are synchronous; run them off the event loop.
+            result = await anyio.to_thread.run_sync(tool.call, params.arguments or {})
+        except Exception as error:  # noqa: BLE001 - every failure must reach the MCP client as an error result
+            return _error_result(f"{type(error).__name__}: {error}")
+        return _success_result(tool, result)
+
+    return Server(
+        name or type(client).__name__,
+        instructions=instructions,
+        on_list_tools=on_list_tools,
+        on_call_tool=on_call_tool,
+    )
+
+
+def run_mcp_server(
+    client: ClientX,
+    *,
+    name: str | None = None,
+    instructions: str | None = None,
+    read_only: bool = False,
+    include_tags: Iterable[str] | None = None,
+    exclude_tags: Iterable[str] = (),
+    include_deprecated: bool = False,
+) -> None:
+    """Serve the client's endpoints as MCP tools over stdio until the MCP client disconnects.
+
+    MCP messages use stdout, so the server process must not print to it; use
+    logging, which writes to stderr by default. The arguments are the same as for
+    ``create_mcp_server``.
+    """
+    server = create_mcp_server(
+        client,
+        name=name,
+        instructions=instructions,
+        read_only=read_only,
+        include_tags=include_tags,
+        exclude_tags=exclude_tags,
+        include_deprecated=include_deprecated,
+    )
+    anyio.run(_serve_stdio, server)
+
+
+async def _serve_stdio(server: Server[Any]) -> None:
+    """Run ``server`` on this process's stdin and stdout."""
+    async with stdio_server() as (read_stream, write_stream):
+        await server.run(read_stream, write_stream, server.create_initialization_options())
+
+
+def _definition(tool: Tool) -> types.Tool:
+    """Describe a ClientX tool as an MCP tool."""
+    return types.Tool(
+        name=tool.name,
+        description=tool.description,
+        input_schema=tool.input_schema,
+        output_schema=_object_schema(tool.output_schema),
+        annotations=types.ToolAnnotations(
+            read_only_hint=tool.read_only,
+            destructive_hint=tool.destructive,
+            idempotent_hint=tool.idempotent,
+            open_world_hint=True,
+        ),
+    )
+
+
+def _object_schema(schema: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Return an output schema MCP accepts: an object, wrapping other results in ``{"result": ...}``.
+
+    ``$defs`` move to the top level so that ``#/$defs/...`` references still resolve.
+    """
+    if schema is None or schema.get("type") == "object":
+        return schema
+    inner = dict(schema)
+    wrapped: dict[str, Any] = {"type": "object", "properties": {"result": inner}, "required": ["result"]}
+    if "$defs" in inner:
+        wrapped["$defs"] = inner.pop("$defs")
+    return wrapped
+
+
+def _success_result(tool: Tool, result: Any) -> types.CallToolResult:
+    """Return the result as structured content and as JSON text."""
+    text = types.TextContent(type="text", text=json.dumps(result, ensure_ascii=False))
+    if tool.output_schema is None:
+        return types.CallToolResult(content=[text])
+    structured = result if tool.output_schema.get("type") == "object" else {"result": result}
+    return types.CallToolResult(content=[text], structured_content=structured)
+
+
+def _error_result(message: str) -> types.CallToolResult:
+    """Return a tool error that the MCP client can show to the model."""
+    return types.CallToolResult(content=[types.TextContent(type="text", text=message)], is_error=True)
+
+
+__all__ = ["create_mcp_server", "run_mcp_server"]

@@ -17,6 +17,7 @@ First public release.
 - Endpoint metadata: an `EndpointRegister` of `Endpoint` objects for tooling, tags, per-endpoint timeouts, and deprecation warnings with `DeprecatedMessage`.
 - Resources: group endpoints into `Resource` classes with a shared path prefix and tags, and mount them on a client (or nest them) to call them as `client.users.retrieve(...)` through the client's connection.
 - AI tools: `clientx.tools.list_tools()` describes a client's endpoints, including those on resources, as tools with JSON Schemas for arguments and results and safety hints from the HTTP method. `Tool.call()` validates a model's arguments and runs the endpoint through the client.
+- MCP adapter (the `mcp` extra): `clientx.mcp.run_mcp_server()` serves a client's endpoints as MCP tools over stdio, with method-based tool annotations, structured results, and errors returned as tool results. `create_mcp_server()` returns the server for other transports.
 - A `ClientXError` base class for all ClientX exceptions.
 - Structured debug logging: one `DEBUG` record per endpoint call on the `clientx` logger, with `clientx_*` attributes for the endpoint, method, path, request parts, status, elapsed time, and error. Values such as header values, bodies, and query strings are never logged.
 - Support for Python 3.12, 3.13 and 3.14, with inline type information (`py.typed`).

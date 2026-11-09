@@ -5,7 +5,7 @@ name should be a deliberate, changelogged decision, so it must fail a test first
 """
 
 import clientx
-from clientx import decoders, exceptions, methods, tools
+from clientx import decoders, exceptions, mcp, methods, tools
 from clientx.methods import get
 
 
@@ -57,7 +57,8 @@ def test_submodule_exports():
         "UnconsumableArgumentError",
     ]
     assert sorted(tools.__all__) == ["Tool", "list_tools"]
-    for module in (methods, decoders, exceptions, tools):
+    assert sorted(mcp.__all__) == ["create_mcp_server", "run_mcp_server"]
+    for module in (methods, decoders, exceptions, tools, mcp):
         for name in module.__all__:
             assert hasattr(module, name), f"{module.__name__}.{name}"
 

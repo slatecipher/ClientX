@@ -23,7 +23,7 @@ ClientX is inspired by FastAPI, which reads type hints to define server endpoint
 - **Type checkers see real types.** Decorated methods keep their signatures, so editors and type checkers see the actual parameters and return types.
 - **Mistakes surface early.** A missing return annotation or decoder raises an error when the class is defined, not on the first request.
 - **Pydantic v2 throughout.** Send models as request bodies, query parameters, or headers, and decode responses into models.
-- **Ready for AI agents.** `clientx.tools` turns a client's endpoints into tool definitions for AI models, built from the same signatures, docstrings, and types.
+- **Ready for AI agents.** `clientx.tools` turns a client's endpoints into tool definitions for AI models, built from the same signatures, docstrings, and types, and `clientx[mcp]` serves them as an MCP server in one call.
 - **Built on httpx2.** Every `httpx2.Client` option is available, including auth, timeouts, proxies, and custom transports, and responses can be streamed.
 
 ClientX is an independent project. It isn't affiliated with or endorsed by the FastAPI, Pydantic, or httpx2 projects.
@@ -38,6 +38,7 @@ ClientX is an independent project. It isn't affiliated with or endorsed by the F
 - Endpoint metadata tags for registry filtering and sorting.
 - Full access to `httpx2.Client` configuration through `ClientX(...)` kwargs.
 - Endpoints described as AI tools, with JSON Schemas and safety hints (`clientx.tools`).
+- A client served as an MCP server in one call (`clientx[mcp]`).
 
 ## Project status
 
@@ -50,6 +51,8 @@ ClientX is pre-1.0, so the API may change between minor versions. Changes are li
 ```bash
 pip install clientx
 ```
+
+To serve a client as an MCP server, install the `mcp` extra: `pip install "clientx[mcp]"`.
 
 ## Quickstart
 
@@ -686,6 +689,35 @@ Each `Tool` has:
 - **Expose only what an agent needs.** Tools can call `POST`, `PUT`, and `DELETE` endpoints. The hints come from the HTTP method, so an API that changes data on `GET` isn't flagged.
 - **Keep credentials in the client's configuration** (`auth=`, `headers=`), never in endpoint parameters: parameters become arguments the model sees and fills in.
 - `call` validates the arguments before sending anything and raises `pydantic.ValidationError` if they don't match. Request and decoder errors propagate. Most agent loops send the error text back to the model.
+
+### Serving a client over MCP
+
+With the `mcp` extra, one call turns a client into an [MCP](https://modelcontextprotocol.io) server, so AI apps such as Claude Desktop, Claude Code, and other MCP clients can use your API without any agent code:
+
+```bash
+pip install "clientx[mcp]"
+```
+
+```python
+# server.py
+from clientx.mcp import run_mcp_server
+
+from myapp.clients import ExampleAPI
+
+run_mcp_server(ExampleAPI("https://api.example.com", auth=("user", "secret")), read_only=True)
+```
+
+Then point your MCP client at the command `python server.py`. In Claude Desktop's `claude_desktop_config.json`, for example:
+
+```json
+{"mcpServers": {"example-api": {"command": "python", "args": ["/path/to/server.py"]}}}
+```
+
+- The server's tools are exactly the ones `list_tools` returns, with the same names, descriptions, schemas, and filters (`read_only`, `include_tags`, `exclude_tags`, `include_deprecated`). `name=` and `instructions=` set what the server reports to MCP clients.
+- The HTTP-method hints become MCP tool annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`), which MCP clients can use to ask for confirmation before changing data.
+- Results come back as structured content and as JSON text. Invalid arguments and request failures come back as error results the model can read, and the server keeps running.
+- MCP messages use stdout, so don't print from the server process. Logging writes to stderr by default.
+- `run_mcp_server` serves over stdio. For other transports, `create_mcp_server` returns the low-level `mcp.server.lowlevel.Server` to run yourself.
 
 ## Error Rules
 
