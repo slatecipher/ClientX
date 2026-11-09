@@ -16,7 +16,11 @@ type CookieTypes = httpx2.Cookies | CookieJar | dict[str, str] | list[tuple[str,
 # Mirrors httpx2's private CertTypes: a cert file, (cert, key), or (cert, key, password).
 type CertTypes = str | tuple[str, str] | tuple[str, str, str]
 
-type EventHook = Callable[[httpx2.Request | httpx2.Response], None]
+# Mirrors httpx2's EventHook (Callable[..., Any]). Request hooks receive an
+# httpx2.Request and response hooks an httpx2.Response, so one precise callable
+# type can't describe both. Callable[[Request | Response], None] would reject a
+# hook typed for the one object it receives.
+type EventHook = Callable[..., object]
 
 type EventHooks = Mapping[str, list[EventHook]]
 

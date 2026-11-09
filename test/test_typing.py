@@ -132,6 +132,30 @@ def test_stream_is_decided_by_the_decoder_not_a_flag() -> None:
             def get_user(self, user_id: str) -> User: ...
 
 
+def test_event_hooks_accept_hooks_typed_for_what_they_receive():
+    """Request hooks get an httpx2.Request and response hooks an httpx2.Response."""
+    seen: list[str] = []
+
+    def on_request(request: httpx2.Request) -> None:
+        seen.append(f"request {request.url.path}")
+
+    def on_response(response: httpx2.Response) -> None:
+        seen.append(f"response {response.status_code}")
+
+    class UsersClient(ClientX):
+        @get("/users")
+        def list_users(self) -> Response: ...
+
+    client = UsersClient(
+        "https://example.test",
+        transport=httpx2.MockTransport(lambda request: httpx2.Response(200)),
+        event_hooks={"request": [on_request], "response": [on_response]},
+    )
+    client.list_users()
+
+    assert seen == ["request /users", "response 200"]
+
+
 def _construct_with_every_httpx2_option() -> ClientX:
     """Static check only (never called): every httpx2.Client option type-checks, typos don't.
 
