@@ -467,6 +467,7 @@ class ItemsClient(ClientX):
 `list_items("book", Sort.OLDEST)` sends `GET /items?type=book&sort=oldest`.
 
 - `key` works with `PARAMS`, `HEADERS`, and `DATA`. The value is sent as `{key: value}`, and an `Enum` member is sent as its `.value`.
+- A value of `None` is left out of the request, so an optional query parameter, header, or form field can default to `None`: `user_id: Annotated[int | None, FieldX(RequestPart.PARAMS, key="userId")] = None` adds `?userId=...` only when a user ID is given. To send an empty value, pass `""`.
 - Without `key`, the value must already be a mapping, such as `dict[str, str]`. A single string or number fails when the request is built.
 - `key` is ignored for `JSON` and `FILES`, which send the value as given.
 - `key` only works on method parameters. Inside a Pydantic model, fields routed to a request part must be mappings (see below).
@@ -496,6 +497,8 @@ class UsersClient(ClientX):
 ```
 
 In model extraction, fields explicitly routed to `HEADERS`, `PARAMS`, `DATA`, or `FILES` should be mappings. Unassigned fields default to JSON.
+
+`None` values are never sent as query parameters, headers, or form fields, whether they come from a single value, a mapping, or a model field. A JSON body keeps them as `null`. To leave them out of a JSON body too, use `DumpConfig(exclude_none=True)`, shown below.
 
 ### Serialization control with `DumpConfig`
 

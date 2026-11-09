@@ -15,6 +15,9 @@ from clientx._annotations import DumpConfig, RequestPart
 from clientx._endpoint_context import Endpoint
 from clientx.exceptions import UnconsumableArgumentError
 
+# Request parts that are flat name-value pairs, where a single value can be sent under a key.
+_KEYED_PARTS = frozenset({RequestPart.PARAMS, RequestPart.HEADERS, RequestPart.DATA})
+
 
 @dataclass
 class ArgumentCursor:
@@ -177,6 +180,10 @@ class RequestFactory:
             - Parameter is annotated with a ``RequestPart`` via ``Annotated`` metadata.
             - Parameter value is a Pydantic model, expanded by ``ModelExtractor``.
 
+            A ``FieldX`` value with a ``key`` is left out when it is ``None``, so
+            optional query parameters, headers, and form fields can default to ``None``.
+            ``merge_request_parts`` leaves out ``None`` values from mappings and models too.
+
         Raises:
             UnconsumableArgumentError: If a parameter cannot be mapped to a
                 request part.
@@ -197,7 +204,10 @@ class RequestFactory:
             if key := RequestPart.get(field_name) or fieldx.request_part:
                 if isinstance(value, BaseModel):
                     payload = value.model_dump(**fieldx.dump_config)
-                elif fieldx.key is not None and key in {RequestPart.PARAMS, RequestPart.HEADERS, RequestPart.DATA}:
+                elif fieldx.key is not None and key in _KEYED_PARTS:
+                    if value is None:
+                        # Leave it out: httpx2 sends None as an empty query or form value and rejects it as a header.
+                        continue
                     scalar = value.value if isinstance(value, Enum) else value
                     payload = {fieldx.key: scalar}
                 else:
@@ -223,13 +233,16 @@ class RequestFactory:
         Returns:
             Combined request mapping. Later parts win on conflicts. When both values
             are dicts, they are shallow-merged and later parts win on shared keys.
+            ``None`` values are left out of ``params``, ``headers``, and ``data``;
+            ``json`` keeps them as ``null``. Dicts passed in are never changed.
         """
         merged: dict[str, Any] = {}
 
         for part in request_parts:
             for key, value in part.items():
                 if key not in merged:
-                    merged[key] = value
+                    # Copy dicts, so merging later parts never changes a dict the caller passed in.
+                    merged[key] = dict(cast(dict[str, Any], value)) if isinstance(value, dict) else value
                     continue
                 if isinstance(merged[key], dict) and isinstance(value, dict):
                     self._warn_on_conflict(key, merged[key], cast(dict[str, Any], value))
@@ -238,6 +251,12 @@ class RequestFactory:
 
                 self._warn_on_full_overlap(key, merged[key], value)
                 merged[key] = value
+
+        # Query parameters, headers, and form fields can't represent None (httpx2 sends an empty
+        # value, or rejects it as a header), so leave those values out. JSON keeps null.
+        for key in _KEYED_PARTS:
+            if isinstance(values := merged.get(key), dict):
+                merged[key] = {name: item for name, item in cast(dict[str, Any], values).items() if item is not None}
 
         return merged
 
