@@ -5,7 +5,7 @@ from typing import Annotated, Any, BinaryIO
 
 import httpx2
 import pytest
-from pydantic import BaseModel, Field, TypeAdapter, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
 
 from clientx import ClientX, DeprecatedMessage, FieldX, RequestPart, Resource, Response, methods
 from clientx.decoders import ModelDecoder, StreamLinesDecoder, TypeAdapterDecoder
@@ -125,6 +125,27 @@ def test_defaults_and_enums_appear_in_the_input_schema():
     assert schema["properties"]["sort"] == {"$ref": "#/$defs/Sort", "default": "newest"}
     assert schema["$defs"]["Sort"]["enum"] == ["newest", "oldest"]
     assert "required" not in schema
+
+
+def test_results_use_field_aliases_like_the_output_schema():
+    class Company(BaseModel):
+        model_config = ConfigDict(populate_by_name=True)
+
+        employee_count: int = Field(alias="employeeCount")
+
+    class CompaniesAPI(ClientX):
+        @get("/companies/{company_id}", decoder=ModelDecoder(Company))
+        def retrieve(self, company_id: int) -> Company: ...
+
+    api = CompaniesAPI(
+        "https://api.example.com",
+        transport=httpx2.MockTransport(lambda r: httpx2.Response(200, json={"employeeCount": 3187})),
+    )
+    [tool] = list_tools(api)
+
+    assert tool.output_schema is not None
+    assert list(tool.output_schema["properties"]) == ["employeeCount"]
+    assert tool.call({"company_id": 1}) == {"employeeCount": 3187}
 
 
 def test_endpoint_returning_nothing_has_no_output_schema():

@@ -231,7 +231,10 @@ def _output(endpoint: Endpoint) -> tuple[dict[str, Any] | None, Callable[[Any], 
     if is_response_type(return_type):
         return _RESPONSE_SCHEMA, _response_result
     adapter: TypeAdapter[Any] = TypeAdapter(return_type)
-    return adapter.json_schema(mode="serialization"), lambda value: adapter.dump_python(value, mode="json")
+    # JSON Schema uses field aliases by default, so dump with them too: results must match the schema.
+    return adapter.json_schema(mode="serialization"), lambda value: adapter.dump_python(
+        value, mode="json", by_alias=True
+    )
 
 
 def _no_result(value: object) -> None:
