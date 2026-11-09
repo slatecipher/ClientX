@@ -544,6 +544,39 @@ ClientX never logs values: no header values, request bodies, or query strings.
 
 httpx2 also logs every request, at `INFO` level on the `httpx2` logger, and its message includes the full URL with the query string. To hide those records, use `logging.getLogger("httpx2").setLevel(logging.WARNING)`.
 
+### Your own request logging
+
+To log requests in your own format or with your own logger, use httpx2's event hooks. ClientX passes `event_hooks` through to `httpx2.Client`:
+
+```python
+import logging
+
+import httpx2
+
+from clientx import ClientX
+
+log = logging.getLogger("myapp.http")
+
+
+def log_request(request: httpx2.Request) -> None:
+    log.info("-> %s %s", request.method, request.url.path)
+
+
+def log_response(response: httpx2.Response) -> None:
+    log.info("<- %s %s %s", response.request.method, response.request.url.path, response.status_code)
+
+
+client = ClientX(
+    "https://api.example.com",
+    event_hooks={"request": [log_request], "response": [log_response]},
+)
+```
+
+- Request hooks receive the `httpx2.Request` just before it's sent. Response hooks receive the `httpx2.Response` once its headers arrive, before the body is read.
+- Hooks run for every request, including streamed ones. Don't read the body in a response hook: for a streamed endpoint, that would load the whole stream.
+- Hooks see everything, including header values and query strings, so redact anything sensitive yourself.
+- Hooks don't know which endpoint was called. ClientX's own records do (`clientx_endpoint`), so you can use both.
+
 Deprecated endpoints emit a `DeprecationWarning` through Python's `warnings` module, not a log record. Python hides `DeprecationWarning` by default unless it's triggered by code in `__main__` or under a test runner such as pytest. To send warnings to your logs, call `logging.captureWarnings(True)`; they then appear on the `py.warnings` logger.
 
 ## Error Rules
