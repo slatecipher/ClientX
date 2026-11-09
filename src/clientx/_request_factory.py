@@ -177,6 +177,9 @@ class RequestFactory:
             - Parameter is annotated with a ``RequestPart`` via ``Annotated`` metadata.
             - Parameter value is a Pydantic model, expanded by ``ModelExtractor``.
 
+            A ``FieldX`` value with a ``key`` is left out when it is ``None``, so
+            optional query parameters, headers, and form fields can default to ``None``.
+
         Raises:
             UnconsumableArgumentError: If a parameter cannot be mapped to a
                 request part.
@@ -198,6 +201,9 @@ class RequestFactory:
                 if isinstance(value, BaseModel):
                     payload = value.model_dump(**fieldx.dump_config)
                 elif fieldx.key is not None and key in {RequestPart.PARAMS, RequestPart.HEADERS, RequestPart.DATA}:
+                    if value is None:
+                        # Leave it out: httpx2 sends None as an empty query or form value and rejects it as a header.
+                        continue
                     scalar = value.value if isinstance(value, Enum) else value
                     payload = {fieldx.key: scalar}
                 else:

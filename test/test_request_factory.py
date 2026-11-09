@@ -2,14 +2,17 @@ import inspect
 from enum import StrEnum
 from typing import Annotated, cast
 
+import httpx2
 import pytest
 from pydantic import BaseModel, Field
 
+from clientx import Response
 from clientx._annotations import DumpConfig, FieldX, RequestPart
 from clientx._client import ClientX
 from clientx._endpoint_context import Endpoint
 from clientx._request_factory import ArgumentCursor, ModelExtractor, RequestFactory
 from clientx.exceptions import UnconsumableArgumentError
+from clientx.methods import get
 
 
 class Payload(BaseModel):
@@ -215,3 +218,50 @@ def test_request_factory_maps_enum_param_value_using_fieldx_key():
     spec = RequestFactory(endpoint=endpoint)(arguments)
 
     assert spec.parts["params"] == {"type": "allow"}
+
+
+@pytest.mark.parametrize("part", [RequestPart.PARAMS, RequestPart.HEADERS, RequestPart.DATA])
+def test_request_factory_leaves_out_keyed_values_that_are_none(part: RequestPart):
+    endpoint = Endpoint("POST", "/v1/items")
+
+    def handler(
+        self,
+        kind: Annotated[str | None, FieldX(part, key="kind")] = None,
+        page: Annotated[int | None, FieldX(part, key="page")] = None,
+    ) -> None: ...
+
+    endpoint.func = handler
+
+    client = cast(ClientX, object())
+    factory = RequestFactory(endpoint=endpoint)
+
+    assert factory(endpoint.bind(client=client, args=(), kwargs={})).parts == {}
+    # Other falsy values are still sent.
+    assert factory(endpoint.bind(client=client, args=(), kwargs={"page": 0})).parts == {part: {"page": 0}}
+    assert factory(endpoint.bind(client=client, args=("",), kwargs={})).parts == {part: {"kind": ""}}
+
+
+def test_optional_keyed_values_are_only_sent_when_given():
+    sent: list[httpx2.Request] = []
+
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        sent.append(request)
+        return httpx2.Response(200)
+
+    class PostsClient(ClientX):
+        @get("/posts")
+        def list_posts(
+            self,
+            user_id: Annotated[int | None, FieldX(RequestPart.PARAMS, key="userId")] = None,
+            trace_id: Annotated[str | None, FieldX(RequestPart.HEADERS, key="X-Trace-Id")] = None,
+        ) -> Response: ...
+
+    client = PostsClient("https://example.test", transport=httpx2.MockTransport(handler))
+    client.list_posts()
+    client.list_posts(user_id=1, trace_id="t-1")
+
+    assert [str(request.url) for request in sent] == [
+        "https://example.test/posts",
+        "https://example.test/posts?userId=1",
+    ]
+    assert [request.headers.get("X-Trace-Id") for request in sent] == [None, "t-1"]
