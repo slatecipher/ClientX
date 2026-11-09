@@ -471,6 +471,7 @@ class ItemsClient(ClientX):
 - Without `key`, a single value (a string, number, or list) is sent under the parameter name: `page: Annotated[int, FieldX(RequestPart.PARAMS)]` sends `?page=2`, and a list repeats the name (`?tag=a&tag=b`). Header names use hyphens instead of underscores, so `request_id` is sent as `request-id`; use `key` for an exact name. A mapping, such as `dict[str, str]`, or a Pydantic model is merged into the part.
 - `key` is ignored for `JSON` and `FILES`, which send the value as given.
 - Model fields follow the same rules (see below).
+- To reuse an annotation, name it with a `type` alias, plain or generic: `type UserId = Annotated[int | None, FieldX(RequestPart.PARAMS, key="userId")]`, or `type Query[T] = Annotated[T, FieldX(RequestPart.PARAMS)]` used as `Query[str]`. Put `None` inside the annotation (`Annotated[int | None, ...]` or `Query[int | None]`), not around it: ClientX doesn't see a `FieldX` inside `... | None`.
 
 ### By Pydantic model
 

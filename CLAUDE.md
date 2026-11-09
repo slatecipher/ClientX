@@ -55,7 +55,7 @@ The public API is `clientx/__init__.py`, which also re-exports `httpx2.Response`
 4. `send_request()` (`_client.py`) builds and sends the request on the wrapped `httpx2.Client`. The wrapper times the call and logs one DEBUG record on the `clientx` logger (`_logging.py`) after the response or the failure (which it re-raises). The record has fixed `clientx_*` attributes and must never include values (header values, bodies, query strings); `test/test_logging.py` checks this.
 5. If a decoder was given, it always runs and its output is returned (`_decode` in `_decorators.py`). A `StreamDecoder`'s iterator is wrapped so the response closes when iteration ends; a `StreamResponseDecoder` hands the open response to the caller. Without a decoder, `None` returns nothing and `Response` returns the raw (already read) response.
 
-`_annotation_extractor.py` normalizes `Annotated` metadata from function signatures and from Pydantic `FieldInfo`/computed fields, including aliases, into `AnnotationInfo`/`NamedAnnotation`. Both the signature path and the model path use it.
+`_annotation_extractor.py` normalizes `Annotated` metadata from function signatures and from Pydantic `FieldInfo`/computed fields, including aliases, into `AnnotationInfo`/`NamedAnnotation`. It expands PEP 695 `type` aliases, plain and generic (`_unwrap_type_alias`), and puts the metadata of nested `Annotated` first, the way Python flattens it. A marker inside a union such as `X | None` isn't seen. Both the signature path and the model path use it.
 
 `ClientX.__init__` forwards `**kwargs` to `httpx2.Client`. They are typed by the `HttpxClientKwargs` TypedDict in `_client_types.py`. `user_agent` is a property that writes the `User-Agent` header.
 

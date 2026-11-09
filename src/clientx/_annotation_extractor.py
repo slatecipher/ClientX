@@ -2,12 +2,37 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from inspect import Signature
-from typing import Annotated, Any, get_args, get_origin
+from typing import Annotated, Any, TypeAliasType, get_args, get_origin
 
 from pydantic import BaseModel, TypeAdapter, ValidationError
 from pydantic.fields import ComputedFieldInfo, FieldInfo
 
 from clientx._annotations import FieldX
+
+# Enough for any real chain of aliases, and a stop for cyclic ones such as `type A = B` with `type B = A`.
+_MAX_ALIAS_DEPTH = 100
+
+
+def _unwrap_type_alias(annotation: Any) -> Any:
+    """Replace a PEP 695 ``type`` alias, plain or generic, with the type it stands for.
+
+    ``type UserId = Annotated[int, ...]`` becomes ``Annotated[int, ...]``, and
+    ``QueryT[int]`` for ``type QueryT[T] = Annotated[T, ...]`` becomes
+    ``Annotated[int, ...]``. Python expands plain assignment aliases itself, but not
+    these, so their ``Annotated`` metadata would otherwise be lost.
+    """
+    for _ in range(_MAX_ALIAS_DEPTH):
+        if isinstance(annotation, TypeAliasType):
+            annotation = annotation.__value__
+        elif isinstance(alias := get_origin(annotation), TypeAliasType):
+            try:
+                annotation = alias.__value__[get_args(annotation)]
+            except TypeError:
+                # The alias's value can't take the arguments (for example `type X[T] = int`).
+                annotation = alias.__value__
+        else:
+            break
+    return annotation
 
 
 @dataclass(frozen=True)
@@ -80,14 +105,18 @@ class AnnotationExtractor:
             annotation: The type annotation to parse.
 
         Returns:
-            The normalized AnnotationInfo for the annotation.
+            The normalized AnnotationInfo for the annotation. ``type`` aliases are
+            expanded, and metadata from nested ``Annotated`` comes first, the way
+            Python flattens ``Annotated[Annotated[T, inner], outer]``.
         """
-
+        annotation = _unwrap_type_alias(annotation)
         if get_origin(annotation) is not Annotated:
             return AnnotationInfo(annotation=annotation)
 
         base, *metadata = get_args(annotation)
-        return AnnotationInfo(annotation=base, metadata=list(metadata))
+        # The base can itself be a `type` alias of an Annotated type.
+        inner = AnnotationExtractor.from_field_annotation(base)
+        return AnnotationInfo(annotation=inner.annotation, metadata=[*inner.metadata, *metadata])
 
     @staticmethod
     def from_field_info(field_info: FieldInfo | ComputedFieldInfo) -> AnnotationInfo:
@@ -106,8 +135,10 @@ class AnnotationExtractor:
         # Runtime guard for untyped callers; the annotation already rules this out for type checkers.
         if not isinstance(field_info, FieldInfo):  # pyright: ignore[reportUnnecessaryIsInstance]
             raise TypeError(f"Expected FieldInfo or ComputedFieldInfo, got {type(field_info).__name__}")
-        # FieldInfo.annotation is already the underlying type; metadata is separate.
-        return AnnotationInfo(annotation=field_info.annotation, metadata=list(field_info.metadata))
+        # Pydantic splits a field's own Annotated into annotation and metadata, but keeps a `type`
+        # alias as the annotation, so the alias's metadata has to be read from it.
+        inner = AnnotationExtractor.from_field_annotation(field_info.annotation)
+        return AnnotationInfo(annotation=inner.annotation, metadata=[*inner.metadata, *field_info.metadata])
 
     @staticmethod
     def from_signature(signature: Signature) -> dict[str, AnnotationInfo]:
