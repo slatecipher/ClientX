@@ -1,0 +1,105 @@
+# ClientX
+
+> ClientX is a library for typed, declarative HTTP API clients on Python 3.12+, built on httpx2 and Pydantic v2. You declare endpoints as decorated methods with empty bodies; ClientX builds each request from the method's signature and annotations and decodes the response into the declared return type. It can also describe a client's endpoints as AI tools and serve them over MCP.
+
+Install with `pip install clientx`, or `pip install "clientx[mcp]"` for the MCP server. ClientX depends on `httpx2`, which is a different package from `httpx`: import `httpx2`, not `httpx`.
+
+A complete client:
+
+```python
+from typing import Annotated
+
+from pydantic import BaseModel, Field, TypeAdapter
+
+from clientx import ClientX, FieldX, RequestPart, Resource, Response
+from clientx.decoders import ModelDecoder, TypeAdapterDecoder
+from clientx.methods import delete, get, post
+
+
+class User(BaseModel):
+    id: int
+    name: str
+
+
+class NewUser(BaseModel):
+    name: str
+
+
+class Users(Resource, prefix="/users", tags=["users"]):
+    @get("/{user_id}", decoder=ModelDecoder(User))
+    def retrieve(self, user_id: Annotated[int, Field(description="The user's ID")]) -> User:
+        """Fetch one user by ID."""
+        ...
+
+    @get("", decoder=TypeAdapterDecoder(TypeAdapter(list[User])))
+    def search(self, name: Annotated[str, FieldX(RequestPart.PARAMS, key="q")]) -> list[User]:
+        """Search users by name."""
+        ...
+
+    @post("", decoder=ModelDecoder(User))
+    def create(self, payload: NewUser) -> User:
+        """Create a user."""
+        ...
+
+    @delete("/{user_id}")
+    def remove(self, user_id: int) -> None:
+        """Delete a user."""
+        ...
+
+
+class ExampleAPI(ClientX):
+    users = Users()
+
+    @get("/health")
+    def health(self) -> Response:
+        """Check the service."""
+        ...
+
+
+with ExampleAPI("https://api.example.com", auth=("user", "secret"), timeout=10.0) as api:
+    user = api.users.retrieve(42)  # GET /users/42 -> User
+    matches = api.users.search("Ada")  # GET /users?q=Ada -> list[User]
+    api.users.create(NewUser(name="Ada"))  # POST /users with JSON {"name": "Ada"}
+```
+
+Rules for writing endpoints:
+
+- Endpoint bodies never run. Write `...` (or just a docstring). Decorators come from `clientx.methods`: `get`, `post`, `put`, `patch`, `delete`, `head`, `options`. Each takes `path`, and optionally `decoder`, `deprecated` (for example `DeprecatedMessage("...")`), `tags`, and `timeout`.
+- Every endpoint needs a return annotation. `-> Response` (`clientx.Response` is `httpx2.Response`) returns the raw response, `-> None` returns nothing, and any other type requires `decoder=`. Type checkers check that the decoder's output matches the annotation. A missing annotation or decoder raises when the class is defined.
+- Decoders, from `clientx.decoders`: `ModelDecoder(Model)`, `TypeAdapterDecoder(TypeAdapter(T))` (it takes a `TypeAdapter`, not a bare type), `FromResponseDecoder(Model)` (calls `Model.from_response(response)`), `json_decoder` (returns `Any`), `text_decoder`, `content_decoder`, or any callable `(httpx2.Response) -> T`. A decoder always runs when given; it's where to call `response.raise_for_status()`.
+- `{placeholders}` in the path are filled from parameters with the same names, including placeholders in a resource prefix.
+- Each other parameter goes to the first of these that matches: (1) its name is a request part (`params`, `json`, `data`, `files`, `headers`), which wins even over `FieldX`, so a parameter named `data` is always form data; (2) `Annotated[T, FieldX(RequestPart.PARAMS | HEADERS | DATA | JSON | FILES, key=..., dump_config=DumpConfig(...))]`; (3) its value is a Pydantic model, which is expanded field by field (fields annotated with `FieldX` go to that part, the rest to JSON). Anything else raises `UnconsumableArgumentError`.
+- A single value (str, int, Enum) sent as a query parameter, header, or form field needs `FieldX(..., key="name")`; without `key`, the value must already be a mapping. An `Enum` is sent as its `.value`. `key` is ignored for `JSON` and `FILES`, and doesn't work on model fields.
+- Streaming: `StreamLinesDecoder()` and `StreamChunksDecoder(chunk_size=...)` with `-> Iterator[str]` / `-> Iterator[bytes]` stream the body and release the connection when iteration ends. `StreamResponseDecoder()` with `-> Response` returns the open response, which the caller must read or close.
+- Resources group endpoints: `class Users(Resource, prefix="/users", tags=[...])`, mounted as an instance (`users = Users()`) on a `ClientX` subclass or on another resource. Prefixes are absolute (they're not combined when nesting); put an API-wide prefix such as `/v1` in the base URL. Resource tags come before each endpoint's tags. Calling a resource that isn't mounted raises `UnboundResourceError`.
+- If an endpoint is named like a decorator (for example a method called `get`), later decorators in the same class body refer to that method. Use `from clientx import methods` and `@methods.get(...)` instead.
+- Names `ClientX` itself uses can't be endpoint or resource names on a `ClientX` subclass: `user_agent`, `client`, and dunder methods raise `EndpointNameConflictError`. They're free on a `Resource`. `send` is free on both.
+- mypy reports `empty-body` for `...` bodies with a non-`None` return type. Turn that code off for client modules (`# mypy: disable-error-code="empty-body"`); pyright accepts `...`.
+
+Using clients:
+
+- `ClientX(base_url, user_agent=None, **kwargs)` forwards every keyword to `httpx2.Client`: `auth`, `headers`, `params`, `cookies`, `timeout`, `verify`, `cert`, `proxy`, `transport`, `mounts`, `event_hooks`, `follow_redirects`, and so on. Use `with` to close connections. `client.client` is the underlying `httpx2.Client`, for ad-hoc requests.
+- Test clients with `transport=httpx2.MockTransport(handler)`, where `handler(request: httpx2.Request) -> httpx2.Response`.
+- Errors all derive from `clientx.ClientXError`: `MissingReturnTypeError`, `MissingDecoderError`, `EndpointNameConflictError` (when the class is defined), `MissingPathArgumentsError`, `UnconsumableArgumentError`, `UnboundResourceError` (at call time). HTTP errors come from httpx2.
+- Logging: one DEBUG record per endpoint call on the `clientx` logger, such as `ClientX request: GET /users/42 -> 200 in 12.3 ms (Users.retrieve)`, with attributes `clientx_endpoint`, `clientx_method`, `clientx_path`, `clientx_parts`, `clientx_stream`, `clientx_status`, `clientx_elapsed_ms`, and `clientx_error`. It never contains header values, bodies, or query strings. httpx2 separately logs each request at INFO on the `httpx2` logger. For custom request logging, pass httpx2 `event_hooks`.
+- `EndpointRegister.iter()` yields every decorated `Endpoint` (method, path, tags, return type) in the process, for tooling.
+
+AI tools and MCP:
+
+- `clientx.tools.list_tools(client, read_only=False, include_tags=None, exclude_tags=(), include_deprecated=False)` returns one `Tool` per endpoint, including resources: `name` (attribute path with underscores, such as `users_retrieve`), `description` (the docstring), `input_schema` and `output_schema` (JSON Schema), `read_only` / `destructive` / `idempotent` (from the HTTP method), `method`, `path`, `tags`, and `deprecated`. `tool.call(arguments)` validates the arguments and calls the endpoint through the client, returning a JSON-friendly result. Streaming endpoints are left out.
+- `clientx.mcp.run_mcp_server(client, read_only=True)` serves those tools as an MCP server over stdio (it needs the `mcp` extra). `create_mcp_server(...)` returns the low-level `mcp.server.lowlevel.Server` for other transports. Don't print to stdout in an MCP server process.
+- Docstrings become tool descriptions, and `Annotated[T, Field(description=...)]` adds parameter descriptions. Keep credentials in the client's configuration (`auth=`, `headers=`), never in endpoint parameters, which models see and fill in.
+
+## Docs
+
+- [README](https://github.com/slatecipher/ClientX/blob/mainline/README.md): the full guide, covering endpoints, decoders, streaming, request payloads, resources, logging, AI tools, MCP, and errors
+- [CHANGELOG](https://github.com/slatecipher/ClientX/blob/mainline/CHANGELOG.md): changes in each release; the API may change between minor versions before 1.0
+
+## Examples
+
+- [Beeceptor example client](https://github.com/slatecipher/ClientX/tree/mainline/examples/beeceptor): a complete client with resources, model decoders, and a deprecated endpoint, run by `examples/beeceptor_example.py`
+
+## Optional
+
+- [CONTRIBUTING](https://github.com/slatecipher/ClientX/blob/mainline/CONTRIBUTING.md): development setup and commit conventions for contributing to ClientX itself
+- [SECURITY](https://github.com/slatecipher/ClientX/blob/mainline/SECURITY.md): how to report a vulnerability

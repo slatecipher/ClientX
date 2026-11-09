@@ -54,6 +54,8 @@ pip install clientx
 
 To serve a client as an MCP server, install the `mcp` extra: `pip install "clientx[mcp]"`.
 
+Using an AI coding assistant? Point it at [llms.txt](https://github.com/slatecipher/ClientX/blob/mainline/llms.txt), a compact guide to ClientX's patterns and pitfalls.
+
 ## Quickstart
 
 ```python
