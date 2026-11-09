@@ -23,6 +23,7 @@ ClientX is inspired by FastAPI, which reads type hints to define server endpoint
 - **Type checkers see real types.** Decorated methods keep their signatures, so editors and type checkers see the actual parameters and return types.
 - **Mistakes surface early.** A missing return annotation or decoder raises an error when the class is defined, not on the first request.
 - **Pydantic v2 throughout.** Send models as request bodies, query parameters, or headers, and decode responses into models.
+- **Ready for AI agents.** `clientx.tools` turns a client's endpoints into tool definitions for AI models, built from the same signatures, docstrings, and types.
 - **Built on httpx2.** Every `httpx2.Client` option is available, including auth, timeouts, proxies, and custom transports, and responses can be streamed.
 
 ClientX is an independent project. It isn't affiliated with or endorsed by the FastAPI, Pydantic, or httpx2 projects.
@@ -36,6 +37,7 @@ ClientX is an independent project. It isn't affiliated with or endorsed by the F
 - Built-in deprecation warnings per endpoint.
 - Endpoint metadata tags for registry filtering and sorting.
 - Full access to `httpx2.Client` configuration through `ClientX(...)` kwargs.
+- Endpoints described as AI tools, with JSON Schemas and safety hints (`clientx.tools`).
 
 ## Project status
 
@@ -625,6 +627,65 @@ client = ClientX(
 - Hooks don't know which endpoint was called. ClientX's own records do (`clientx_endpoint`), so you can use both.
 
 Deprecated endpoints emit a `DeprecationWarning` through Python's `warnings` module, not a log record. Python hides `DeprecationWarning` by default unless it's triggered by code in `__main__` or under a test runner such as pytest. To send warnings to your logs, call `logging.captureWarnings(True)`; they then appear on the `py.warnings` logger.
+
+## Using a Client from AI Agents
+
+`clientx.tools` describes a client's endpoints as tools for AI models. Each tool gets a name, a description, and JSON Schemas for its arguments and result, built from the method's signature, docstring, and types. `Tool.call` runs a tool with the arguments a model chose, through your client:
+
+```python
+from typing import Annotated
+
+from pydantic import BaseModel, Field
+
+from clientx import ClientX, Resource
+from clientx.decoders import ModelDecoder
+from clientx.methods import get
+from clientx.tools import list_tools
+
+
+class User(BaseModel):
+    id: int
+    name: str
+
+
+class Users(Resource, prefix="/users"):
+    @get("/{user_id}", decoder=ModelDecoder(User))
+    def retrieve(self, user_id: Annotated[int, Field(description="The user's ID")]) -> User:
+        """Fetch one user by ID."""
+        ...
+
+
+class ExampleAPI(ClientX):
+    users = Users()
+
+
+api = ExampleAPI("https://api.example.com")
+tools = {tool.name: tool for tool in list_tools(api, read_only=True)}
+
+tool = tools["users_retrieve"]
+print(tool.description)  # Fetch one user by ID.
+print(tool.input_schema)  # {"type": "object", "properties": {"user_id": {...}}, "required": ["user_id"], ...}
+result = tool.call({"user_id": 42})  # GET /users/42, returns {"id": 42, "name": "..."}
+```
+
+To offer the tools to a model, pass each tool's `name`, `description`, and `input_schema` in the format your AI SDK expects, and call `tools[name].call(arguments)` when the model asks for a tool. With the Anthropic SDK, for example, that's `tools=[{"name": t.name, "description": t.description, "input_schema": t.input_schema} for t in tools.values()]`.
+
+Each `Tool` has:
+
+| Attribute | Value |
+|---|---|
+| `name` | The endpoint's attribute path joined with underscores: `users_retrieve` for `api.users.retrieve`. |
+| `description` | The endpoint's docstring, or `"GET /users/{user_id}"` without one. It's what the model reads, so write docstrings. |
+| `input_schema` | JSON Schema for the arguments. Describe a parameter with `Annotated[..., Field(description=...)]`. |
+| `output_schema` | JSON Schema for the result: from the return type, `{"status_code", "body"}` for an endpoint that returns a `Response`, or `None` for one that returns nothing. |
+| `read_only`, `destructive`, `idempotent` | Hints from the HTTP method: GET, HEAD, and OPTIONS are read-only; PUT, PATCH, and DELETE may change or delete data; GET, HEAD, OPTIONS, PUT, and DELETE are idempotent. |
+| `method`, `path`, `tags`, `deprecated` | The endpoint's metadata. |
+
+`list_tools` takes filters: `read_only=True`, `include_tags=[...]`, `exclude_tags=[...]`, and `include_deprecated=True` (deprecated endpoints are left out by default). Streaming endpoints are always left out, and so is any endpoint whose types have no JSON Schema, such as file uploads, with a warning.
+
+- **Expose only what an agent needs.** Tools can call `POST`, `PUT`, and `DELETE` endpoints. The hints come from the HTTP method, so an API that changes data on `GET` isn't flagged.
+- **Keep credentials in the client's configuration** (`auth=`, `headers=`), never in endpoint parameters: parameters become arguments the model sees and fills in.
+- `call` validates the arguments before sending anything and raises `pydantic.ValidationError` if they don't match. Request and decoder errors propagate. Most agent loops send the error text back to the model.
 
 ## Error Rules
 
