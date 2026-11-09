@@ -455,3 +455,86 @@ def test_single_values_are_sent_as_json_values_and_headers_as_text():
     assert sent[0].headers["X-Request-Id"] == "00000000-0000-0000-0000-000000000001"
     assert sent[0].headers["X-Page"] == "2"
     assert sent[0].headers["X-Dry-Run"] == "true"
+
+
+class SearchClient(ClientX):
+    @get("/search")
+    def search(
+        self,
+        query: Annotated[str, FieldX(RequestPart.PARAMS)],
+        tags: Annotated[list[str], FieldX(RequestPart.PARAMS)],
+        request_id: Annotated[str, FieldX(RequestPart.HEADERS)],
+        page: Annotated[int | None, FieldX(RequestPart.PARAMS)] = None,
+        extra: Annotated[dict[str, str] | None, FieldX(RequestPart.PARAMS)] = None,
+    ) -> Response: ...
+
+    @post("/login")
+    def login(
+        self, username: Annotated[str, FieldX(RequestPart.DATA)], password: Annotated[str, FieldX(RequestPart.DATA)]
+    ) -> Response: ...
+
+    @get("/raw")
+    def raw(self, headers: list[tuple[str, str]]) -> Response: ...
+
+    @post("/upload")
+    def upload(self, auth: Annotated[str, FieldX(RequestPart.HEADERS)]) -> Response: ...
+
+
+def test_single_values_without_a_key_are_sent_under_the_parameter_name():
+    sent: list[httpx2.Request] = []
+    client = make_recording_client(SearchClient, sent)
+
+    client.search("ada", ["math", "poetry"], "r-1", extra={"lang": "en"})
+    client.search("ada", [], "r-2", page=2)
+
+    # A mapping is still merged into the part, and a list repeats the name.
+    assert str(sent[0].url) == "https://example.test/search?query=ada&tags=math&tags=poetry&lang=en"
+    assert str(sent[1].url) == "https://example.test/search?query=ada&page=2"
+    # Header names use hyphens.
+    assert sent[0].headers["request-id"] == "r-1"
+
+
+def test_single_form_fields_and_headers_without_a_key_are_sent_under_the_parameter_name():
+    sent: list[httpx2.Request] = []
+    client = make_recording_client(SearchClient, sent)
+
+    client.login("ada", "secret")
+    client.upload("Bearer t-1")
+
+    assert sent[0].content == b"username=ada&password=secret"
+    assert sent[1].headers["auth"] == "Bearer t-1"
+
+
+def test_parameters_named_after_a_part_are_still_the_whole_part():
+    sent: list[httpx2.Request] = []
+    client = make_recording_client(SearchClient, sent)
+
+    client.raw([("X-First", "1"), ("X-Second", "2")])
+
+    assert (sent[0].headers["X-First"], sent[0].headers["X-Second"]) == ("1", "2")
+
+
+class Lookup(BaseModel):
+    user_id: Annotated[int, FieldX(RequestPart.PARAMS)] = Field(alias="userId")
+    api_key: Annotated[str, FieldX(RequestPart.HEADERS, key="X-Api-Key")]
+    request_id: Annotated[str | None, FieldX(RequestPart.HEADERS)] = None
+    note: str
+
+
+class LookupClient(ClientX):
+    @post("/lookups")
+    def create(self, lookup: Lookup) -> Response: ...
+
+
+def test_single_model_fields_are_sent_under_their_key_or_dumped_name():
+    sent: list[httpx2.Request] = []
+    client = make_recording_client(LookupClient, sent)
+
+    client.create(Lookup(userId=1, api_key="k-1", request_id="r-1", note="hi"))
+    client.create(Lookup(userId=2, api_key="k-2", note="hi"))
+
+    assert str(sent[0].url) == "https://example.test/lookups?userId=1"
+    assert sent[0].headers["X-Api-Key"] == "k-1"
+    assert sent[0].headers["request-id"] == "r-1"
+    assert sent[0].content == b'{"note":"hi"}'
+    assert "request-id" not in sent[1].headers
