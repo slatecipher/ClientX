@@ -1,14 +1,15 @@
 from __future__ import annotations
 
 import inspect
+import json
 import warnings
 from collections import defaultdict
 from dataclasses import dataclass, field
-from enum import Enum
 from inspect import BoundArguments
 from typing import Any, cast
 
 from pydantic import BaseModel
+from pydantic_core import to_jsonable_python
 
 from clientx._annotation_extractor import NamedAnnotation, NamedAnnotationExtractor
 from clientx._annotations import DumpConfig, RequestPart
@@ -17,6 +18,40 @@ from clientx.exceptions import UnconsumableArgumentError
 
 # Request parts that are flat name-value pairs, where a single value can be sent under a key.
 _KEYED_PARTS = frozenset({RequestPart.PARAMS, RequestPart.HEADERS, RequestPart.DATA})
+
+# How models are dumped unless a DumpConfig says otherwise: JSON-compatible values (ISO 8601 dates,
+# strings for UUIDs and decimals) under each field's alias, which is usually the API's own name.
+_DUMP_DEFAULTS: DumpConfig = {"mode": "json", "by_alias": True}
+
+
+def dump_model(model: BaseModel, dump_config: DumpConfig) -> dict[str, Any]:
+    """Dump a model for a request, with ``dump_config`` on top of ClientX's defaults.
+
+    Args:
+        model: Model instance to dump.
+        dump_config: Serialization options. Each one overrides ClientX's default,
+            ``mode="json"`` and ``by_alias=True``.
+
+    Returns:
+        The dumped model.
+    """
+    config: DumpConfig = {**_DUMP_DEFAULTS, **dump_config}
+    return model.model_dump(**config)
+
+
+def _clean_keyed_part(part: RequestPart, values: dict[str, Any]) -> dict[str, Any]:
+    """Prepare a ``params``, ``headers``, or ``data`` dict for httpx2.
+
+    ``None`` values are left out, because httpx2 sends them as empty values, or rejects
+    them as headers. Numbers and booleans in headers are written as JSON text (``2``,
+    ``true``), because httpx2 only accepts strings there.
+    """
+    cleaned = {name: item for name, item in values.items() if item is not None}
+    if part is RequestPart.HEADERS:
+        return {
+            name: json.dumps(item) if isinstance(item, bool | int | float) else item for name, item in cleaned.items()
+        }
+    return cleaned
 
 
 @dataclass
@@ -203,13 +238,13 @@ class RequestFactory:
 
             if key := RequestPart.get(field_name) or fieldx.request_part:
                 if isinstance(value, BaseModel):
-                    payload = value.model_dump(**fieldx.dump_config)
+                    payload = dump_model(value, fieldx.dump_config)
                 elif fieldx.key is not None and key in _KEYED_PARTS:
                     if value is None:
                         # Leave it out: httpx2 sends None as an empty query or form value and rejects it as a header.
                         continue
-                    scalar = value.value if isinstance(value, Enum) else value
-                    payload = {fieldx.key: scalar}
+                    # Like a model field in JSON mode: an Enum becomes its value, a datetime ISO 8601.
+                    payload = {fieldx.key: to_jsonable_python(value)}
                 else:
                     payload = value
 
@@ -234,7 +269,8 @@ class RequestFactory:
             Combined request mapping. Later parts win on conflicts. When both values
             are dicts, they are shallow-merged and later parts win on shared keys.
             ``None`` values are left out of ``params``, ``headers``, and ``data``;
-            ``json`` keeps them as ``null``. Dicts passed in are never changed.
+            ``json`` keeps them as ``null``. Numbers and booleans in headers become
+            text. Dicts passed in are never changed.
         """
         merged: dict[str, Any] = {}
 
@@ -252,11 +288,9 @@ class RequestFactory:
                 self._warn_on_full_overlap(key, merged[key], value)
                 merged[key] = value
 
-        # Query parameters, headers, and form fields can't represent None (httpx2 sends an empty
-        # value, or rejects it as a header), so leave those values out. JSON keeps null.
         for key in _KEYED_PARTS:
             if isinstance(values := merged.get(key), dict):
-                merged[key] = {name: item for name, item in cast(dict[str, Any], values).items() if item is not None}
+                merged[key] = _clean_keyed_part(key, cast(dict[str, Any], values))
 
         return merged
 
@@ -298,13 +332,14 @@ class ModelExtractor:
 
         Args:
             model: Model instance to extract request fields from.
-            dump_config: Serialization options passed to ``model_dump``.
+            dump_config: Serialization options passed to ``model_dump``, on top of
+                ClientX's defaults (see ``dump_model``).
 
         Returns:
             dict[str, Any]: Request part mapping derived from the model.
         """
         annotation_map = NamedAnnotationExtractor.from_base_model(model)
-        dump = model.model_dump(**dump_config)
+        dump = dump_model(model, dump_config)
         return self.build_request_arguments(dump, annotation_map)
 
     def build_request_arguments(
