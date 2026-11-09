@@ -1,6 +1,7 @@
 from collections.abc import Iterator
 from typing import TypedDict
 
+import httpx2
 import pytest
 from httpx2 import HTTPStatusError, Request, Response
 
@@ -9,6 +10,7 @@ from clientx._client import ClientX
 from clientx._decorators import ApiMethod, method
 from clientx._endpoint_context import EndpointRegister
 from clientx.decoders import StreamLinesDecoder
+from clientx.exceptions import EndpointNameConflictError
 
 
 class SentCapture(TypedDict):
@@ -294,3 +296,44 @@ def test_method_container_exposes_http_methods():
     assert method.patch.method == "PATCH"
     assert method.post.method == "POST"
     assert method.put.method == "PUT"
+
+
+def test_endpoint_named_send_is_rejected_when_the_class_is_defined():
+    with pytest.raises(EndpointNameConflictError) as excinfo:
+
+        class MessagesClient(ClientX):
+            @method.post("/messages")
+            def send(self, json: dict[str, str]) -> Response: ...  # pyright: ignore[reportIncompatibleMethodOverride]
+
+    message = str(excinfo.value)
+    assert "MessagesClient.send" in message
+    assert "can't be named 'send'" in message
+
+
+@pytest.mark.parametrize("name", ["send", "user_agent", "client", "_user_agent", "__enter__"])
+def test_endpoint_cannot_use_a_name_clientx_already_uses(name: str):
+    def endpoint(self: ClientX) -> Response: ...
+
+    endpoint.__name__ = endpoint.__qualname__ = name
+
+    with pytest.raises(EndpointNameConflictError, match=f"can't be named '{name}'"):
+        method.get("/items")(endpoint)
+
+
+def test_overriding_send_without_the_decorator_is_allowed():
+    sent: list[str] = []
+
+    class RecordingClient(ClientX):
+        def send(
+            self, method: str, path: httpx2.URL | str, *, stream: bool = False, **request_parts: object
+        ) -> Response:
+            sent.append(f"{method} {path}")
+            return super().send(method, path, stream=stream, **request_parts)
+
+        @method.get("/items")
+        def list_items(self) -> Response: ...
+
+    client = RecordingClient("https://example.test", transport=httpx2.MockTransport(lambda request: Response(200)))
+
+    assert client.list_items().status_code == 200
+    assert sent == ["GET /items"]

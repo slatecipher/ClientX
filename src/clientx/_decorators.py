@@ -1,3 +1,4 @@
+import inspect
 import time
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
@@ -21,6 +22,12 @@ from clientx._endpoint_context import (
 from clientx._logging import EndpointCall, log_endpoint_call
 from clientx._request_factory import RequestFactory
 from clientx.decoders import StreamDecoder
+from clientx.exceptions import EndpointNameConflictError
+
+# Names an endpoint method can't use: everything ClientX defines, including the
+# instance attributes it declares. Overriding them breaks the client; for example,
+# the wrapper calls `send()` for every request and `__init__` sets `client`.
+_RESERVED_NAMES = frozenset(dir(ClientX)) | frozenset(inspect.get_annotations(ClientX))
 
 P = ParamSpec("P")
 T = TypeVar("T", bound=ClientX)
@@ -158,6 +165,9 @@ class ApiMethod:
         def decorator(
             func: Callable[Concatenate[T, P], R],
         ) -> Callable[Concatenate[T, P], R]:
+            if func.__name__ in _RESERVED_NAMES:
+                raise EndpointNameConflictError(func)
+
             endpoint = Endpoint(
                 method=self.method,
                 path=path,

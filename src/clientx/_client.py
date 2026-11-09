@@ -18,6 +18,7 @@ class ClientX:
 
     _default_user_agent: ClassVar[str] = f"ClientX/{__version__}"
     _user_agent: str
+    client: Client
 
     def __init__(
         self, base_url: URL | str, *, user_agent: str | None = None, **client_kwargs: Unpack[HttpxClientKwargs]

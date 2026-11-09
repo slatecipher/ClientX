@@ -86,8 +86,25 @@ class MissingDecoderError(ClientXError, TypeError):
         super().__init__(message)
 
 
+class EndpointNameConflictError(ClientXError, TypeError):
+    """Raised when an endpoint method uses a name that ClientX already uses."""
+
+    def __init__(self, func: Callable[..., Any]):
+        qualname = getattr(func, "__qualname__", func.__name__)
+        module = getattr(func, "__module__", "<unknown>")
+
+        message = (
+            f"Endpoint function '{qualname}' (defined in {module}) "
+            f"can't be named '{func.__name__}': ClientX already uses that name, "
+            "and overriding it breaks the client. Rename the method."
+        )
+
+        super().__init__(message)
+
+
 __all__ = [
     "ClientXError",
+    "EndpointNameConflictError",
     "MissingDecoderError",
     "MissingPathArgumentsError",
     "MissingReturnTypeError",
