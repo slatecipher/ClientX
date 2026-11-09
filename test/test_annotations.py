@@ -20,7 +20,7 @@ type UserIdParam = Annotated[int, Part(RequestPart.PARAMS, key="userId")]
 type QueryParam[T] = Annotated[T, Part(RequestPart.PARAMS)]
 type DescribedUserId = Annotated[UserIdParam, "described"]
 type IgnoresItsParameter[T] = Annotated[int, Part(RequestPart.HEADERS)]
-type Cycle = OtherCycle
+type Cycle = OtherCycle  # pyright: ignore[reportGeneralTypeIssues]  # deliberately cyclic
 type OtherCycle = Cycle
 
 
