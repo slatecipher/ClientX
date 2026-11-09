@@ -491,6 +491,8 @@ class UsersClient(ClientX):
 
 In model extraction, fields explicitly routed to `HEADERS`, `PARAMS`, `DATA`, or `FILES` should be mappings. Unassigned fields default to JSON.
 
+`None` values are never sent as query parameters, headers, or form fields, whether they come from a single value, a mapping, or a model field. A JSON body keeps them as `null`. To leave them out of a JSON body too, use `DumpConfig(exclude_none=True)`, shown below.
+
 ### Serialization control with `DumpConfig`
 
 ```python

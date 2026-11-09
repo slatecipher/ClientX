@@ -12,7 +12,7 @@ from clientx._client import ClientX
 from clientx._endpoint_context import Endpoint
 from clientx._request_factory import ArgumentCursor, ModelExtractor, RequestFactory
 from clientx.exceptions import UnconsumableArgumentError
-from clientx.methods import get
+from clientx.methods import get, patch
 
 
 class Payload(BaseModel):
@@ -265,3 +265,71 @@ def test_optional_keyed_values_are_only_sent_when_given():
         "https://example.test/posts?userId=1",
     ]
     assert [request.headers.get("X-Trace-Id") for request in sent] == [None, "t-1"]
+
+
+def test_merge_request_parts_leaves_none_out_of_keyed_parts_but_not_json():
+    merged = RequestFactory(endpoint=Endpoint("POST", "/v1/items")).merge_request_parts(
+        [
+            {"params": {"a": None, "b": 1}},
+            {"headers": {"X-A": None, "X-B": "b"}},
+            {"data": {"c": None, "d": "d"}},
+            {"json": {"e": None}},
+        ]
+    )
+
+    assert merged == {"params": {"b": 1}, "headers": {"X-B": "b"}, "data": {"d": "d"}, "json": {"e": None}}
+
+
+def test_none_values_in_mappings_and_models_are_not_sent():
+    sent: list[httpx2.Request] = []
+
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        sent.append(request)
+        return httpx2.Response(200)
+
+    class PostFilters(BaseModel):
+        user_id: int | None = None
+        topic: str | None = None
+
+    class PostChanges(BaseModel):
+        title: str | None = None
+
+    class PostsClient(ClientX):
+        @get("/posts")
+        def list_posts(
+            self, filters: Annotated[PostFilters, FieldX(RequestPart.PARAMS)], headers: dict[str, str | None]
+        ) -> Response: ...
+
+        @patch("/posts/1")
+        def update_post(self, changes: PostChanges) -> Response: ...
+
+    client = PostsClient("https://example.test", transport=httpx2.MockTransport(handler))
+    client.list_posts(PostFilters(topic="news"), {"X-Trace-Id": None, "X-Client": "docs"})
+    client.update_post(PostChanges())
+
+    assert str(sent[0].url) == "https://example.test/posts?topic=news"
+    assert "X-Trace-Id" not in sent[0].headers
+    assert sent[0].headers["X-Client"] == "docs"
+    # JSON can represent null, so a JSON body keeps it.
+    assert sent[1].content == b'{"title":null}'
+
+
+def test_merging_request_parts_never_changes_the_callers_dict():
+    sent: list[httpx2.Request] = []
+
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        sent.append(request)
+        return httpx2.Response(200)
+
+    class ItemsClient(ClientX):
+        @get("/items")
+        def list_items(
+            self, params: dict[str, str], kind: Annotated[str, FieldX(RequestPart.PARAMS, key="kind")]
+        ) -> Response: ...
+
+    defaults = {"limit": "10"}
+    client = ItemsClient("https://example.test", transport=httpx2.MockTransport(handler))
+    client.list_items(defaults, "book")
+
+    assert defaults == {"limit": "10"}
+    assert str(sent[0].url) == "https://example.test/items?limit=10&kind=book"
