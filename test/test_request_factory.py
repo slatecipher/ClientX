@@ -11,7 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
 
 from clientx import Body, File, Form, Header, Query, Response
-from clientx._annotations import DumpConfig, Part, RequestPart
+from clientx._annotations import DumpConfig, Part
 from clientx._client import ClientX
 from clientx._endpoint_context import Endpoint
 from clientx._request_factory import ArgumentCursor, ModelExtractor, RequestFactory
@@ -20,8 +20,8 @@ from clientx.methods import get, patch, post
 
 
 class Payload(BaseModel):
-    headers: Annotated[dict[str, str], Part(RequestPart.HEADERS)]
-    params: Annotated[dict[str, int], Part(RequestPart.PARAMS)]
+    headers: Annotated[dict[str, str], Header()]
+    params: Annotated[dict[str, int], Query()]
     data: str = Field(alias="payload")
 
 
@@ -59,7 +59,7 @@ def test_request_factory_builds_request_parts():
 def test_request_factory_uses_section_annotation_on_parameter():
     endpoint = Endpoint("POST", "/v1/items")
 
-    def handler(self, payload: Annotated[Payload, Part(RequestPart.JSON)]) -> None: ...
+    def handler(self, payload: Annotated[Payload, Body()]) -> None: ...
 
     endpoint.func = handler
 
@@ -83,7 +83,7 @@ def test_request_factory_applies_part_dump_config():
         self,
         payload: Annotated[
             DataPayload,
-            Part(RequestPart.DATA, dump_config=DumpConfig(exclude_none=True)),
+            Form(dump_config=DumpConfig(exclude_none=True)),
         ],
     ) -> None: ...
 
@@ -165,16 +165,16 @@ def test_argument_cursor_consume_errors():
 
 def test_model_extractor_groups_sections_and_defaults_json():
     class GroupedPayload(BaseModel):
-        headers: Annotated[dict[str, str], Part(RequestPart.HEADERS)]
-        params: Annotated[dict[str, int], Part(RequestPart.PARAMS)]
+        headers: Annotated[dict[str, str], Header()]
+        params: Annotated[dict[str, int], Query()]
         data: str
 
     model = GroupedPayload(headers={"token": "t"}, params={"q": 1}, data="d")
     parts = ModelExtractor()(model, DumpConfig())
 
-    assert parts[RequestPart.HEADERS] == {"token": "t"}
-    assert parts[RequestPart.PARAMS] == {"q": 1}
-    assert parts[RequestPart.JSON] == {"data": "d"}
+    assert parts["headers"] == {"token": "t"}
+    assert parts["params"] == {"q": 1}
+    assert parts["json"] == {"data": "d"}
 
 
 def test_request_factory_raises_unconsumable_argument_error():
@@ -194,7 +194,7 @@ def test_request_factory_raises_unconsumable_argument_error():
 def test_request_factory_maps_scalar_param_using_part_key():
     endpoint = Endpoint("GET", "/v1/items")
 
-    def handler(self, list_type: Annotated[str, Part(RequestPart.PARAMS, key="type")]) -> None: ...
+    def handler(self, list_type: Annotated[str, Query("type")]) -> None: ...
 
     endpoint.func = handler
 
@@ -213,7 +213,7 @@ def test_request_factory_maps_enum_param_value_using_part_key():
 
     endpoint = Endpoint("GET", "/v1/items")
 
-    def handler(self, list_type: Annotated[Kind, Part(RequestPart.PARAMS, key="type")]) -> None: ...
+    def handler(self, list_type: Annotated[Kind, Query("type")]) -> None: ...
 
     endpoint.func = handler
 
@@ -225,14 +225,14 @@ def test_request_factory_maps_enum_param_value_using_part_key():
     assert spec.parts["params"] == {"type": "allow"}
 
 
-@pytest.mark.parametrize("part", [RequestPart.PARAMS, RequestPart.HEADERS, RequestPart.DATA])
-def test_request_factory_leaves_out_keyed_values_that_are_none(part: RequestPart):
+@pytest.mark.parametrize(("helper", "part"), [(Query, "params"), (Header, "headers"), (Form, "data")])
+def test_request_factory_leaves_out_keyed_values_that_are_none(helper: type[Part], part: str):
     endpoint = Endpoint("POST", "/v1/items")
 
     def handler(
         self,
-        kind: Annotated[str | None, Part(part, key="kind")] = None,
-        page: Annotated[int | None, Part(part, key="page")] = None,
+        kind: Annotated[str | None, helper("kind")] = None,
+        page: Annotated[int | None, helper("page")] = None,
     ) -> None: ...
 
     endpoint.func = handler
@@ -242,7 +242,7 @@ def test_request_factory_leaves_out_keyed_values_that_are_none(part: RequestPart
 
     assert factory(endpoint.bind(client=client, args=(), kwargs={})).parts == {}
     # Other falsy values are still sent.
-    page = "0" if part is RequestPart.HEADERS else 0  # httpx2 only takes strings as header values
+    page = "0" if part == "headers" else 0  # httpx2 only takes strings as header values
     assert factory(endpoint.bind(client=client, args=(), kwargs={"page": 0})).parts == {part: {"page": page}}
     assert factory(endpoint.bind(client=client, args=("",), kwargs={})).parts == {part: {"kind": ""}}
 
@@ -258,8 +258,8 @@ def test_optional_keyed_values_are_only_sent_when_given():
         @get("/posts")
         def list_posts(
             self,
-            user_id: Annotated[int | None, Part(RequestPart.PARAMS, key="userId")] = None,
-            trace_id: Annotated[str | None, Part(RequestPart.HEADERS, key="X-Trace-Id")] = None,
+            user_id: Annotated[int | None, Query("userId")] = None,
+            trace_id: Annotated[str | None, Header("X-Trace-Id")] = None,
         ) -> Response: ...
 
     client = PostsClient("https://example.test", transport=httpx2.MockTransport(handler))
@@ -302,9 +302,7 @@ def test_none_values_in_mappings_and_models_are_not_sent():
 
     class PostsClient(ClientX):
         @get("/posts")
-        def list_posts(
-            self, filters: Annotated[PostFilters, Part(RequestPart.PARAMS)], headers: dict[str, str | None]
-        ) -> Response: ...
+        def list_posts(self, filters: Annotated[PostFilters, Query()], headers: dict[str, str | None]) -> Response: ...
 
         @patch("/posts/1")
         def update_post(self, changes: PostChanges) -> Response: ...
@@ -329,9 +327,7 @@ def test_merging_request_parts_never_changes_the_callers_dict():
 
     class ItemsClient(ClientX):
         @get("/items")
-        def list_items(
-            self, params: dict[str, str], kind: Annotated[str, Part(RequestPart.PARAMS, key="kind")]
-        ) -> Response: ...
+        def list_items(self, params: dict[str, str], kind: Annotated[str, Query("kind")]) -> Response: ...
 
     defaults = {"limit": "10"}
     client = ItemsClient("https://example.test", transport=httpx2.MockTransport(handler))
@@ -341,8 +337,8 @@ def test_merging_request_parts_never_changes_the_callers_dict():
     assert str(sent[0].url) == "https://example.test/items?limit=10&kind=book"
 
 
-type UserIdParam = Annotated[int | None, Part(RequestPart.PARAMS, key="userId")]
-type QueryParam[T] = Annotated[T, Part(RequestPart.PARAMS)]
+type UserIdParam = Annotated[int | None, Query("userId")]
+type QueryParam[T] = Annotated[T, Query()]
 
 
 EVENT_ID = UUID(int=1)
@@ -365,7 +361,7 @@ class EventFilters(BaseModel):
 
 
 class Upload(BaseModel):
-    tracing: Annotated[dict[str, str], Part(RequestPart.HEADERS)] = Field(serialization_alias="traceHeaders")
+    tracing: Annotated[dict[str, str], Header()] = Field(serialization_alias="traceHeaders")
     name: str
 
 
@@ -383,11 +379,11 @@ class EventsClient(ClientX):
 
     @post("/events/by-name")
     def create_by_field_name(
-        self, event: Annotated[Event, Part(RequestPart.JSON, dump_config=DumpConfig(by_alias=False))]
+        self, event: Annotated[Event, Body(dump_config=DumpConfig(by_alias=False))]
     ) -> Response: ...
 
     @get("/events")
-    def search(self, filters: Annotated[EventFilters, Part(RequestPart.PARAMS)]) -> Response: ...
+    def search(self, filters: Annotated[EventFilters, Query()]) -> Response: ...
 
     @post("/uploads")
     def upload(self, upload: Upload) -> Response: ...
@@ -396,10 +392,10 @@ class EventsClient(ClientX):
     def retrieve(
         self,
         event_id: int,
-        since: Annotated[datetime, Part(RequestPart.PARAMS, key="since")],
-        request_id: Annotated[UUID, Part(RequestPart.HEADERS, key="X-Request-Id")],
-        page: Annotated[int, Part(RequestPart.HEADERS, key="X-Page")],
-        dry_run: Annotated[bool, Part(RequestPart.HEADERS, key="X-Dry-Run")],
+        since: Annotated[datetime, Query("since")],
+        request_id: Annotated[UUID, Header("X-Request-Id")],
+        page: Annotated[int, Header("X-Page")],
+        dry_run: Annotated[bool, Header("X-Dry-Run")],
     ) -> Response: ...
 
 
@@ -428,9 +424,7 @@ def test_dump_config_overrides_the_json_and_alias_defaults():
 
     endpoint = Endpoint("POST", "/events")
 
-    def handler(
-        self, event: Annotated[Event, Part(RequestPart.JSON, dump_config=DumpConfig(mode="python"))]
-    ) -> None: ...
+    def handler(self, event: Annotated[Event, Body(dump_config=DumpConfig(mode="python"))]) -> None: ...
 
     endpoint.func = handler
     event = Event(event_id=EVENT_ID, starts_at=STARTS_AT, price=Decimal("9.99"))
@@ -465,23 +459,21 @@ class SearchClient(ClientX):
     @get("/search")
     def search(
         self,
-        query: Annotated[str, Part(RequestPart.PARAMS)],
-        tags: Annotated[list[str], Part(RequestPart.PARAMS)],
-        request_id: Annotated[str, Part(RequestPart.HEADERS)],
-        page: Annotated[int | None, Part(RequestPart.PARAMS)] = None,
-        extra: Annotated[dict[str, str] | None, Part(RequestPart.PARAMS)] = None,
+        query: Annotated[str, Query()],
+        tags: Annotated[list[str], Query()],
+        request_id: Annotated[str, Header()],
+        page: Annotated[int | None, Query()] = None,
+        extra: Annotated[dict[str, str] | None, Query()] = None,
     ) -> Response: ...
 
     @post("/login")
-    def login(
-        self, username: Annotated[str, Part(RequestPart.DATA)], password: Annotated[str, Part(RequestPart.DATA)]
-    ) -> Response: ...
+    def login(self, username: Annotated[str, Form()], password: Annotated[str, Form()]) -> Response: ...
 
     @get("/raw")
     def raw(self, headers: list[tuple[str, str]]) -> Response: ...
 
     @post("/upload")
-    def upload(self, auth: Annotated[str, Part(RequestPart.HEADERS)]) -> Response: ...
+    def upload(self, auth: Annotated[str, Header()]) -> Response: ...
 
 
 def test_single_values_without_a_key_are_sent_under_the_parameter_name():
@@ -519,9 +511,9 @@ def test_parameters_named_after_a_part_are_still_the_whole_part():
 
 
 class Lookup(BaseModel):
-    user_id: Annotated[int, Part(RequestPart.PARAMS)] = Field(alias="userId")
-    api_key: Annotated[str, Part(RequestPart.HEADERS, key="X-Api-Key")]
-    request_id: Annotated[str | None, Part(RequestPart.HEADERS)] = None
+    user_id: Annotated[int, Query()] = Field(alias="userId")
+    api_key: Annotated[str, Header("X-Api-Key")]
+    request_id: Annotated[str | None, Header()] = None
     note: str
 
 

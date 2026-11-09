@@ -46,7 +46,8 @@ def test_missing_return_type_message_names_clientx():
 def test_unconsumable_argument_message_points_to_the_request_part_helpers():
     message = str(UnconsumableArgumentError(field="token", annotation=str, value="abc"))
 
-    assert "Annotated[..., Query()], Header(), Form(), Body(), File(), or Part(RequestPart.*)" in message
+    assert "Annotated[..., Query()], Header(), Form(), Body(), or File()" in message
+    assert "RequestPart" not in message
     assert "FieldX" not in message
     assert "RequestSection" not in message
 

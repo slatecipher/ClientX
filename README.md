@@ -413,7 +413,7 @@ ClientX maps method arguments into request parts in this order:
 1. Path placeholders (e.g. `{user_id}`) are consumed from arguments.
 2. Each remaining argument goes to the first of these that matches:
    1. Its name is a request part: `json`, `params`, `data`, `files`, or `headers`. The name wins even over an annotation, so a parameter named `data` is always sent as form data.
-   2. It's annotated with a request part: `Annotated[..., Query()]`, `Header()`, `Form()`, `Body()`, `File()`, or `Part(RequestPart.*)`.
+   2. It's annotated with a request part: `Annotated[..., Query()]`, `Header()`, `Form()`, `Body()`, or `File()`.
    3. Its value is a Pydantic model, which is expanded field by field.
 
 ### By parameter name
@@ -484,8 +484,6 @@ class ItemsClient(ClientX):
 - A value of `None` is left out, so an optional parameter can default to `None`. To send an empty value, pass `""`.
 
 `Body()` and `File()` take no key: they send the value as the JSON body or as the `files` mapping. Every helper takes `dump_config=` for Pydantic models (see `DumpConfig` below).
-
-The helpers are built on `Part(request_part, key)`. Use `Part` when the request part is chosen in code, such as `Part(RequestPart.PARAMS, "userId")`, or to check for any helper with `isinstance(marker, Part)`.
 
 To reuse an annotation, name it with a `type` alias, plain or generic: `type UserId = Annotated[int | None, Query("userId")]`, or `type QueryParam[T] = Annotated[T, Query()]` used as `QueryParam[str]`. Put `None` inside the annotation (`Annotated[int | None, ...]` or `QueryParam[int | None]`), not around it: ClientX doesn't see a helper inside `... | None`.
 
