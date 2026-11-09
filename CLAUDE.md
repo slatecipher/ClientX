@@ -63,6 +63,8 @@ The public API is `clientx/__init__.py`, which also re-exports `httpx2.Response`
 
 `examples/beeceptor/` contains a complete example client.
 
+`llms.txt` (repo root) is a compact guide for AI coding assistants. Keep it in sync with the public API and README; its code sample must run and type-check.
+
 ## Conventions and releasing
 
 `CONTRIBUTING.md` is the source of truth for commit messages, branch names, pull request descriptions, labels, and the release steps. Follow it for every commit and pull request.
