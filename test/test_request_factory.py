@@ -1,10 +1,14 @@
 import inspect
+from datetime import datetime
+from decimal import Decimal
 from enum import StrEnum
 from typing import Annotated, cast
+from uuid import UUID
 
 import httpx2
 import pytest
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
+from pydantic.alias_generators import to_camel
 
 from clientx import Response
 from clientx._annotations import DumpConfig, FieldX, RequestPart
@@ -12,7 +16,7 @@ from clientx._client import ClientX
 from clientx._endpoint_context import Endpoint
 from clientx._request_factory import ArgumentCursor, ModelExtractor, RequestFactory
 from clientx.exceptions import UnconsumableArgumentError
-from clientx.methods import get, patch
+from clientx.methods import get, patch, post
 
 
 class Payload(BaseModel):
@@ -48,7 +52,8 @@ def test_request_factory_builds_request_parts():
     assert spec.path == "/v1/items/123"
     assert spec.parts["headers"] == {"token": "t-1", "header": "h-1"}
     assert spec.parts["params"] == {"q": 1, "limit": 5}
-    assert spec.parts["json"] == {"data": "d-1"}
+    # Models are dumped by alias.
+    assert spec.parts["json"] == {"payload": "d-1"}
 
 
 def test_request_factory_uses_section_annotation_on_parameter():
@@ -64,7 +69,7 @@ def test_request_factory_uses_section_annotation_on_parameter():
 
     spec = RequestFactory(endpoint=endpoint)(arguments)
 
-    assert spec.parts["json"] == {"headers": {"token": "t-1"}, "params": {"q": 1}, "data": "d-1"}
+    assert spec.parts["json"] == {"headers": {"token": "t-1"}, "params": {"q": 1}, "payload": "d-1"}
 
 
 def test_request_factory_applies_fieldx_dump_config():
@@ -237,7 +242,8 @@ def test_request_factory_leaves_out_keyed_values_that_are_none(part: RequestPart
 
     assert factory(endpoint.bind(client=client, args=(), kwargs={})).parts == {}
     # Other falsy values are still sent.
-    assert factory(endpoint.bind(client=client, args=(), kwargs={"page": 0})).parts == {part: {"page": 0}}
+    page = "0" if part is RequestPart.HEADERS else 0  # httpx2 only takes strings as header values
+    assert factory(endpoint.bind(client=client, args=(), kwargs={"page": 0})).parts == {part: {"page": page}}
     assert factory(endpoint.bind(client=client, args=("",), kwargs={})).parts == {part: {"kind": ""}}
 
 
@@ -333,3 +339,119 @@ def test_merging_request_parts_never_changes_the_callers_dict():
 
     assert defaults == {"limit": "10"}
     assert str(sent[0].url) == "https://example.test/items?limit=10&kind=book"
+
+
+EVENT_ID = UUID(int=1)
+STARTS_AT = datetime(2026, 1, 1, 9, 30)
+
+
+class Event(BaseModel):
+    model_config = ConfigDict(alias_generator=to_camel, validate_by_name=True)
+
+    event_id: UUID
+    starts_at: datetime
+    price: Decimal
+
+
+class EventFilters(BaseModel):
+    model_config = ConfigDict(alias_generator=to_camel, validate_by_name=True)
+
+    starts_after: datetime
+    venue_id: int
+
+
+class Upload(BaseModel):
+    tracing: Annotated[dict[str, str], FieldX(RequestPart.HEADERS)] = Field(serialization_alias="traceHeaders")
+    name: str
+
+
+def make_recording_client[C: ClientX](client_class: type[C], sent: list[httpx2.Request]) -> C:
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        sent.append(request)
+        return httpx2.Response(200)
+
+    return client_class("https://example.test", transport=httpx2.MockTransport(handler))
+
+
+class EventsClient(ClientX):
+    @post("/events")
+    def create(self, event: Event) -> Response: ...
+
+    @post("/events/by-name")
+    def create_by_field_name(
+        self, event: Annotated[Event, FieldX(RequestPart.JSON, dump_config=DumpConfig(by_alias=False))]
+    ) -> Response: ...
+
+    @get("/events")
+    def search(self, filters: Annotated[EventFilters, FieldX(RequestPart.PARAMS)]) -> Response: ...
+
+    @post("/uploads")
+    def upload(self, upload: Upload) -> Response: ...
+
+    @get("/events/{event_id}")
+    def retrieve(
+        self,
+        event_id: int,
+        since: Annotated[datetime, FieldX(RequestPart.PARAMS, key="since")],
+        request_id: Annotated[UUID, FieldX(RequestPart.HEADERS, key="X-Request-Id")],
+        page: Annotated[int, FieldX(RequestPart.HEADERS, key="X-Page")],
+        dry_run: Annotated[bool, FieldX(RequestPart.HEADERS, key="X-Dry-Run")],
+    ) -> Response: ...
+
+
+def test_models_are_sent_as_json_values_under_their_aliases():
+    sent: list[httpx2.Request] = []
+    client = make_recording_client(EventsClient, sent)
+
+    client.create(Event(event_id=EVENT_ID, starts_at=STARTS_AT, price=Decimal("9.99")))
+    client.search(EventFilters(starts_after=STARTS_AT, venue_id=7))
+
+    assert sent[0].content == (
+        b'{"eventId":"00000000-0000-0000-0000-000000000001","startsAt":"2026-01-01T09:30:00","price":"9.99"}'
+    )
+    assert str(sent[1].url) == "https://example.test/events?startsAfter=2026-01-01T09%3A30%3A00&venueId=7"
+
+
+def test_dump_config_overrides_the_json_and_alias_defaults():
+    sent: list[httpx2.Request] = []
+    client = make_recording_client(EventsClient, sent)
+
+    client.create_by_field_name(Event(event_id=EVENT_ID, starts_at=STARTS_AT, price=Decimal("9.99")))
+
+    assert sent[0].content == (
+        b'{"event_id":"00000000-0000-0000-0000-000000000001","starts_at":"2026-01-01T09:30:00","price":"9.99"}'
+    )
+
+    endpoint = Endpoint("POST", "/events")
+
+    def handler(
+        self, event: Annotated[Event, FieldX(RequestPart.JSON, dump_config=DumpConfig(mode="python"))]
+    ) -> None: ...
+
+    endpoint.func = handler
+    event = Event(event_id=EVENT_ID, starts_at=STARTS_AT, price=Decimal("9.99"))
+    arguments = endpoint.bind(client=cast(ClientX, object()), args=(event,), kwargs={})
+
+    assert RequestFactory(endpoint=endpoint)(arguments).parts["json"]["startsAt"] == STARTS_AT
+
+
+def test_model_fields_with_a_serialization_alias_are_routed_by_their_annotation():
+    sent: list[httpx2.Request] = []
+    client = make_recording_client(EventsClient, sent)
+
+    client.upload(Upload(tracing={"X-Trace-Id": "t-1"}, name="report.pdf"))
+
+    assert sent[0].headers["X-Trace-Id"] == "t-1"
+    assert sent[0].content == b'{"name":"report.pdf"}'
+
+
+def test_single_values_are_sent_as_json_values_and_headers_as_text():
+    sent: list[httpx2.Request] = []
+    client = make_recording_client(EventsClient, sent)
+
+    client.retrieve(1, STARTS_AT, EVENT_ID, 2, True)
+
+    assert str(sent[0].url) == "https://example.test/events/1?since=2026-01-01T09%3A30%3A00"
+    assert sent[0].headers["X-Request-Id"] == "00000000-0000-0000-0000-000000000001"
+    assert sent[0].headers["X-Page"] == "2"
+    assert sent[0].headers["X-Dry-Run"] == "true"

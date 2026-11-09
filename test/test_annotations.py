@@ -75,6 +75,15 @@ def test_annotation_extractor_from_base_model_includes_aliases_and_computed_fiel
     assert mapping["qs"].fieldx.request_part is RequestPart.PARAMS
 
 
+def test_annotation_extractor_from_base_model_includes_serialization_aliases():
+    class Example(BaseModel):
+        token: Annotated[str, FieldX(RequestPart.HEADERS)] = Field(serialization_alias="authToken")
+
+    mapping = AnnotationExtractor.from_base_model(Example)
+
+    assert mapping["authToken"].fieldx.request_part is RequestPart.HEADERS
+
+
 def test_named_annotation_validation_wraps_errors():
     annotation = NamedAnnotation(name="field", info=AnnotationInfo(annotation=int))
 

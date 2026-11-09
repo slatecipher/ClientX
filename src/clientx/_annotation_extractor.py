@@ -132,7 +132,8 @@ class AnnotationExtractor:
             model: The BaseModel class or instance to inspect.
 
         Returns:
-            A mapping of field name to AnnotationInfo for all fields.
+            A mapping of field names, aliases, and serialization aliases to
+            AnnotationInfo for all fields.
         """
         model_type = model if isinstance(model, type) else type(model)
         fields = model_type.model_fields | model_type.model_computed_fields
@@ -140,8 +141,11 @@ class AnnotationExtractor:
         for name, info in fields.items():
             annotation = AnnotationExtractor.from_field_info(info)
             result[name] = annotation
-            if info.alias:
-                result[info.alias] = annotation
+            # A model dumped by alias uses the serialization alias, which can differ from the alias.
+            serialization_alias = info.serialization_alias if isinstance(info, FieldInfo) else None
+            for alias in (info.alias, serialization_alias):
+                if alias:
+                    result[alias] = annotation
 
         return result
 

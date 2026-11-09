@@ -466,7 +466,7 @@ class ItemsClient(ClientX):
 
 `list_items("book", Sort.OLDEST)` sends `GET /items?type=book&sort=oldest`.
 
-- `key` works with `PARAMS`, `HEADERS`, and `DATA`. The value is sent as `{key: value}`, and an `Enum` member is sent as its `.value`.
+- `key` works with `PARAMS`, `HEADERS`, and `DATA`. The value is sent as `{key: value}`, converted the way a model field is (see `DumpConfig` below): an `Enum` member becomes its `.value`, a `datetime` an ISO 8601 string, and a `UUID` a string. Numbers and booleans in headers are sent as text (`2`, `true`).
 - A value of `None` is left out of the request, so an optional query parameter, header, or form field can default to `None`: `user_id: Annotated[int | None, FieldX(RequestPart.PARAMS, key="userId")] = None` adds `?userId=...` only when a user ID is given. To send an empty value, pass `""`.
 - Without `key`, the value must already be a mapping, such as `dict[str, str]`. A single string or number fails when the request is built.
 - `key` is ignored for `JSON` and `FILES`, which send the value as given.
@@ -501,6 +501,8 @@ In model extraction, fields explicitly routed to `HEADERS`, `PARAMS`, `DATA`, or
 `None` values are never sent as query parameters, headers, or form fields, whether they come from a single value, a mapping, or a model field. A JSON body keeps them as `null`. To leave them out of a JSON body too, use `DumpConfig(exclude_none=True)`, shown below.
 
 ### Serialization control with `DumpConfig`
+
+ClientX dumps models with `mode="json"` and `by_alias=True`. Dates, UUIDs, and decimals become JSON values, and each field is sent under its alias, which is usually the API's own name for it (`user_id: int = Field(alias="userId")`, or `alias_generator=to_camel` for a whole model). `DumpConfig` passes options to Pydantic's `model_dump`, and each one overrides ClientX's default, for example `DumpConfig(by_alias=False)` to send field names.
 
 ```python
 from typing import Annotated
