@@ -35,7 +35,7 @@ ClientX is an independent project. It isn't affiliated with or endorsed by the F
 - Path parameter rendering from method arguments (e.g. `"/users/{user_id}"`).
 - Request payload mapping from parameter names, `Annotated` metadata, or Pydantic models.
 - Built-in deprecation warnings per endpoint.
-- Endpoint metadata tags for registry filtering and sorting.
+- Endpoint tags, for grouping endpoints and filtering the AI tools built from them.
 - Full access to `httpx2.Client` configuration through `ClientX(...)` kwargs.
 - Endpoints described as AI tools, with JSON Schemas and safety hints (`clientx.tools`).
 - A client served as an MCP server in one call (`clientx[mcp]`).
@@ -93,7 +93,7 @@ Each decorator accepts:
 - `path` (required)
 - `decoder` (required when return type is not `Response` or `None`)
 - `deprecated` (optional callable, including `DeprecatedMessage`)
-- `tags` (optional list of metadata labels for registry tooling)
+- `tags` (optional list of labels; `list_tools()` can filter by them)
 - `timeout` (optional per-endpoint `httpx2.Timeout` or seconds)
 - `raise_for_status` (optional `True` or `False`; overrides the client's setting, see [Raising errors for 4xx and 5xx responses](#raising-errors-for-4xx-and-5xx-responses))
 
@@ -163,7 +163,7 @@ user = api.users.retrieve(42)  # GET /users/42
 
 Type checkers see `api.users` as `Users`, and its endpoints keep their signatures.
 
-- `prefix` is joined to the path of each endpoint in the class when the class is defined, so `EndpointRegister` shows full paths. It's absolute: a resource's paths don't depend on where it's mounted. Put a prefix shared by the whole API, such as `/v1`, in the client's base URL instead.
+- `prefix` is joined to the path of each endpoint in the class when the class is defined, so tools and logs show full paths. It's absolute: a resource's paths don't depend on where it's mounted. Put a prefix shared by the whole API, such as `/v1`, in the client's base URL instead.
 - Placeholders in a prefix are filled from method arguments like any other: with `prefix="/repos/{owner}/{repo}"`, each endpoint needs `owner` and `repo` parameters.
 - `tags` are added before each endpoint's own tags.
 - Mount resources on other resources to nest them, for example `api.repos.issues.retrieve(...)`. Each keeps its own prefix.
@@ -175,40 +175,28 @@ Type checkers see `api.users` as `Users`, and its endpoints keep their signature
   - If an endpoint is named `list` (or `dict`, `type`, ...), a later `list[Post]` in an annotation or a decorator argument fails when the class is defined: `TypeError: 'function' object is not subscriptable`. Pyright reports it too. Define that endpoint last in the class, or write `builtins.list[Post]` after it.
 - Mount an instance (`users = Users()`), not the class. Calling an endpoint on a resource that isn't mounted on a client, such as `Users().retrieve(42)`, raises `UnboundResourceError`.
 
-## Endpoint Registry (`EndpointRegister`)
+## Listing a Client's Endpoints
 
-`EndpointRegister` is a developer-facing introspection tool that collects decorated endpoints at import time. It is useful when you want to build metadata-driven tooling around your client classes.
-
-Common uses:
-
-- Generate JSON metadata files describing methods, paths, return types, and deprecation status.
-- Feed endpoint metadata into documentation generators.
-- Build context for internal systems (for example validation, tracing, SDK tooling, or contract checks).
-- Filter or sort endpoints by custom tags (for example domain, stability, or ownership).
-
-```python
-from clientx import EndpointRegister
-
-for endpoint in EndpointRegister.iter():
-    print(endpoint.method, str(endpoint.path), endpoint.return_type)
-
-public_endpoints = [endpoint for endpoint in EndpointRegister.iter() if "public" in endpoint.tags]
-for endpoint in sorted(public_endpoints, key=lambda item: (item.method, str(item.path))):
-    print(endpoint.method, str(endpoint.path), endpoint.tags)
-```
-
-You can attach tags directly in the endpoint decorator:
+To build documentation, metadata files, or other tooling from a client, list its endpoints with `clientx.tools.list_tools()`. It includes endpoints on resources, and gives each one's name, HTTP method, full path, tags, docstring, deprecation status, and JSON Schemas for its arguments and result:
 
 ```python
 from clientx import ClientX, Response
 from clientx.methods import get
+from clientx.tools import list_tools
 
 
 class UsersClient(ClientX):
     @get("/users", tags=["public", "users"])
     def list_users(self) -> Response:
+        """List all users."""
         ...
+
+
+for tool in list_tools(UsersClient("https://api.example.com"), include_tags=["public"]):
+    print(tool.method, tool.path, tool.tags, tool.description)  # GET /users ('public', 'users') List all users.
 ```
+
+It leaves out streaming endpoints, and endpoints whose types have no JSON Schema (with a warning). See [Using a Client from AI Agents](#using-a-client-from-ai-agents) for everything a tool describes.
 
 ## Return Types and Decoders
 
