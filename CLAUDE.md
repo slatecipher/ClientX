@@ -63,7 +63,7 @@ The public API is `clientx/__init__.py`, which also re-exports `httpx2.Response`
 
 `mcp.py` (public, `clientx.mcp`, needs the `mcp` extra; `mcp` is also in the dev group so CI tests it) serves `list_tools()` over MCP with the SDK's low-level `Server`, using the core's schemas as-is (one source of truth). Non-object output schemas are wrapped as `{"result": ...}` with `$defs` moved to the top. Tests talk to it in-process with `mcp.Client(server)`.
 
-`examples/beeceptor/` contains a complete example client.
+`examples/beeceptor/` and `examples/jsonplaceholder/` contain complete example clients, run by the `examples/*_example.py` scripts. Both call live public APIs, so the scripts need network access; lint and typecheck cover them, but the test suite doesn't run them.
 
 `llms.txt` (repo root) is a compact guide for AI coding assistants. Keep it in sync with the public API and README; its code sample must run and type-check.
 
