@@ -11,6 +11,13 @@ from clientx._annotations import (
     RequestPart,
 )
 
+type UserIdParam = Annotated[int, FieldX(RequestPart.PARAMS, key="userId")]
+type QueryParam[T] = Annotated[T, FieldX(RequestPart.PARAMS)]
+type DescribedUserId = Annotated[UserIdParam, "described"]
+type IgnoresItsParameter[T] = Annotated[int, FieldX(RequestPart.HEADERS)]
+type Cycle = OtherCycle  # pyright: ignore[reportGeneralTypeIssues]  # deliberately cyclic
+type OtherCycle = Cycle
+
 
 def test_request_section_get():
     assert RequestPart.get("json") is RequestPart.JSON
@@ -112,3 +119,52 @@ def test_dump_config_typed_dict_returns_fields():
         "exclude_none": True,
         "exclude_defaults": True,
     }
+
+
+def test_annotation_extractor_reads_metadata_through_a_type_alias():
+    info = AnnotationExtractor.from_field_annotation(UserIdParam)
+
+    assert info.annotation is int
+    assert info.fieldx.key == "userId"
+
+
+def test_annotation_extractor_reads_metadata_through_a_generic_type_alias():
+    info = AnnotationExtractor.from_field_annotation(QueryParam[list[str]])
+
+    assert info.annotation == list[str]
+    assert info.fieldx.request_part is RequestPart.PARAMS
+
+
+def test_annotation_extractor_puts_inner_alias_metadata_first():
+    # Like Python's own flattening of Annotated[Annotated[T, inner], outer].
+    nested = AnnotationExtractor.from_field_annotation(Annotated[UserIdParam, "outer"])
+    alias_of_alias = AnnotationExtractor.from_field_annotation(DescribedUserId)
+
+    assert nested.annotation is int
+    assert nested.metadata == [FieldX(RequestPart.PARAMS, key="userId"), "outer"]
+    assert alias_of_alias.metadata == [FieldX(RequestPart.PARAMS, key="userId"), "described"]
+
+
+def test_annotation_extractor_reads_alias_metadata_on_model_fields():
+    class Filters(BaseModel):
+        user_id: UserIdParam
+        tags: Annotated[QueryParam[list[str]], Field(description="Tags to match")]
+
+    mapping = AnnotationExtractor.from_base_model(Filters)
+
+    assert mapping["user_id"].fieldx.key == "userId"
+    assert mapping["tags"].fieldx.request_part is RequestPart.PARAMS
+    assert mapping["tags"].annotation == list[str]
+
+
+def test_annotation_extractor_stops_on_cyclic_type_aliases():
+    info = AnnotationExtractor.from_field_annotation(Cycle)
+
+    assert info.metadata == []
+
+
+def test_annotation_extractor_reads_a_generic_alias_whose_value_takes_no_arguments():
+    info = AnnotationExtractor.from_field_annotation(IgnoresItsParameter[str])
+
+    assert info.annotation is int
+    assert info.fieldx.request_part is RequestPart.HEADERS

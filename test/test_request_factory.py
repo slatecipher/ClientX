@@ -341,6 +341,10 @@ def test_merging_request_parts_never_changes_the_callers_dict():
     assert str(sent[0].url) == "https://example.test/items?limit=10&kind=book"
 
 
+type UserIdParam = Annotated[int | None, FieldX(RequestPart.PARAMS, key="userId")]
+type QueryParam[T] = Annotated[T, FieldX(RequestPart.PARAMS)]
+
+
 EVENT_ID = UUID(int=1)
 STARTS_AT = datetime(2026, 1, 1, 9, 30)
 
@@ -538,3 +542,26 @@ def test_single_model_fields_are_sent_under_their_key_or_dumped_name():
     assert sent[0].headers["request-id"] == "r-1"
     assert sent[0].content == b'{"note":"hi"}'
     assert "request-id" not in sent[1].headers
+
+
+class AliasFilters(BaseModel):
+    user_id: UserIdParam = None
+
+
+class AliasClient(ClientX):
+    @get("/posts")
+    def list_posts(self, user_id: UserIdParam = None, tags: QueryParam[list[str] | None] = None) -> Response: ...
+
+    @get("/posts/filtered")
+    def filter_posts(self, filters: AliasFilters) -> Response: ...
+
+
+def test_markers_in_type_aliases_route_parameters_and_model_fields():
+    sent: list[httpx2.Request] = []
+    client = make_recording_client(AliasClient, sent)
+
+    client.list_posts(user_id=1, tags=["a", "b"])
+    client.filter_posts(AliasFilters(user_id=2))
+
+    assert str(sent[0].url) == "https://example.test/posts?userId=1&tags=a&tags=b"
+    assert str(sent[1].url) == "https://example.test/posts/filtered?userId=2"
