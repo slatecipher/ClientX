@@ -169,7 +169,9 @@ Type checkers see `api.users` as `Users`, and its endpoints keep their signature
 - A resource doesn't refer to the client class, so resources can live in their own modules.
 - Names that `ClientX` itself uses, such as `client` and `user_agent`, are free for endpoints on a resource.
 - A subclass keeps its parent's prefix and tags unless it sets its own.
-- If an endpoint is named like a decorator, such as `get`, later decorators in the same class body refer to that method instead. Import the module (`from clientx import methods`) and write `@methods.get(...)` in that case.
+- An endpoint's name hides any other meaning of that name for the rest of the class body:
+  - If an endpoint is named like a decorator, such as `get`, later decorators refer to that method instead. Import the module (`from clientx import methods`) and write `@methods.get(...)`.
+  - If an endpoint is named `list` (or `dict`, `type`, ...), a later `list[Post]` in an annotation or a decorator argument fails when the class is defined: `TypeError: 'function' object is not subscriptable`. Pyright reports it too. Define that endpoint last in the class, or write `builtins.list[Post]` after it.
 - Mount an instance (`users = Users()`), not the class. Calling an endpoint on a resource that isn't mounted on a client, such as `Users().retrieve(42)`, raises `UnboundResourceError`.
 
 ## Endpoint Registry (`EndpointRegister`)
@@ -215,7 +217,7 @@ ClientX enforces explicit return annotations:
 - `-> None`: sends request and returns `None`.
 - Any other type: requires `decoder=...`.
 
-If you pass a decoder, it always runs and its output is returned, whatever the annotation. For example, a decoder can call `response.raise_for_status()` on a `-> Response` or `-> None` endpoint.
+If you pass a decoder, it always runs and its output is returned, whatever the annotation or the status code. For example, a decoder can call `response.raise_for_status()` on a `-> Response` or `-> None` endpoint. To check every endpoint's status code, see [Raising errors for 4xx and 5xx responses](#raising-errors-for-4xx-and-5xx-responses).
 
 A decoder is a callable that receives the raw `httpx2.Response` and returns the value that matches your method's return annotation. ClientX executes the HTTP request first, then passes the response into the decoder, and returns the decoder output to the caller.
 
@@ -599,6 +601,30 @@ client = ClientX(
 - `user_agent` defaults to `ClientX/<version>`.
 - Additional kwargs are forwarded to `httpx2.Client(...)`.
 
+### Raising errors for 4xx and 5xx responses
+
+ClientX doesn't check status codes. A decoder parses whatever body comes back, so a 404 usually fails as a Pydantic `ValidationError`, and `-> None` and `-> Response` endpoints return normally. To raise `httpx2.HTTPStatusError` for every 4xx and 5xx response, add a response event hook:
+
+```python
+import httpx2
+
+from clientx import ClientX
+
+
+def raise_for_status(response: httpx2.Response) -> None:
+    if response.is_error:  # 4xx and 5xx only: hooks also see redirects
+        response.read()  # so the error body stays readable from the exception
+        response.raise_for_status()
+
+
+client = ClientX("https://api.example.com", event_hooks={"response": [raise_for_status]})
+```
+
+- **Keep the `is_error` check.** Response hooks also run on each redirect, and `raise_for_status()` raises for 3xx too, so without the check `follow_redirects=True` stops working.
+- **Keep `response.read()`.** Hooks run before the body is read, so without it `exc.response.json()` raises `httpx2.ResponseNotRead`. Only error responses are read, so streaming endpoints still stream.
+- The hook applies to every endpoint, including those on resources and those called as AI tools.
+- To check a single endpoint instead, call `response.raise_for_status()` in its decoder.
+
 ## Logging
 
 ClientX logs one record per endpoint call on the `clientx` logger, at `DEBUG` level, after the response arrives or the request fails:
@@ -768,6 +794,8 @@ ClientX raises explicit errors for common contract violations:
 - argument cannot map to request parts -> `UnconsumableArgumentError`
 
 All of them derive from `ClientXError` (importable from `clientx`), so `except ClientXError` catches any of them. Each also keeps its built-in base (`TypeError` or `ValueError`).
+
+HTTP errors come from httpx2. Connection errors and timeouts are always raised. Status codes aren't checked unless you add a hook: see [Raising errors for 4xx and 5xx responses](#raising-errors-for-4xx-and-5xx-responses).
 
 ## Development
 

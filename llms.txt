@@ -9,6 +9,7 @@ A complete client:
 ```python
 from typing import Annotated
 
+import httpx2
 from pydantic import BaseModel, Field, TypeAdapter
 
 from clientx import Body, ClientX, DumpConfig, Query, Resource, Response
@@ -67,7 +68,16 @@ class ExampleAPI(ClientX):
         ...
 
 
-with ExampleAPI("https://api.example.com", auth=("user", "secret"), timeout=10.0) as api:
+def raise_for_status(response: httpx2.Response) -> None:
+    """Raise httpx2.HTTPStatusError for 4xx and 5xx responses. ClientX doesn't check status codes itself."""
+    if response.is_error:  # 4xx and 5xx only: hooks also see redirects
+        response.read()  # so the error body stays readable from the exception
+        response.raise_for_status()
+
+
+with ExampleAPI(
+    "https://api.example.com", auth=("user", "secret"), timeout=10.0, event_hooks={"response": [raise_for_status]}
+) as api:
     user = api.users.retrieve(42)  # GET /users/42 -> User
     matches = api.users.search("Ada")  # GET /users?q=Ada -> list[User] (limit is None, so it's left out)
     api.users.create(NewUser(name="Ada"))  # POST /users with JSON {"name": "Ada"}
@@ -78,7 +88,7 @@ Rules for writing endpoints:
 
 - Endpoint bodies never run. Write `...` (or just a docstring). Decorators come from `clientx.methods`: `get`, `post`, `put`, `patch`, `delete`, `head`, `options`. Each takes `path`, and optionally `decoder`, `deprecated` (for example `DeprecatedMessage("...")`), `tags`, and `timeout`.
 - Every endpoint needs a return annotation. `-> Response` (`clientx.Response` is `httpx2.Response`) returns the raw response, `-> None` returns nothing, and any other type requires `decoder=`. Type checkers check that the decoder's output matches the annotation. A missing annotation or decoder raises when the class is defined.
-- Decoders, from `clientx.decoders`: `ModelDecoder(Model)`, `TypeAdapterDecoder(TypeAdapter(T))` (it takes a `TypeAdapter`, not a bare type), `FromResponseDecoder(Model)` (calls `Model.from_response(response)`), `json_decoder` (returns `Any`), `text_decoder`, `content_decoder`, or any callable `(httpx2.Response) -> T`. A decoder always runs when given; it's where to call `response.raise_for_status()`.
+- Decoders, from `clientx.decoders`: `ModelDecoder(Model)`, `TypeAdapterDecoder(TypeAdapter(T))` (it takes a `TypeAdapter`, not a bare type), `FromResponseDecoder(Model)` (calls `Model.from_response(response)`), `json_decoder` (returns `Any`), `text_decoder`, `content_decoder`, or any callable `(httpx2.Response) -> T`. A decoder always runs when given, whatever the status code.
 - `{placeholders}` in the path are filled from parameters with the same names, including placeholders in a resource prefix.
 - Each other parameter goes to the first of these that matches: (1) its name is a request part (`params`, `json`, `data`, `files`, `headers`), which wins even over an annotation, so a parameter named `data` is always form data; (2) a request-part annotation: `Annotated[T, Query()]` (query parameters), `Header()`, `Form()` (form data), `Body()` (JSON body), or `File()` (multipart files); (3) its value is a Pydantic model, which is expanded field by field (fields annotated with a helper go to that part, the rest to the JSON body). Anything else raises `UnconsumableArgumentError`.
 - `Query`, `Header`, and `Form` take an optional `key`, the name to send under: `Query("userId")`. Without it, a single value (str, int, Enum, list) is sent under the parameter name, and `Header()` turns underscores into hyphens (`request_id` becomes `request-id`). A list repeats the name (`?tag=a&tag=b`). A mapping or model is merged into the part. Model fields follow the same rules, under their alias or field name. `Body()` and `File()` take no key.
@@ -88,21 +98,22 @@ Rules for writing endpoints:
 - The helpers are named like FastAPI's but build the outgoing request. In a FastAPI app, import ClientX's under another name (`from clientx import Query as ClientQuery`) or use `clientx.Query(...)`.
 - Streaming: `StreamLinesDecoder()` and `StreamChunksDecoder(chunk_size=...)` with `-> Iterator[str]` / `-> Iterator[bytes]` stream the body and release the connection when iteration ends. `StreamResponseDecoder()` with `-> Response` returns the open response, which the caller must read or close.
 - Resources group endpoints: `class Users(Resource, prefix="/users", tags=[...])`, mounted as an instance (`users = Users()`) on a `ClientX` subclass or on another resource. Prefixes are absolute (they're not combined when nesting); put an API-wide prefix such as `/v1` in the base URL. Resource tags come before each endpoint's tags. Calling a resource that isn't mounted raises `UnboundResourceError`.
-- If an endpoint is named like a decorator (for example a method called `get`), later decorators in the same class body refer to that method. Use `from clientx import methods` and `@methods.get(...)` instead.
+- An endpoint's name hides any other meaning of that name for the rest of the class body. A method called `get` makes later `@get(...)` decorators refer to it: use `from clientx import methods` and `@methods.get(...)` instead. A method called `list` (or `dict`, `type`, ...) makes a later `list[Post]`, in an annotation or a decorator argument, fail when the class is defined with `TypeError: 'function' object is not subscriptable` (pyright reports it too). Define that method last in the class, or write `builtins.list[Post]` after it (`import builtins`).
 - Names `ClientX` itself uses can't be endpoint or resource names on a `ClientX` subclass: `user_agent`, `client`, and dunder methods raise `EndpointNameConflictError`. They're free on a `Resource`. `send` is free on both.
 - mypy reports `empty-body` for `...` bodies with a non-`None` return type. Turn that code off for client modules (`# mypy: disable-error-code="empty-body"`); pyright accepts `...`.
 
 Using clients:
 
 - `ClientX(base_url, user_agent=None, **kwargs)` forwards every keyword to `httpx2.Client`: `auth`, `headers`, `params`, `cookies`, `timeout`, `verify`, `cert`, `proxy`, `transport`, `mounts`, `event_hooks`, `follow_redirects`, and so on. Use `with` to close connections. `client.client` is the underlying `httpx2.Client`, for ad-hoc requests.
+- ClientX doesn't check status codes. A decoder parses whatever body comes back, so a 404 usually fails as a Pydantic `ValidationError`, and `-> None` and `-> Response` endpoints return normally. To raise `httpx2.HTTPStatusError` for every 4xx and 5xx response, pass the `raise_for_status` response hook from the sample: `event_hooks={"response": [raise_for_status]}`. Keep its `is_error` check: hooks also run on redirect responses, and `raise_for_status()` raises for 3xx too, which breaks `follow_redirects=True`. Keep `response.read()` as well: the hook runs before the body is read, so without it `exc.response.json()` raises `ResponseNotRead`. It only reads error responses, so streaming endpoints still stream. To check a single endpoint instead, call `response.raise_for_status()` in its decoder.
 - Test clients with `transport=httpx2.MockTransport(handler)`, where `handler(request: httpx2.Request) -> httpx2.Response`.
-- Errors all derive from `clientx.ClientXError`: `MissingReturnTypeError`, `MissingDecoderError`, `EndpointNameConflictError` (when the class is defined), `MissingPathArgumentsError`, `UnconsumableArgumentError`, `UnboundResourceError` (at call time). HTTP errors come from httpx2.
+- Errors all derive from `clientx.ClientXError`: `MissingReturnTypeError`, `MissingDecoderError`, `EndpointNameConflictError` (when the class is defined), `MissingPathArgumentsError`, `UnconsumableArgumentError`, `UnboundResourceError` (at call time). HTTP errors come from httpx2: connection errors and timeouts always, and `HTTPStatusError` with the hook above.
 - Logging: one DEBUG record per endpoint call on the `clientx` logger, such as `ClientX request: GET /users/42 -> 200 in 12.3 ms (Users.retrieve)`, with attributes `clientx_endpoint`, `clientx_method`, `clientx_path`, `clientx_parts`, `clientx_stream`, `clientx_status`, `clientx_elapsed_ms`, and `clientx_error`. It never contains header values, bodies, or query strings. httpx2 separately logs each request at INFO on the `httpx2` logger. For custom request logging, pass httpx2 `event_hooks`.
 - `EndpointRegister.iter()` yields every decorated `Endpoint` (method, path, tags, return type) in the process, for tooling.
 
 AI tools and MCP:
 
-- `clientx.tools.list_tools(client, read_only=False, include_tags=None, exclude_tags=(), include_deprecated=False)` returns one `Tool` per endpoint, including resources: `name` (attribute path with underscores, such as `users_retrieve`), `description` (the docstring), `input_schema` and `output_schema` (JSON Schema), `read_only` / `destructive` / `idempotent` (from the HTTP method), `method`, `path`, `tags`, and `deprecated`. `tool.call(arguments)` validates the arguments and calls the endpoint through the client, returning a JSON-friendly result. Streaming endpoints are left out.
+- `clientx.tools.list_tools(client, read_only=False, include_tags=None, exclude_tags=(), include_deprecated=False)` returns one `Tool` per endpoint, including resources: `name` (attribute path with underscores, such as `users_retrieve`), `description` (the docstring), `input_schema` and `output_schema` (JSON Schema), `read_only` / `destructive` / `idempotent` (from the HTTP method: GET, HEAD and OPTIONS are read-only; PUT, PATCH and DELETE are destructive; POST is neither and isn't idempotent; GET, HEAD, OPTIONS, PUT and DELETE are idempotent), `method`, `path`, `tags`, and `deprecated`. `tool.call(arguments)` validates the arguments and calls the endpoint through the client, returning a JSON-friendly result; errors, including `HTTPStatusError` from a status hook, propagate. `read_only=True` keeps only GET, HEAD and OPTIONS endpoints. Streaming endpoints are left out.
 - `clientx.mcp.run_mcp_server(client, read_only=True)` serves those tools as an MCP server over stdio (it needs the `mcp` extra). `create_mcp_server(...)` returns the low-level `mcp.server.lowlevel.Server` for other transports. Don't print to stdout in an MCP server process.
 - Docstrings become tool descriptions, and `Annotated[T, Field(description=...)]` adds parameter descriptions. Keep credentials in the client's configuration (`auth=`, `headers=`), never in endpoint parameters, which models see and fill in.
 
