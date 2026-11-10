@@ -49,6 +49,7 @@ def test_submodule_exports():
     assert sorted(exceptions.__all__) == [
         "ClientXError",
         "EndpointNameConflictError",
+        "MisplacedHelperError",
         "MissingDecoderError",
         "MissingPathArgumentsError",
         "MissingReturnTypeError",

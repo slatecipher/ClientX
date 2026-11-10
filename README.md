@@ -476,7 +476,9 @@ class ItemsClient(ClientX):
 
 `Body()` and `File()` take no key: they send the value as the JSON body or as the `files` mapping. Every helper takes `dump_config=` for Pydantic models (see `DumpConfig` below).
 
-To reuse an annotation, name it with a `type` alias, plain or generic: `type UserId = Annotated[int | None, Query("userId")]`, or `type QueryParam[T] = Annotated[T, Query()]` used as `QueryParam[str]`. Put `None` inside the annotation (`Annotated[int | None, ...]` or `QueryParam[int | None]`), not around it: ClientX doesn't see a helper inside `... | None`.
+To reuse an annotation, name it with a `type` alias, plain or generic: `type UserId = Annotated[int | None, Query("userId")]`, or `type QueryParam[T] = Annotated[T, Query()]` used as `QueryParam[str]`.
+
+A helper applies to the whole parameter or field, so use one helper, in the outermost `Annotated`, around the full type with `None` included: `Annotated[int | None, Query()]`, or `QueryParam[int | None]` with an alias. A helper nested inside another type, such as `Annotated[int, Query()] | None` or `list[Annotated[str, Query()]]`, and a second helper on the same parameter raise `MisplacedHelperError`: for a parameter when the class is defined, for a model field when the model is sent. If the request part depends on the value's type (a `str` header or a `dict` body, say), write separate endpoints.
 
 The helpers are named like FastAPI's, but they do the opposite job: FastAPI's read the incoming request, and ClientX's build the outgoing one. In a FastAPI app that calls other APIs, import one of them under another name (`from clientx import Query as ClientQuery`), or use the module (`import clientx`, then `clientx.Query("userId")`).
 
@@ -811,6 +813,7 @@ ClientX raises explicit errors for common contract violations:
 - endpoint called on a resource that isn't mounted on a client -> `UnboundResourceError`
 - path placeholders not provided -> `MissingPathArgumentsError`
 - argument cannot map to request parts -> `UnconsumableArgumentError`
+- request-part helper nested inside another type, or two helpers on one parameter or field -> `MisplacedHelperError`
 
 All of them derive from `ClientXError` (importable from `clientx`), so `except ClientXError` catches any of them. Each also keeps its built-in base (`TypeError` or `ValueError`).
 
