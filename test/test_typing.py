@@ -16,13 +16,13 @@ The tests also run under pytest against a mock transport.
 """
 
 from collections.abc import Iterator
-from typing import Any, assert_type
+from typing import Annotated, Any, assert_type
 
 import httpx2
 import pytest
 from pydantic import BaseModel, TypeAdapter
 
-from clientx import ClientX, Resource, Response
+from clientx import Body, ClientX, Header, Query, Resource, Response
 from clientx.decoders import (
     ModelDecoder,
     StreamLinesDecoder,
@@ -86,6 +86,18 @@ class GroupsResource(Resource, prefix="/groups"):
 class ResourcesClient(ClientX):
     users = UsersResource()
     groups = GroupsResource()
+
+
+class SearchClient(ClientX):
+    @get("/users", decoder=TypeAdapterDecoder(TypeAdapter(list[User])))
+    def search(
+        self,
+        name: Annotated[str | None, Query("q")] = None,
+        authorization: Annotated[str | None, Header("Authorization")] = None,
+    ) -> list[User]: ...
+
+    @post("/users")
+    def create(self, user: Annotated[User, Body()]) -> Response: ...
 
 
 def _transport() -> httpx2.MockTransport:
@@ -213,3 +225,12 @@ def _construct_with_every_httpx2_option() -> ClientX:
         transport=httpx2.HTTPTransport(),
         default_encoding="utf-8",
     )
+
+
+def test_request_part_helpers_keep_endpoint_signatures() -> None:
+    client = SearchClient("https://example.test", transport=_transport())
+
+    assert_type(client.search(name="Ada", authorization="Bearer t"), list[User])
+    assert_type(client.create(User(name="Ada")), Response)
+    client.search(name=1)  # pyright: ignore[reportArgumentType]
+    client.create({"name": "Ada"})  # pyright: ignore[reportArgumentType]

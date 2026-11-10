@@ -11,9 +11,9 @@ from typing import Annotated
 
 from pydantic import BaseModel, Field, TypeAdapter
 
-from clientx import ClientX, FieldX, RequestPart, Resource, Response
+from clientx import Body, ClientX, DumpConfig, Query, Resource, Response
 from clientx.decoders import ModelDecoder, TypeAdapterDecoder
-from clientx.methods import delete, get, post
+from clientx.methods import delete, get, patch, post
 
 
 class User(BaseModel):
@@ -25,6 +25,10 @@ class NewUser(BaseModel):
     name: str
 
 
+class UserChanges(BaseModel):
+    name: str | None = None
+
+
 class Users(Resource, prefix="/users", tags=["users"]):
     @get("/{user_id}", decoder=ModelDecoder(User))
     def retrieve(self, user_id: Annotated[int, Field(description="The user's ID")]) -> User:
@@ -32,13 +36,20 @@ class Users(Resource, prefix="/users", tags=["users"]):
         ...
 
     @get("", decoder=TypeAdapterDecoder(TypeAdapter(list[User])))
-    def search(self, name: Annotated[str, FieldX(RequestPart.PARAMS, key="q")]) -> list[User]:
+    def search(self, name: Annotated[str, Query("q")], limit: Annotated[int | None, Query()] = None) -> list[User]:
         """Search users by name."""
         ...
 
     @post("", decoder=ModelDecoder(User))
     def create(self, payload: NewUser) -> User:
         """Create a user."""
+        ...
+
+    @patch("/{user_id}", decoder=ModelDecoder(User))
+    def update(
+        self, user_id: int, changes: Annotated[UserChanges, Body(dump_config=DumpConfig(exclude_unset=True))]
+    ) -> User:
+        """Change some of a user's fields."""
         ...
 
     @delete("/{user_id}")
@@ -58,8 +69,9 @@ class ExampleAPI(ClientX):
 
 with ExampleAPI("https://api.example.com", auth=("user", "secret"), timeout=10.0) as api:
     user = api.users.retrieve(42)  # GET /users/42 -> User
-    matches = api.users.search("Ada")  # GET /users?q=Ada -> list[User]
+    matches = api.users.search("Ada")  # GET /users?q=Ada -> list[User] (limit is None, so it's left out)
     api.users.create(NewUser(name="Ada"))  # POST /users with JSON {"name": "Ada"}
+    api.users.update(42, UserChanges(name="Ada L."))  # PATCH /users/42 with JSON {"name": "Ada L."}
 ```
 
 Rules for writing endpoints:
@@ -68,8 +80,12 @@ Rules for writing endpoints:
 - Every endpoint needs a return annotation. `-> Response` (`clientx.Response` is `httpx2.Response`) returns the raw response, `-> None` returns nothing, and any other type requires `decoder=`. Type checkers check that the decoder's output matches the annotation. A missing annotation or decoder raises when the class is defined.
 - Decoders, from `clientx.decoders`: `ModelDecoder(Model)`, `TypeAdapterDecoder(TypeAdapter(T))` (it takes a `TypeAdapter`, not a bare type), `FromResponseDecoder(Model)` (calls `Model.from_response(response)`), `json_decoder` (returns `Any`), `text_decoder`, `content_decoder`, or any callable `(httpx2.Response) -> T`. A decoder always runs when given; it's where to call `response.raise_for_status()`.
 - `{placeholders}` in the path are filled from parameters with the same names, including placeholders in a resource prefix.
-- Each other parameter goes to the first of these that matches: (1) its name is a request part (`params`, `json`, `data`, `files`, `headers`), which wins even over `FieldX`, so a parameter named `data` is always form data; (2) `Annotated[T, FieldX(RequestPart.PARAMS | HEADERS | DATA | JSON | FILES, key=..., dump_config=DumpConfig(...))]`; (3) its value is a Pydantic model, which is expanded field by field (fields annotated with `FieldX` go to that part, the rest to JSON). Anything else raises `UnconsumableArgumentError`.
-- A single value (str, int, Enum) sent as a query parameter, header, or form field needs `FieldX(..., key="name")`; without `key`, the value must already be a mapping. An `Enum` is sent as its `.value`. `key` is ignored for `JSON` and `FILES`, and doesn't work on model fields.
+- Each other parameter goes to the first of these that matches: (1) its name is a request part (`params`, `json`, `data`, `files`, `headers`), which wins even over an annotation, so a parameter named `data` is always form data; (2) a request-part annotation: `Annotated[T, Query()]` (query parameters), `Header()`, `Form()` (form data), `Body()` (JSON body), or `File()` (multipart files); (3) its value is a Pydantic model, which is expanded field by field (fields annotated with a helper go to that part, the rest to the JSON body). Anything else raises `UnconsumableArgumentError`.
+- `Query`, `Header`, and `Form` take an optional `key`, the name to send under: `Query("userId")`. Without it, a single value (str, int, Enum, list) is sent under the parameter name, and `Header()` turns underscores into hyphens (`request_id` becomes `request-id`). A list repeats the name (`?tag=a&tag=b`). A mapping or model is merged into the part. Model fields follow the same rules, under their alias or field name. `Body()` and `File()` take no key.
+- `None` is never sent as a query parameter, header, or form field, so optional parameters work as `Annotated[int | None, Query()] = None`; pass `""` to send an empty value. A JSON body keeps `null`. Values become JSON-compatible: an `Enum` its `.value`, a `datetime` ISO 8601, a `UUID` a string; numbers and booleans in headers become text.
+- Models are dumped with `mode="json"` and `by_alias=True`, so fields are sent under their aliases (`Field(alias="userId")` or `alias_generator=to_camel`): don't add `serialize_by_alias`. Every helper takes `dump_config=DumpConfig(...)`, whose keys override those defaults and go to `model_dump`: `exclude_unset=True` (only the fields that were set, for PATCH), `exclude_none`, `exclude_defaults`, `include`, `exclude`, `by_alias`, `mode`, `context`, `round_trip`, `serialize_as_any`, `exclude_computed_fields`, `warnings`.
+- Reuse annotations with `type` aliases: `type UserId = Annotated[int | None, Query("userId")]`. Put `None` inside the annotation; a helper inside `... | None` isn't seen.
+- The helpers are named like FastAPI's but build the outgoing request. In a FastAPI app, import ClientX's under another name (`from clientx import Query as ClientQuery`) or use `clientx.Query(...)`.
 - Streaming: `StreamLinesDecoder()` and `StreamChunksDecoder(chunk_size=...)` with `-> Iterator[str]` / `-> Iterator[bytes]` stream the body and release the connection when iteration ends. `StreamResponseDecoder()` with `-> Response` returns the open response, which the caller must read or close.
 - Resources group endpoints: `class Users(Resource, prefix="/users", tags=[...])`, mounted as an instance (`users = Users()`) on a `ClientX` subclass or on another resource. Prefixes are absolute (they're not combined when nesting); put an API-wide prefix such as `/v1` in the base URL. Resource tags come before each endpoint's tags. Calling a resource that isn't mounted raises `UnboundResourceError`.
 - If an endpoint is named like a decorator (for example a method called `get`), later decorators in the same class body refer to that method. Use `from clientx import methods` and `@methods.get(...)` instead.

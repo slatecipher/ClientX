@@ -7,7 +7,7 @@ import httpx2
 import pytest
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
 
-from clientx import ClientX, DeprecatedMessage, FieldX, RequestPart, Resource, Response, methods
+from clientx import ClientX, DeprecatedMessage, Query, Resource, Response, methods
 from clientx.decoders import ModelDecoder, StreamLinesDecoder, TypeAdapterDecoder
 from clientx.methods import delete, get, post
 from clientx.tools import Tool, list_tools
@@ -34,7 +34,7 @@ class Users(Resource, prefix="/users", tags=["users"]):
         ...
 
     @get("", decoder=TypeAdapterDecoder(TypeAdapter(list[User])))
-    def list_all(self, sort: Annotated[Sort, FieldX(RequestPart.PARAMS, key="sort")] = Sort.NEWEST) -> list[User]:
+    def list_all(self, sort: Annotated[Sort, Query()] = Sort.NEWEST) -> list[User]:
         """List users."""
         ...
 

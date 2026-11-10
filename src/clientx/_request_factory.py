@@ -7,18 +7,23 @@ from collections import defaultdict
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from inspect import BoundArguments
-from typing import Any, cast
+from typing import Any, cast, get_args
 
 from pydantic import BaseModel
 from pydantic_core import to_jsonable_python
 
 from clientx._annotation_extractor import NamedAnnotation, NamedAnnotationExtractor
-from clientx._annotations import DumpConfig, RequestPart
+from clientx._annotations import DumpConfig
+from clientx._client_types import RequestPartName
 from clientx._endpoint_context import Endpoint
 from clientx.exceptions import UnconsumableArgumentError
 
 # Request parts that are flat name-value pairs, where a single value can be sent under a key.
-_KEYED_PARTS = frozenset({RequestPart.PARAMS, RequestPart.HEADERS, RequestPart.DATA})
+_KEYED_PARTS: frozenset[RequestPartName] = frozenset({"params", "headers", "data"})
+
+# A parameter named after a request part ("params", "json", ...) holds that whole part. Built from
+# RequestPartName, so the names are defined once.
+_PARTS_BY_NAME: dict[str, RequestPartName] = {name: name for name in get_args(RequestPartName.__value__)}
 
 # How models are dumped unless a DumpConfig says otherwise: JSON-compatible values (ISO 8601 dates,
 # strings for UUIDs and decimals) under each field's alias, which is usually the API's own name.
@@ -40,7 +45,7 @@ def dump_model(model: BaseModel, dump_config: DumpConfig) -> dict[str, Any]:
     return model.model_dump(**config)
 
 
-def _sends_single_value(part: RequestPart | str, key: str | None, value: object, *, whole_part: bool) -> bool:
+def _sends_single_value(part: RequestPartName, key: str | None, value: object, *, whole_part: bool) -> bool:
     """Whether ``value`` is sent as one named value in ``part``, rather than merged into it.
 
     Query parameters, headers, and form fields are name-value pairs. A value with a ``key``
@@ -52,16 +57,16 @@ def _sends_single_value(part: RequestPart | str, key: str | None, value: object,
     return key is not None or not (whole_part or isinstance(value, Mapping))
 
 
-def _default_name(name: str, part: RequestPart | str) -> str:
+def _default_name(name: str, part: RequestPartName) -> str:
     """The name a single value is sent under without a ``key``.
 
     It's the parameter or field name. For headers, underscores become hyphens, like
     FastAPI's ``Header()``: many proxies drop headers with underscores.
     """
-    return name.replace("_", "-") if part == RequestPart.HEADERS else name
+    return name.replace("_", "-") if part == "headers" else name
 
 
-def _clean_keyed_part(part: RequestPart, values: dict[str, Any]) -> dict[str, Any]:
+def _clean_keyed_part(part: RequestPartName, values: dict[str, Any]) -> dict[str, Any]:
     """Prepare a ``params``, ``headers``, or ``data`` dict for httpx2.
 
     ``None`` values are left out, because httpx2 sends them as empty values, or rejects
@@ -69,7 +74,7 @@ def _clean_keyed_part(part: RequestPart, values: dict[str, Any]) -> dict[str, An
     ``true``), because httpx2 only accepts strings there.
     """
     cleaned = {name: item for name, item in values.items() if item is not None}
-    if part is RequestPart.HEADERS:
+    if part == "headers":
         return {
             name: json.dumps(item) if isinstance(item, bool | int | float) else item for name, item in cleaned.items()
         }
@@ -233,11 +238,11 @@ class RequestFactory:
                 ``httpx2.request(**kwargs)``.
 
             Parameters are converted into request parts using one of three strategies:
-            - Parameter name matches a ``RequestPart`` (for example ``json`` or ``params``).
-            - Parameter is annotated with a ``RequestPart`` via ``Annotated`` metadata.
+            - Parameter name is a request part (for example ``json`` or ``params``).
+            - Parameter is annotated with a ``Part``, such as ``Query()`` or ``Body()``, via ``Annotated``.
             - Parameter value is a Pydantic model, expanded by ``ModelExtractor``.
 
-            In ``params``, ``headers``, and ``data``, a ``FieldX`` value that isn't a
+            In ``params``, ``headers``, and ``data``, a ``Part`` value that isn't a
             mapping is sent under its ``key``, or under the parameter name (with
             hyphens for headers). It's left out when it is ``None``, so optional
             query parameters, headers, and form fields can default to ``None``.
@@ -258,18 +263,18 @@ class RequestFactory:
 
             value = cursor.consume(field_name)
 
-            fieldx = annotation.fieldx
+            marker = annotation.part
 
-            named_part = RequestPart.get(field_name)
-            if part := named_part or fieldx.request_part:
+            named_part = _PARTS_BY_NAME.get(field_name)
+            if part := named_part or marker.request_part:
                 if isinstance(value, BaseModel):
-                    payload = dump_model(value, fieldx.dump_config)
-                elif _sends_single_value(part, fieldx.key, value, whole_part=named_part is not None):
+                    payload = dump_model(value, marker.dump_config)
+                elif _sends_single_value(part, marker.key, value, whole_part=named_part is not None):
                     if value is None:
                         # Leave it out: httpx2 sends None as an empty query or form value and rejects it as a header.
                         continue
                     # Like a model field in JSON mode: an Enum becomes its value, a datetime ISO 8601.
-                    payload = {fieldx.key or _default_name(field_name, part): to_jsonable_python(value)}
+                    payload = {marker.key or _default_name(field_name, part): to_jsonable_python(value)}
                 else:
                     payload = value
 
@@ -277,7 +282,7 @@ class RequestFactory:
                 continue
 
             elif isinstance(value, BaseModel):
-                parts.append(model_extractor(model=value, dump_config=fieldx.dump_config))
+                parts.append(model_extractor(model=value, dump_config=marker.dump_config))
                 continue
 
             raise UnconsumableArgumentError(field=field_name, annotation=annotation, value=value)
@@ -379,23 +384,23 @@ class ModelExtractor:
 
         Returns:
             dict[str, dict[str, Any]]: Request-part mapping grouped by
-                ``RequestPart``. A field marked with a request part is merged into
+                request part. A field marked with a request part is merged into
                 that section if it's a mapping. In ``params``, ``headers``, and
                 ``data``, any other value is sent under the field's ``key``, or
-                under its dumped name. Remaining fields default to ``RequestPart.JSON``.
+                under its dumped name. Remaining fields default to ``json``.
         """
         request: defaultdict[str, dict[str, Any]] = defaultdict(dict)
 
         for key in list(dump):
-            fieldx = annotation_map[key].fieldx
-            if part := fieldx.request_part:
+            marker = annotation_map[key].part
+            if part := marker.request_part:
                 value = dump.pop(key)
-                if _sends_single_value(part, fieldx.key, value, whole_part=False):
-                    request[part][fieldx.key or _default_name(key, part)] = value
+                if _sends_single_value(part, marker.key, value, whole_part=False):
+                    request[part][marker.key or _default_name(key, part)] = value
                 else:
                     request[part].update(value)
 
         if dump:
-            request[RequestPart.JSON].update(**dump)
+            request["json"].update(**dump)
 
         return request

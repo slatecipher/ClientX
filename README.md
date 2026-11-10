@@ -412,8 +412,8 @@ ClientX maps method arguments into request parts in this order:
 
 1. Path placeholders (e.g. `{user_id}`) are consumed from arguments.
 2. Each remaining argument goes to the first of these that matches:
-   1. Its name is a request part: `json`, `params`, `data`, `files`, or `headers`. The name wins even over a `FieldX` annotation, so a parameter named `data` is always sent as form data.
-   2. `Annotated[..., FieldX(RequestPart.*)]`.
+   1. Its name is a request part: `json`, `params`, `data`, `files`, or `headers`. The name wins even over an annotation, so a parameter named `data` is always sent as form data.
+   2. It's annotated with a request part: `Annotated[..., Query()]`, `Header()`, `Form()`, `Body()`, or `File()`.
    3. Its value is a Pydantic model, which is expanded field by field.
 
 ### By parameter name
@@ -429,15 +429,23 @@ class SearchClient(ClientX):
         ...
 ```
 
-### By `Annotated` + `FieldX`
+### With `Query`, `Header`, `Form`, `Body`, and `File`
 
-`FieldX` sends a parameter to a specific request part. To send a single value as a query parameter, header, or form field, set `key` to the name it should be sent under. The key can differ from the Python parameter name:
+Annotate a parameter with the helper for the request part it goes to:
+
+| Helper | Request part | Example |
+|---|---|---|
+| `Query(key=None)` | Query parameters (`params`) | `Annotated[int \| None, Query("userId")]` |
+| `Header(key=None)` | Headers | `Annotated[str, Header("Authorization")]` |
+| `Form(key=None)` | Form data (`data`) | `Annotated[str, Form()]` |
+| `Body()` | The JSON body (`json`) | `Annotated[UserChanges, Body()]` |
+| `File()` | Multipart files (`files`) | `Annotated[dict[str, bytes], File()]` |
 
 ```python
 from enum import Enum
 from typing import Annotated
 
-from clientx import ClientX, FieldX, RequestPart, Response
+from clientx import Body, ClientX, Header, Query, Response
 from clientx.methods import get, post
 
 
@@ -450,28 +458,36 @@ class ItemsClient(ClientX):
     @get("/items")
     def list_items(
         self,
-        item_type: Annotated[str, FieldX(RequestPart.PARAMS, key="type")],
-        sort: Annotated[Sort, FieldX(RequestPart.PARAMS, key="sort")] = Sort.NEWEST,
+        item_type: Annotated[str, Query("type")],
+        sort: Annotated[Sort, Query()] = Sort.NEWEST,
+        page: Annotated[int | None, Query()] = None,
     ) -> Response:
         ...
 
     @post("/items")
     def create_item(
         self,
-        token: Annotated[str, FieldX(RequestPart.HEADERS, key="Authorization")],
-        payload: Annotated[dict[str, object], FieldX(RequestPart.JSON)],
+        token: Annotated[str, Header("Authorization")],
+        payload: Annotated[dict[str, object], Body()],
     ) -> Response:
         ...
 ```
 
-`list_items("book", Sort.OLDEST)` sends `GET /items?type=book&sort=oldest`.
+`list_items("book", Sort.OLDEST)` sends `GET /items?type=book&sort=oldest`. `page` is left out because it's `None`.
 
-- `key` works with `PARAMS`, `HEADERS`, and `DATA`. The value is sent as `{key: value}`, converted the way a model field is (see `DumpConfig` below): an `Enum` member becomes its `.value`, a `datetime` an ISO 8601 string, and a `UUID` a string. Numbers and booleans in headers are sent as text (`2`, `true`).
-- A value of `None` is left out of the request, so an optional query parameter, header, or form field can default to `None`: `user_id: Annotated[int | None, FieldX(RequestPart.PARAMS, key="userId")] = None` adds `?userId=...` only when a user ID is given. To send an empty value, pass `""`.
-- Without `key`, a single value (a string, number, or list) is sent under the parameter name: `page: Annotated[int, FieldX(RequestPart.PARAMS)]` sends `?page=2`, and a list repeats the name (`?tag=a&tag=b`). Header names use hyphens instead of underscores, so `request_id` is sent as `request-id`; use `key` for an exact name. A mapping, such as `dict[str, str]`, or a Pydantic model is merged into the part.
-- `key` is ignored for `JSON` and `FILES`, which send the value as given.
-- Model fields follow the same rules (see below).
-- To reuse an annotation, name it with a `type` alias, plain or generic: `type UserId = Annotated[int | None, FieldX(RequestPart.PARAMS, key="userId")]`, or `type Query[T] = Annotated[T, FieldX(RequestPart.PARAMS)]` used as `Query[str]`. Put `None` inside the annotation (`Annotated[int | None, ...]` or `Query[int | None]`), not around it: ClientX doesn't see a `FieldX` inside `... | None`.
+`Query`, `Header`, and `Form` send name-value pairs:
+
+- `key` is the name the value is sent under, and it can differ from the parameter name. Without `key`, a single value (a string, number, or list) is sent under the parameter name, and a list repeats it (`?tag=a&tag=b`).
+- `Header()` uses hyphens instead of underscores in the parameter name, so `request_id` is sent as `request-id`. A `key` is used exactly as given.
+- A mapping, such as `dict[str, str]`, or a Pydantic model is merged into the part instead.
+- Values are converted the way model fields are (see `DumpConfig` below): an `Enum` member becomes its `.value`, a `datetime` an ISO 8601 string, and a `UUID` a string. Numbers and booleans in headers are sent as text (`2`, `true`).
+- A value of `None` is left out, so an optional parameter can default to `None`. To send an empty value, pass `""`.
+
+`Body()` and `File()` take no key: they send the value as the JSON body or as the `files` mapping. Every helper takes `dump_config=` for Pydantic models (see `DumpConfig` below).
+
+To reuse an annotation, name it with a `type` alias, plain or generic: `type UserId = Annotated[int | None, Query("userId")]`, or `type QueryParam[T] = Annotated[T, Query()]` used as `QueryParam[str]`. Put `None` inside the annotation (`Annotated[int | None, ...]` or `QueryParam[int | None]`), not around it: ClientX doesn't see a helper inside `... | None`.
+
+The helpers are named like FastAPI's, but they do the opposite job: FastAPI's read the incoming request, and ClientX's build the outgoing one. In a FastAPI app that calls other APIs, import one of them under another name (`from clientx import Query as ClientQuery`), or use the module (`import clientx`, then `clientx.Query("userId")`).
 
 ### By Pydantic model
 
@@ -480,13 +496,13 @@ from typing import Annotated
 
 from pydantic import BaseModel
 
-from clientx import ClientX, FieldX, RequestPart, Response
+from clientx import ClientX, Header, Query, Response
 from clientx.methods import post
 
 
 class CreateUserPayload(BaseModel):
-    headers: Annotated[dict[str, str], FieldX(RequestPart.HEADERS)]
-    params: Annotated[dict[str, str], FieldX(RequestPart.PARAMS)]
+    api_key: Annotated[str, Header("X-Api-Key")]
+    notify: Annotated[bool, Query()] = False
     name: str
     email: str
 
@@ -497,40 +513,53 @@ class UsersClient(ClientX):
         ...
 ```
 
-In model extraction, a field routed to `PARAMS`, `HEADERS`, or `DATA` follows the same rules as a parameter: a mapping is merged into the part, and a single value is sent under its `key`, or under its alias or field name. Fields routed to `JSON` or `FILES` must be mappings. Unassigned fields default to JSON.
+`create_user(CreateUserPayload(api_key="k-1", name="Ada", email="ada@example.com"))` sends `POST /users?notify=false` with an `X-Api-Key` header and the JSON body `{"name": "Ada", "email": "ada@example.com"}`.
+
+A model passed without a helper is expanded field by field. A field annotated with `Query`, `Header`, or `Form` follows the same rules as a parameter: a single value is sent under its `key`, or under its alias or field name, and a mapping is merged into the part. Fields annotated with `Body` or `File` must be mappings. Unannotated fields go to the JSON body.
 
 `None` values are never sent as query parameters, headers, or form fields, whether they come from a single value, a mapping, or a model field. A JSON body keeps them as `null`. To leave them out of a JSON body too, use `DumpConfig(exclude_none=True)`, shown below.
 
 ### Serialization control with `DumpConfig`
 
-ClientX dumps models with `mode="json"` and `by_alias=True`. Dates, UUIDs, and decimals become JSON values, and each field is sent under its alias, which is usually the API's own name for it (`user_id: int = Field(alias="userId")`, or `alias_generator=to_camel` for a whole model). `DumpConfig` passes options to Pydantic's `model_dump`, and each one overrides ClientX's default, for example `DumpConfig(by_alias=False)` to send field names.
+ClientX dumps models with `mode="json"` and `by_alias=True`. Dates, UUIDs, and decimals become JSON values, and each field is sent under its alias, which is usually the API's own name for it (`user_id: int = Field(alias="userId")`, or `alias_generator=to_camel` for a whole model).
+
+`DumpConfig` takes these options of Pydantic's `model_dump`, and each one overrides ClientX's default:
+
+| Option | Effect |
+|---|---|
+| `exclude_unset=True` | Send only the fields that were set. This is the usual choice for a PATCH. |
+| `exclude_none=True` | Leave out `None` fields. Query parameters, headers, and form data always leave them out. |
+| `exclude_defaults=True` | Leave out fields that still have their default value. |
+| `include=...` / `exclude=...` | Send only the given fields, or leave them out, such as `exclude={"internal_note"}`. |
+| `by_alias=False` | Send field names instead of aliases. |
+| `mode="python"` | Keep Python objects such as `datetime`. httpx2 must be able to send them. |
+| `context`, `round_trip`, `serialize_as_any`, `exclude_computed_fields`, `warnings` | Passed to `model_dump` as given. |
 
 ```python
 from typing import Annotated
 
 from pydantic import BaseModel
 
-from clientx import ClientX, DumpConfig, FieldX, RequestPart, Response
-from clientx.methods import post
+from clientx import Body, ClientX, DumpConfig, Response
+from clientx.methods import patch
 
 
-class PatchPayload(BaseModel):
+class UserChanges(BaseModel):
     name: str | None = None
     title: str | None = None
 
 
 class UsersClient(ClientX):
-    @post("/users/{user_id}")
-    def patch_user(
+    @patch("/users/{user_id}")
+    def update_user(
         self,
         user_id: str,
-        payload: Annotated[
-            PatchPayload,
-            FieldX(RequestPart.JSON, dump_config=DumpConfig(exclude_none=True)),
-        ],
+        changes: Annotated[UserChanges, Body(dump_config=DumpConfig(exclude_unset=True))],
     ) -> Response:
         ...
 ```
+
+`update_user("42", UserChanges(title=None))` sends the JSON body `{"title": null}`, which clears the title and leaves the name alone.
 
 ## Deprecating Endpoints
 

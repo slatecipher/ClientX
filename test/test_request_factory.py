@@ -10,8 +10,8 @@ import pytest
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
 
-from clientx import Response
-from clientx._annotations import DumpConfig, FieldX, RequestPart
+from clientx import Body, File, Form, Header, Query, Response
+from clientx._annotations import DumpConfig, Part
 from clientx._client import ClientX
 from clientx._endpoint_context import Endpoint
 from clientx._request_factory import ArgumentCursor, ModelExtractor, RequestFactory
@@ -20,8 +20,8 @@ from clientx.methods import get, patch, post
 
 
 class Payload(BaseModel):
-    headers: Annotated[dict[str, str], FieldX(RequestPart.HEADERS)]
-    params: Annotated[dict[str, int], FieldX(RequestPart.PARAMS)]
+    headers: Annotated[dict[str, str], Header()]
+    params: Annotated[dict[str, int], Query()]
     data: str = Field(alias="payload")
 
 
@@ -59,7 +59,7 @@ def test_request_factory_builds_request_parts():
 def test_request_factory_uses_section_annotation_on_parameter():
     endpoint = Endpoint("POST", "/v1/items")
 
-    def handler(self, payload: Annotated[Payload, FieldX(RequestPart.JSON)]) -> None: ...
+    def handler(self, payload: Annotated[Payload, Body()]) -> None: ...
 
     endpoint.func = handler
 
@@ -72,7 +72,7 @@ def test_request_factory_uses_section_annotation_on_parameter():
     assert spec.parts["json"] == {"headers": {"token": "t-1"}, "params": {"q": 1}, "payload": "d-1"}
 
 
-def test_request_factory_applies_fieldx_dump_config():
+def test_request_factory_applies_part_dump_config():
     endpoint = Endpoint("POST", "/v1/items")
 
     class DataPayload(BaseModel):
@@ -83,7 +83,7 @@ def test_request_factory_applies_fieldx_dump_config():
         self,
         payload: Annotated[
             DataPayload,
-            FieldX(RequestPart.DATA, dump_config=DumpConfig(exclude_none=True)),
+            Form(dump_config=DumpConfig(exclude_none=True)),
         ],
     ) -> None: ...
 
@@ -165,16 +165,16 @@ def test_argument_cursor_consume_errors():
 
 def test_model_extractor_groups_sections_and_defaults_json():
     class GroupedPayload(BaseModel):
-        headers: Annotated[dict[str, str], FieldX(RequestPart.HEADERS)]
-        params: Annotated[dict[str, int], FieldX(RequestPart.PARAMS)]
+        headers: Annotated[dict[str, str], Header()]
+        params: Annotated[dict[str, int], Query()]
         data: str
 
     model = GroupedPayload(headers={"token": "t"}, params={"q": 1}, data="d")
     parts = ModelExtractor()(model, DumpConfig())
 
-    assert parts[RequestPart.HEADERS] == {"token": "t"}
-    assert parts[RequestPart.PARAMS] == {"q": 1}
-    assert parts[RequestPart.JSON] == {"data": "d"}
+    assert parts["headers"] == {"token": "t"}
+    assert parts["params"] == {"q": 1}
+    assert parts["json"] == {"data": "d"}
 
 
 def test_request_factory_raises_unconsumable_argument_error():
@@ -191,10 +191,10 @@ def test_request_factory_raises_unconsumable_argument_error():
         RequestFactory(endpoint=endpoint)(arguments)
 
 
-def test_request_factory_maps_scalar_param_using_fieldx_key():
+def test_request_factory_maps_scalar_param_using_part_key():
     endpoint = Endpoint("GET", "/v1/items")
 
-    def handler(self, list_type: Annotated[str, FieldX(RequestPart.PARAMS, key="type")]) -> None: ...
+    def handler(self, list_type: Annotated[str, Query("type")]) -> None: ...
 
     endpoint.func = handler
 
@@ -206,14 +206,14 @@ def test_request_factory_maps_scalar_param_using_fieldx_key():
     assert spec.parts["params"] == {"type": "block"}
 
 
-def test_request_factory_maps_enum_param_value_using_fieldx_key():
+def test_request_factory_maps_enum_param_value_using_part_key():
     class Kind(StrEnum):
         ALLOW = "allow"
         BLOCK = "block"
 
     endpoint = Endpoint("GET", "/v1/items")
 
-    def handler(self, list_type: Annotated[Kind, FieldX(RequestPart.PARAMS, key="type")]) -> None: ...
+    def handler(self, list_type: Annotated[Kind, Query("type")]) -> None: ...
 
     endpoint.func = handler
 
@@ -225,14 +225,14 @@ def test_request_factory_maps_enum_param_value_using_fieldx_key():
     assert spec.parts["params"] == {"type": "allow"}
 
 
-@pytest.mark.parametrize("part", [RequestPart.PARAMS, RequestPart.HEADERS, RequestPart.DATA])
-def test_request_factory_leaves_out_keyed_values_that_are_none(part: RequestPart):
+@pytest.mark.parametrize(("helper", "part"), [(Query, "params"), (Header, "headers"), (Form, "data")])
+def test_request_factory_leaves_out_keyed_values_that_are_none(helper: type[Part], part: str):
     endpoint = Endpoint("POST", "/v1/items")
 
     def handler(
         self,
-        kind: Annotated[str | None, FieldX(part, key="kind")] = None,
-        page: Annotated[int | None, FieldX(part, key="page")] = None,
+        kind: Annotated[str | None, helper("kind")] = None,
+        page: Annotated[int | None, helper("page")] = None,
     ) -> None: ...
 
     endpoint.func = handler
@@ -242,7 +242,7 @@ def test_request_factory_leaves_out_keyed_values_that_are_none(part: RequestPart
 
     assert factory(endpoint.bind(client=client, args=(), kwargs={})).parts == {}
     # Other falsy values are still sent.
-    page = "0" if part is RequestPart.HEADERS else 0  # httpx2 only takes strings as header values
+    page = "0" if part == "headers" else 0  # httpx2 only takes strings as header values
     assert factory(endpoint.bind(client=client, args=(), kwargs={"page": 0})).parts == {part: {"page": page}}
     assert factory(endpoint.bind(client=client, args=("",), kwargs={})).parts == {part: {"kind": ""}}
 
@@ -258,8 +258,8 @@ def test_optional_keyed_values_are_only_sent_when_given():
         @get("/posts")
         def list_posts(
             self,
-            user_id: Annotated[int | None, FieldX(RequestPart.PARAMS, key="userId")] = None,
-            trace_id: Annotated[str | None, FieldX(RequestPart.HEADERS, key="X-Trace-Id")] = None,
+            user_id: Annotated[int | None, Query("userId")] = None,
+            trace_id: Annotated[str | None, Header("X-Trace-Id")] = None,
         ) -> Response: ...
 
     client = PostsClient("https://example.test", transport=httpx2.MockTransport(handler))
@@ -302,9 +302,7 @@ def test_none_values_in_mappings_and_models_are_not_sent():
 
     class PostsClient(ClientX):
         @get("/posts")
-        def list_posts(
-            self, filters: Annotated[PostFilters, FieldX(RequestPart.PARAMS)], headers: dict[str, str | None]
-        ) -> Response: ...
+        def list_posts(self, filters: Annotated[PostFilters, Query()], headers: dict[str, str | None]) -> Response: ...
 
         @patch("/posts/1")
         def update_post(self, changes: PostChanges) -> Response: ...
@@ -329,9 +327,7 @@ def test_merging_request_parts_never_changes_the_callers_dict():
 
     class ItemsClient(ClientX):
         @get("/items")
-        def list_items(
-            self, params: dict[str, str], kind: Annotated[str, FieldX(RequestPart.PARAMS, key="kind")]
-        ) -> Response: ...
+        def list_items(self, params: dict[str, str], kind: Annotated[str, Query("kind")]) -> Response: ...
 
     defaults = {"limit": "10"}
     client = ItemsClient("https://example.test", transport=httpx2.MockTransport(handler))
@@ -341,8 +337,8 @@ def test_merging_request_parts_never_changes_the_callers_dict():
     assert str(sent[0].url) == "https://example.test/items?limit=10&kind=book"
 
 
-type UserIdParam = Annotated[int | None, FieldX(RequestPart.PARAMS, key="userId")]
-type QueryParam[T] = Annotated[T, FieldX(RequestPart.PARAMS)]
+type UserIdParam = Annotated[int | None, Query("userId")]
+type QueryParam[T] = Annotated[T, Query()]
 
 
 EVENT_ID = UUID(int=1)
@@ -365,7 +361,7 @@ class EventFilters(BaseModel):
 
 
 class Upload(BaseModel):
-    tracing: Annotated[dict[str, str], FieldX(RequestPart.HEADERS)] = Field(serialization_alias="traceHeaders")
+    tracing: Annotated[dict[str, str], Header()] = Field(serialization_alias="traceHeaders")
     name: str
 
 
@@ -383,11 +379,11 @@ class EventsClient(ClientX):
 
     @post("/events/by-name")
     def create_by_field_name(
-        self, event: Annotated[Event, FieldX(RequestPart.JSON, dump_config=DumpConfig(by_alias=False))]
+        self, event: Annotated[Event, Body(dump_config=DumpConfig(by_alias=False))]
     ) -> Response: ...
 
     @get("/events")
-    def search(self, filters: Annotated[EventFilters, FieldX(RequestPart.PARAMS)]) -> Response: ...
+    def search(self, filters: Annotated[EventFilters, Query()]) -> Response: ...
 
     @post("/uploads")
     def upload(self, upload: Upload) -> Response: ...
@@ -396,10 +392,10 @@ class EventsClient(ClientX):
     def retrieve(
         self,
         event_id: int,
-        since: Annotated[datetime, FieldX(RequestPart.PARAMS, key="since")],
-        request_id: Annotated[UUID, FieldX(RequestPart.HEADERS, key="X-Request-Id")],
-        page: Annotated[int, FieldX(RequestPart.HEADERS, key="X-Page")],
-        dry_run: Annotated[bool, FieldX(RequestPart.HEADERS, key="X-Dry-Run")],
+        since: Annotated[datetime, Query("since")],
+        request_id: Annotated[UUID, Header("X-Request-Id")],
+        page: Annotated[int, Header("X-Page")],
+        dry_run: Annotated[bool, Header("X-Dry-Run")],
     ) -> Response: ...
 
 
@@ -428,9 +424,7 @@ def test_dump_config_overrides_the_json_and_alias_defaults():
 
     endpoint = Endpoint("POST", "/events")
 
-    def handler(
-        self, event: Annotated[Event, FieldX(RequestPart.JSON, dump_config=DumpConfig(mode="python"))]
-    ) -> None: ...
+    def handler(self, event: Annotated[Event, Body(dump_config=DumpConfig(mode="python"))]) -> None: ...
 
     endpoint.func = handler
     event = Event(event_id=EVENT_ID, starts_at=STARTS_AT, price=Decimal("9.99"))
@@ -465,23 +459,21 @@ class SearchClient(ClientX):
     @get("/search")
     def search(
         self,
-        query: Annotated[str, FieldX(RequestPart.PARAMS)],
-        tags: Annotated[list[str], FieldX(RequestPart.PARAMS)],
-        request_id: Annotated[str, FieldX(RequestPart.HEADERS)],
-        page: Annotated[int | None, FieldX(RequestPart.PARAMS)] = None,
-        extra: Annotated[dict[str, str] | None, FieldX(RequestPart.PARAMS)] = None,
+        query: Annotated[str, Query()],
+        tags: Annotated[list[str], Query()],
+        request_id: Annotated[str, Header()],
+        page: Annotated[int | None, Query()] = None,
+        extra: Annotated[dict[str, str] | None, Query()] = None,
     ) -> Response: ...
 
     @post("/login")
-    def login(
-        self, username: Annotated[str, FieldX(RequestPart.DATA)], password: Annotated[str, FieldX(RequestPart.DATA)]
-    ) -> Response: ...
+    def login(self, username: Annotated[str, Form()], password: Annotated[str, Form()]) -> Response: ...
 
     @get("/raw")
     def raw(self, headers: list[tuple[str, str]]) -> Response: ...
 
     @post("/upload")
-    def upload(self, auth: Annotated[str, FieldX(RequestPart.HEADERS)]) -> Response: ...
+    def upload(self, auth: Annotated[str, Header()]) -> Response: ...
 
 
 def test_single_values_without_a_key_are_sent_under_the_parameter_name():
@@ -519,9 +511,9 @@ def test_parameters_named_after_a_part_are_still_the_whole_part():
 
 
 class Lookup(BaseModel):
-    user_id: Annotated[int, FieldX(RequestPart.PARAMS)] = Field(alias="userId")
-    api_key: Annotated[str, FieldX(RequestPart.HEADERS, key="X-Api-Key")]
-    request_id: Annotated[str | None, FieldX(RequestPart.HEADERS)] = None
+    user_id: Annotated[int, Query()] = Field(alias="userId")
+    api_key: Annotated[str, Header("X-Api-Key")]
+    request_id: Annotated[str | None, Header()] = None
     note: str
 
 
@@ -565,3 +557,76 @@ def test_markers_in_type_aliases_route_parameters_and_model_fields():
 
     assert str(sent[0].url) == "https://example.test/posts?userId=1&tags=a&tags=b"
     assert str(sent[1].url) == "https://example.test/posts/filtered?userId=2"
+
+
+class PostChanges(BaseModel):
+    title: str | None = None
+    body: str | None = None
+
+
+class HelperPost(BaseModel):
+    user_id: Annotated[int, Query("userId")]
+    trace_id: Annotated[str | None, Header()] = None
+    title: str
+
+
+class HelpersClient(ClientX):
+    @get("/posts")
+    def search(
+        self,
+        user_id: Annotated[int | None, Query("userId")] = None,
+        tags: Annotated[list[str] | None, Query()] = None,
+        authorization: Annotated[str | None, Header("Authorization")] = None,
+        request_id: Annotated[str | None, Header()] = None,
+    ) -> Response: ...
+
+    @post("/login")
+    def login(self, username: Annotated[str, Form()], password: Annotated[str, Form("pass")]) -> Response: ...
+
+    @patch("/posts/{post_id}")
+    def update(
+        self, post_id: int, changes: Annotated[PostChanges, Body(dump_config=DumpConfig(exclude_unset=True))]
+    ) -> Response: ...
+
+    @post("/attachments")
+    def attach(self, attachment: Annotated[dict[str, bytes], File()]) -> Response: ...
+
+    @post("/posts")
+    def create(self, new_post: HelperPost) -> Response: ...
+
+
+def test_query_and_header_helpers():
+    sent: list[httpx2.Request] = []
+    client = make_recording_client(HelpersClient, sent)
+
+    client.search(user_id=1, tags=["a", "b"], authorization="Bearer t-1", request_id="r-1")
+    client.search()
+
+    assert str(sent[0].url) == "https://example.test/posts?userId=1&tags=a&tags=b"
+    assert (sent[0].headers["Authorization"], sent[0].headers["request-id"]) == ("Bearer t-1", "r-1")
+    assert str(sent[1].url) == "https://example.test/posts"
+    assert "Authorization" not in sent[1].headers
+
+
+def test_form_body_and_file_helpers():
+    sent: list[httpx2.Request] = []
+    client = make_recording_client(HelpersClient, sent)
+
+    client.login("ada", "secret")
+    client.update(1, PostChanges(title="New title"))
+    client.attach({"report": b"%PDF"})
+
+    assert sent[0].content == b"username=ada&pass=secret"
+    assert sent[1].content == b'{"title":"New title"}'
+    assert b'name="report"' in sent[2].read()
+
+
+def test_helpers_on_model_fields():
+    sent: list[httpx2.Request] = []
+    client = make_recording_client(HelpersClient, sent)
+
+    client.create(HelperPost(user_id=1, trace_id="t-1", title="Hello"))
+
+    assert str(sent[0].url) == "https://example.test/posts?userId=1"
+    assert sent[0].headers["trace-id"] == "t-1"
+    assert sent[0].content == b'{"title":"Hello"}'

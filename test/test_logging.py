@@ -6,7 +6,7 @@ from typing import Annotated
 import httpx2
 import pytest
 
-from clientx import ClientX, FieldX, RequestPart, Response
+from clientx import ClientX, Header, Query, Response
 from clientx.decoders import StreamLinesDecoder
 from clientx.methods import get, post
 
@@ -28,8 +28,8 @@ class UsersClient(ClientX):
         self,
         user_id: int,
         json: dict[str, str],
-        token: Annotated[str, FieldX(RequestPart.HEADERS, key="Authorization")],
-        api_key: Annotated[str, FieldX(RequestPart.PARAMS, key="api_key")],
+        token: Annotated[str, Header("Authorization")],
+        api_key: Annotated[str, Query()],
     ) -> Response: ...
 
     @get("/events", decoder=StreamLinesDecoder())

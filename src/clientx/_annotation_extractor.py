@@ -7,7 +7,7 @@ from typing import Annotated, Any, TypeAliasType, get_args, get_origin
 from pydantic import BaseModel, TypeAdapter, ValidationError
 from pydantic.fields import ComputedFieldInfo, FieldInfo
 
-from clientx._annotations import FieldX
+from clientx._annotations import Part
 
 # Enough for any real chain of aliases, and a stop for cyclic ones such as `type A = B` with `type B = A`.
 _MAX_ALIAS_DEPTH = 100
@@ -48,8 +48,9 @@ class AnnotationInfo:
     metadata: list[Any] = field(default_factory=list[Any])
 
     @property
-    def fieldx(self) -> FieldX:
-        return next((m for m in self.metadata if isinstance(m, FieldX)), FieldX())
+    def part(self) -> Part:
+        """The first ``Part`` (or helper such as ``Query``) in the metadata, or an empty ``Part``."""
+        return next((m for m in self.metadata if isinstance(m, Part)), Part())
 
     def validate(self, value: Any) -> None:
         """Validate a value against this annotation.
@@ -90,8 +91,9 @@ class NamedAnnotation:
             raise ValueError(f"{self.name!r}: {e}") from e
 
     @property
-    def fieldx(self) -> FieldX:
-        return self.info.fieldx
+    def part(self) -> Part:
+        """The first ``Part`` in the annotation's metadata, or an empty ``Part``."""
+        return self.info.part
 
 
 class AnnotationExtractor:
