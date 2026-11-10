@@ -74,16 +74,15 @@ def _raises_for_status(endpoint: Endpoint, client: ClientX) -> bool:
     return client.__clientx_raise_for_status__ if endpoint.raise_for_status is None else endpoint.raise_for_status
 
 
-def _raise_for_status(response: httpx2.Response) -> None:
-    """Raise ``httpx2.HTTPStatusError`` for a 4xx or 5xx response.
+def _raise_status_error(response: httpx2.Response) -> None:
+    """Raise ``httpx2.HTTPStatusError`` for ``response``, which must be a 4xx or 5xx.
 
-    Only errors raise: a 3xx that wasn't followed (``follow_redirects=False``) is
-    returned as it is. The body is read, so the error keeps it, and the response is
-    closed, so a streamed one releases its connection. For a response that isn't
-    streamed, httpx2 has already done both, and they do nothing.
+    The caller checks ``response.is_error`` first: called on a 3xx this would raise, and
+    on a successful streamed response it would read the body the decoder should stream.
+    The body is read, so the error keeps it, and the response is closed, so a streamed
+    one releases its connection. For a response that isn't streamed, httpx2 has already
+    done both, and they do nothing.
     """
-    if not response.is_error:
-        return
     try:
         response.read()
     finally:
@@ -235,9 +234,9 @@ class ApiMethod:
                     log_endpoint_call(call, started=started, error=error)
                     raise
 
-                if _raises_for_status(endpoint, client):
+                if response.is_error and _raises_for_status(endpoint, client):
                     try:
-                        _raise_for_status(response)
+                        _raise_status_error(response)
                     except Exception as error:
                         log_endpoint_call(call, started=started, status=response.status_code, error=error)
                         raise
