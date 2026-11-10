@@ -24,19 +24,29 @@ class ClientX:
     _default_user_agent: ClassVar[str] = f"ClientX/{__version__}"
     _user_agent: str
     client: Client
+    # Internal state uses a ``__clientx_*__`` name, so it can't clash with an endpoint name.
+    __clientx_raise_for_status__: bool
 
     def __init__(
-        self, base_url: URL | str, *, user_agent: str | None = None, **client_kwargs: Unpack[HttpxClientKwargs]
+        self,
+        base_url: URL | str,
+        *,
+        user_agent: str | None = None,
+        raise_for_status: bool = True,
+        **client_kwargs: Unpack[HttpxClientKwargs],
     ):
         """Initialize a client with a base URL and optional ``httpx2.Client`` configuration.
 
         Args:
             base_url: Base URL used for all relative request paths.
             user_agent: Optional user agent header value. When ``None``, uses the default ClientX user agent.
+            raise_for_status: Raise ``httpx2.HTTPStatusError`` when an endpoint gets a 4xx or 5xx
+                response, before any decoder runs. An endpoint's own ``raise_for_status=`` overrides it.
             **client_kwargs: Additional keyword arguments passed directly to ``httpx2.Client``.
         """
         self.client = Client(base_url=URL(base_url), **client_kwargs)
         self.user_agent = user_agent
+        self.__clientx_raise_for_status__ = raise_for_status
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         """Reject endpoints and resources named like something ``ClientX`` already has."""

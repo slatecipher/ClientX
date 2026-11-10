@@ -67,6 +67,31 @@ class DecodedEndpointDecorator[D](Protocol):
         ...
 
 
+def _raises_for_status(endpoint: Endpoint, client: ClientX) -> bool:
+    """Whether ``endpoint`` checks the status code: its own setting if it has one (``True`` or
+    ``False``), or else the client's. Not ``any()``: an endpoint's ``False`` must win over the client's ``True``.
+    """
+    return client.__clientx_raise_for_status__ if endpoint.raise_for_status is None else endpoint.raise_for_status
+
+
+def _raise_for_status(response: httpx2.Response, *, stream: bool) -> None:
+    """Raise ``httpx2.HTTPStatusError`` for a 4xx or 5xx response.
+
+    Only errors raise: a 3xx that wasn't followed (``follow_redirects=False``) is
+    returned as it is. httpx2 has already read a response that isn't streamed. A
+    streamed one is read here, so the error keeps its body, and closed, so its
+    connection is released.
+    """
+    if not response.is_error:
+        return
+    if stream:
+        try:
+            response.read()
+        finally:
+            response.close()
+    response.raise_for_status()
+
+
 def _decode(decoder: Decoder, response: httpx2.Response) -> object:
     """Run ``decoder`` on ``response``, making sure a streamed response gets closed.
 
@@ -114,6 +139,7 @@ class ApiMethod:
         deprecated: DeprecatedType | None = None,
         tags: list[str] | None = None,
         timeout: httpx2.Timeout | float | None = None,
+        raise_for_status: bool | None = None,
     ) -> DecodedEndpointDecorator[D]: ...
 
     @overload
@@ -125,6 +151,7 @@ class ApiMethod:
         deprecated: DeprecatedType | None = None,
         tags: list[str] | None = None,
         timeout: httpx2.Timeout | float | None = None,
+        raise_for_status: bool | None = None,
     ) -> RawEndpointDecorator: ...
 
     def __call__(
@@ -135,6 +162,7 @@ class ApiMethod:
         deprecated: DeprecatedType | None = None,
         tags: list[str] | None = None,
         timeout: httpx2.Timeout | float | None = None,
+        raise_for_status: bool | None = None,
     ) -> DecodedEndpointDecorator[Any] | RawEndpointDecorator:
         """Build a decorator that registers an endpoint for this HTTP method.
 
@@ -150,6 +178,10 @@ class ApiMethod:
                 registry filtering and sorting. Defaults to None.
             timeout: Optional timeout override applied to requests sent to this
                 endpoint. Defaults to None.
+            raise_for_status: Whether a 4xx or 5xx response raises
+                ``httpx2.HTTPStatusError`` before the decoder runs. ``None`` (the
+                default) follows the client's ``raise_for_status``, which is on
+                unless the client turns it off.
 
         Returns:
             A decorator that wraps and registers the endpoint. Its type ties the
@@ -166,6 +198,7 @@ class ApiMethod:
                 deprecated=deprecated,
                 tags=tags,
                 timeout=timeout,
+                raise_for_status=raise_for_status,
             )
             request_factory = RequestFactory(endpoint)
             endpoint_name = func.__qualname__
@@ -202,6 +235,13 @@ class ApiMethod:
                 except Exception as error:
                     log_endpoint_call(call, started=started, error=error)
                     raise
+
+                if _raises_for_status(endpoint, client):
+                    try:
+                        _raise_for_status(response, stream=endpoint.stream)
+                    except Exception as error:
+                        log_endpoint_call(call, started=started, status=response.status_code, error=error)
+                        raise
                 log_endpoint_call(call, started=started, status=response.status_code)
 
                 # A decoder, when given, always runs, whatever the return annotation.

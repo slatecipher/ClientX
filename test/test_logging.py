@@ -110,6 +110,27 @@ def test_failed_call_logs_the_error_and_reraises(caplog):
     assert fields["clientx_error"] == "ConnectError"
 
 
+def test_error_status_logs_the_status_and_the_error(caplog):
+    caplog.set_level(logging.DEBUG, logger="clientx")
+    client = make_client(lambda request: httpx2.Response(404, json={"error": "secret-detail"}))
+
+    with pytest.raises(httpx2.HTTPStatusError):
+        client.update_user(42, {"name": "Ada"}, "Bearer token", "key-value")
+
+    [record] = clientx_records(caplog)
+    assert re.fullmatch(
+        r"ClientX request: POST /users/42 -> 404 HTTPStatusError in \d+\.\d ms \(UsersClient\.update_user\)",
+        record.getMessage(),
+    )
+    fields = logged_fields(record)
+    assert fields["clientx_status"] == 404
+    assert fields["clientx_error"] == "HTTPStatusError"
+    # HTTPStatusError's message contains the URL with its query string; only the type name is logged.
+    logged = record.getMessage() + repr([record.__dict__[name] for name in FIELDS])
+    assert "key-value" not in logged
+    assert "secret-detail" not in logged
+
+
 def test_streamed_call_logs_stream_true(caplog):
     caplog.set_level(logging.DEBUG, logger="clientx")
     client = make_client(lambda request: httpx2.Response(200, text="a\nb"))

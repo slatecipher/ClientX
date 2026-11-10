@@ -1,6 +1,5 @@
 from typing import Annotated
 
-import httpx2
 from pydantic import Field, TypeAdapter
 
 from clientx import Body, ClientX, DumpConfig, Query, Resource, methods
@@ -12,17 +11,6 @@ JSONPLACEHOLDER_URL = "https://jsonplaceholder.typicode.com"
 
 PostId = Annotated[int, Field(description="The post's ID (1 to 100).")]
 UserId = Annotated[int, Field(description="The user's ID (1 to 10).")]
-
-
-def raise_for_status(response: httpx2.Response) -> None:
-    """Raise `httpx2.HTTPStatusError` for a 4xx or 5xx response.
-
-    ClientX doesn't check status codes, so pass this as a response hook:
-    `JSONPlaceholder(JSONPLACEHOLDER_URL, event_hooks={"response": [raise_for_status]})`.
-    """
-    if response.is_error:  # 4xx and 5xx only: hooks also see redirects
-        response.read()  # so the error body stays readable from the exception
-        response.raise_for_status()
 
 
 # The endpoints use `@methods.get(...)`, not `@get(...)`: a method named `get` would hide the decorator
@@ -91,6 +79,7 @@ class JSONPlaceholder(ClientX):
     """Client for JSONPlaceholder (https://jsonplaceholder.typicode.com), a free fake REST API.
 
     Writes (create, replace, update, delete) return realistic responses but change nothing on the server.
+    A 4xx or 5xx response, such as a 404 for a post that doesn't exist, raises `httpx2.HTTPStatusError`.
     """
 
     posts = Posts()

@@ -120,6 +120,7 @@ class Endpoint:
         deprecated: DeprecatedType | None = None,
         tags: list[str] | None = None,
         timeout: httpx2.Timeout | float | None = None,
+        raise_for_status: bool | None = None,
     ) -> None:
         """Initialize endpoint metadata from decorator configuration.
 
@@ -135,12 +136,16 @@ class Endpoint:
                 sorting. Defaults to None.
             timeout: Optional request timeout override for this endpoint.
                 Defaults to None.
+            raise_for_status: Whether a 4xx or 5xx response raises
+                ``httpx2.HTTPStatusError``. ``None`` (the default) follows the
+                client's ``raise_for_status``.
         """
         self.method = method
         self.path = path
         self.decoder = decoder
         self.deprecated = deprecated
         self.timeout = timeout
+        self.raise_for_status = raise_for_status
         # Dedupe tags while preserving insertion order.
         self.tags = list(dict.fromkeys(tags or []))
         self._func: Callable[..., Any] | None = None
@@ -154,7 +159,7 @@ class Endpoint:
             f"{type(self).__name__}(method={self.method!r}, path={str(self.path)!r}, "
             f"function={func_qualname!r}, has_decoder={self.decoder is not None!r}, "
             f"deprecated={self.deprecated is not None!r}, stream={self.stream!r}, "
-            f"timeout={self.timeout!r}, tags={self.tags!r}, "
+            f"timeout={self.timeout!r}, raise_for_status={self.raise_for_status!r}, tags={self.tags!r}, "
             f"return_type={_type_name(self._return_type)!r})"
         )
 

@@ -4,14 +4,13 @@ Run with `uv run python examples/jsonplaceholder_example.py`. It needs network a
 """
 
 import httpx2
-from jsonplaceholder import JSONPLACEHOLDER_URL, JSONPlaceholder, NewPost, PostChanges, raise_for_status
+from jsonplaceholder import JSONPLACEHOLDER_URL, JSONPlaceholder, NewPost, PostChanges
 
 from clientx.tools import list_tools
 
 
 def main() -> None:
-    # ClientX doesn't check status codes: the hook raises httpx2.HTTPStatusError for 4xx and 5xx responses.
-    with JSONPlaceholder(JSONPLACEHOLDER_URL, timeout=10.0, event_hooks={"response": [raise_for_status]}) as api:
+    with JSONPlaceholder(JSONPLACEHOLDER_URL, timeout=10.0) as api:
         posts = api.posts.list(user_id=1)  # GET /posts?userId=1
         print(f"User 1 wrote {len(posts)} posts. The first: {posts[0].title!r}")
 
@@ -30,7 +29,7 @@ def main() -> None:
         print("Deleted post 1.")
 
         try:
-            api.posts.get(1000)  # 404: raised by the hook, not decoded into a Post
+            api.posts.get(1000)  # A 404 raises httpx2.HTTPStatusError before the decoder runs.
         except httpx2.HTTPStatusError as exc:
             print(f"Post 1000 doesn't exist: HTTP {exc.response.status_code}")
 

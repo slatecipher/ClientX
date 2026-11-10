@@ -1,4 +1,4 @@
-from .jsonplaceholder_client import JSONPLACEHOLDER_URL, JSONPlaceholder, raise_for_status
+from .jsonplaceholder_client import JSONPLACEHOLDER_URL, JSONPlaceholder
 from .jsonplaceholder_models import Comment, NewPost, Post, PostChanges, User
 
 __all__ = [
@@ -9,5 +9,4 @@ __all__ = [
     "Post",
     "PostChanges",
     "User",
-    "raise_for_status",
 ]
