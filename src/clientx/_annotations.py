@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Literal, TypedDict
+from typing import Any, ClassVar, Literal, TypedDict
 
 from clientx._client_types import RequestPartName
 
@@ -51,8 +51,9 @@ class Part:
     """Base class of the request-part helpers: ``Query``, ``Header``, ``Form``, ``Body``, and ``File``.
 
     Internal: users choose a request part by choosing a helper, never by name. Each
-    helper fixes ``request_part``. An empty ``Part()`` stands for "no request part"
-    when an annotation has no helper.
+    helper sets ``request_part`` as a class constant, so it isn't an argument, a
+    dataclass field, or part of the repr. An empty ``Part()`` stands for "no request
+    part" when an annotation has no helper.
 
     In query parameters, headers, and form data, a mapping or a Pydantic model is
     merged into the part, and any other value is sent under ``key``, or under the
@@ -60,16 +61,16 @@ class Part:
     headers). A ``None`` value is left out.
 
     Attributes:
-        request_part: The request part, as the name of the httpx2 argument it's passed
-            as (``"params"``, ``"headers"``, ``"data"``, ``"json"``, or ``"files"``),
-            or ``None``.
+        request_part: Class constant: the request part, as the name of the httpx2
+            argument it's passed as (``"params"``, ``"headers"``, ``"data"``,
+            ``"json"``, or ``"files"``), or ``None``.
         key: The name a single value is sent under in query parameters, headers,
             or form data.
         dump_config: Options for ``model_dump`` when the value is a Pydantic model,
             on top of ClientX's defaults (``mode="json"``, ``by_alias=True``).
     """
 
-    request_part: RequestPartName | None = field(default=None, init=False)
+    request_part: ClassVar[RequestPartName | None] = None
     dump_config: DumpConfig = field(kw_only=True, default_factory=DumpConfig)
     key: str | None = field(default=None)
 
@@ -87,7 +88,7 @@ class Query(Part):
         dump_config: Options for ``model_dump`` when the value is a Pydantic model.
     """
 
-    request_part: RequestPartName | None = field(default="params", init=False)
+    request_part: ClassVar[RequestPartName | None] = "params"
 
 
 @dataclass
@@ -105,7 +106,7 @@ class Header(Part):
         dump_config: Options for ``model_dump`` when the value is a Pydantic model.
     """
 
-    request_part: RequestPartName | None = field(default="headers", init=False)
+    request_part: ClassVar[RequestPartName | None] = "headers"
 
 
 @dataclass
@@ -121,7 +122,7 @@ class Form(Part):
         dump_config: Options for ``model_dump`` when the value is a Pydantic model.
     """
 
-    request_part: RequestPartName | None = field(default="data", init=False)
+    request_part: ClassVar[RequestPartName | None] = "data"
 
 
 @dataclass
@@ -136,7 +137,7 @@ class Body(Part):
         dump_config: Options for ``model_dump`` when the value is a Pydantic model.
     """
 
-    request_part: RequestPartName | None = field(default="json", init=False)
+    request_part: ClassVar[RequestPartName | None] = "json"
     key: str | None = field(default=None, init=False)
 
 
@@ -151,5 +152,5 @@ class File(Part):
         dump_config: Options for ``model_dump`` when the value is a Pydantic model.
     """
 
-    request_part: RequestPartName | None = field(default="files", init=False)
+    request_part: ClassVar[RequestPartName | None] = "files"
     key: str | None = field(default=None, init=False)

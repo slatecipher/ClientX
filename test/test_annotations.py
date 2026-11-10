@@ -1,4 +1,5 @@
 import inspect
+from dataclasses import fields
 from typing import Annotated
 
 import pytest
@@ -192,7 +193,8 @@ def test_each_helper_is_a_part_with_a_fixed_request_part(helper: type[Part], req
     marker = helper()
 
     assert isinstance(marker, Part)
-    assert marker.request_part == request_part
+    assert helper.request_part == marker.request_part == request_part
+    assert "request_part" not in {f.name for f in fields(marker)}  # a class constant, not an argument
     assert marker.key is None
     assert marker.dump_config == {}
 
