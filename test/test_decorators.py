@@ -8,9 +8,16 @@ from httpx2 import HTTPStatusError, Request, Response
 import clientx._decorators as decorators_module
 from clientx._client import ClientX
 from clientx._decorators import ApiMethod, method
-from clientx._endpoint_context import EndpointRegister
+from clientx._endpoint_context import Endpoint
+from clientx._registry import endpoint_for
 from clientx.decoders import StreamLinesDecoder
 from clientx.exceptions import EndpointNameConflictError
+
+
+def endpoint_of(function: object) -> Endpoint:
+    endpoint = endpoint_for(function)
+    assert endpoint is not None
+    return endpoint
 
 
 class SentCapture(TypedDict):
@@ -45,9 +52,9 @@ def test_api_method_registers_endpoint_and_returns_response(monkeypatch):
     assert sent["path"] == "/v1/items/42"
     assert sent["request"] == {}
     assert sent["stream"] is False
-    assert len(EndpointRegister.registry) == 1
-    assert EndpointRegister.registry[0].method == "GET"
-    assert str(EndpointRegister.registry[0].path) == "/v1/items/{item_id}"
+    endpoint = endpoint_of(API.get_item)
+    assert endpoint.method == "GET"
+    assert str(endpoint.path) == "/v1/items/{item_id}"
 
 
 def test_api_method_returns_none_for_none_annotation(monkeypatch):
@@ -158,7 +165,7 @@ def test_api_method_streams_when_decoder_requests_it(monkeypatch):
         @ApiMethod("GET")("/v1/stream", decoder=StreamLinesDecoder())
         def stream(self) -> Iterator[str]: ...
 
-    endpoint = EndpointRegister.registry[-1]
+    endpoint = endpoint_of(API.stream)
     api = API("https://example.test")
     sent: SentCapture = {"method": "", "path": "", "request": {}, "stream": False}
 
@@ -178,7 +185,7 @@ def test_api_method_defaults_stream_to_false():
         @ApiMethod("GET")("/v1/items")
         def list_items(self) -> Response: ...
 
-    endpoint = EndpointRegister.registry[-1]
+    endpoint = endpoint_of(API.list_items)
 
     assert endpoint.stream is False
 
@@ -188,7 +195,7 @@ def test_api_method_defaults_timeout_to_none():
         @ApiMethod("GET")("/v1/items")
         def list_items(self) -> Response: ...
 
-    endpoint = EndpointRegister.registry[-1]
+    endpoint = endpoint_of(API.list_items)
 
     assert endpoint.timeout is None
 
@@ -263,7 +270,7 @@ def test_api_method_registers_endpoint_tags():
 
     api = API("https://example.test")
 
-    endpoint = EndpointRegister.registry[-1]
+    endpoint = endpoint_of(API.list_items)
 
     assert endpoint.method == "GET"
     assert str(endpoint.path) == "/v1/items"

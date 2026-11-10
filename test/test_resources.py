@@ -5,10 +5,18 @@ import httpx2
 import pytest
 from pydantic import BaseModel
 
-from clientx import ClientX, EndpointRegister, Resource, Response
+from clientx import ClientX, Resource, Response
+from clientx._endpoint_context import Endpoint
+from clientx._registry import endpoint_for
 from clientx.decoders import ModelDecoder, StreamLinesDecoder
 from clientx.exceptions import EndpointNameConflictError, UnboundResourceError
 from clientx.methods import get, post
+
+
+def endpoint_of(function: object) -> Endpoint:
+    endpoint = endpoint_for(function)
+    assert endpoint is not None
+    return endpoint
 
 
 class User(BaseModel):
@@ -159,12 +167,12 @@ def test_calling_an_endpoint_on_something_other_than_a_client_raises():
         PlainAPI.health(object())  # pyright: ignore[reportArgumentType]
 
 
-def test_registry_shows_full_paths_and_resource_tags_first():
+def test_endpoints_get_full_paths_and_resource_tags_first():
     class Teams(Resource, prefix="/teams", tags=["teams", "read"]):
         @get("/{team_id}", tags=["read", "detail"])
         def retrieve(self, team_id: int) -> Response: ...
 
-    [endpoint] = EndpointRegister.iter()
+    endpoint = endpoint_of(Teams.retrieve)
     assert str(endpoint.path) == "/teams/{team_id}"
     assert endpoint.tags == ["teams", "read", "detail"]
 
@@ -185,7 +193,7 @@ def test_prefix_and_path_are_joined_with_one_slash(prefix: str, path: str, expec
         @get(path)
         def call(self, user_id: int = 0) -> Response: ...
 
-    [endpoint] = EndpointRegister.iter()
+    endpoint = endpoint_of(Things.call)
     assert str(endpoint.path) == expected
 
 
@@ -202,7 +210,10 @@ def test_subclasses_keep_the_parent_prefix_and_tags_unless_they_set_their_own():
         @get("/c")
         def c(self) -> Response: ...
 
-    found = {endpoint.func.__name__: (str(endpoint.path), endpoint.tags) for endpoint in EndpointRegister.iter()}
+    found = {
+        name: (str(endpoint.path), endpoint.tags)
+        for name, endpoint in (("a", endpoint_of(Base.a)), ("b", endpoint_of(Child.b)), ("c", endpoint_of(Other.c)))
+    }
     assert found == {
         "a": ("/base/a", ["base"]),
         "b": ("/base/b", ["base"]),

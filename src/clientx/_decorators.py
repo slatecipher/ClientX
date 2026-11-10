@@ -14,10 +14,7 @@ from clientx._client_types import (
     is_none_type,
     is_response_type,
 )
-from clientx._endpoint_context import (
-    Endpoint,
-    EndpointRegister,
-)
+from clientx._endpoint_context import Endpoint
 from clientx._logging import EndpointCall, log_endpoint_call
 from clientx._registry import register_endpoint_function
 from clientx._request_factory import RequestFactory
@@ -172,8 +169,8 @@ class ApiMethod:
                 request in streaming mode.
             deprecated: Optional deprecation metadata or callable that emits a
                 warning when the endpoint is invoked.
-            tags: Optional metadata labels attached to the endpoint for
-                registry filtering and sorting. Defaults to None.
+            tags: Optional metadata labels attached to the endpoint, which
+                ``clientx.tools.list_tools`` can filter by. Defaults to None.
             timeout: Optional timeout override applied to requests sent to this
                 endpoint. Defaults to None.
             raise_for_status: Whether a 4xx or 5xx response raises
@@ -256,7 +253,6 @@ class ApiMethod:
 
             endpoint.func = wrapper
             register_endpoint_function(wrapper, endpoint)
-            EndpointRegister.register(endpoint)
             return wrapper
 
         return decorator

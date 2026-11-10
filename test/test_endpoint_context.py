@@ -3,7 +3,7 @@ import inspect
 import pytest
 from httpx2 import Response
 
-from clientx._endpoint_context import DeprecatedMessage, Endpoint, EndpointRegister, URLPath
+from clientx._endpoint_context import DeprecatedMessage, Endpoint, URLPath
 from clientx.decoders import StreamLinesDecoder, StreamResponseDecoder
 from clientx.exceptions import MissingDecoderError, MissingPathArgumentsError, MissingReturnTypeError
 
@@ -182,23 +182,3 @@ def test_endpoint_func_requires_return_annotation():
 
     with pytest.raises(MissingReturnTypeError):
         endpoint.func = handler
-
-
-def test_endpoint_register_appends_endpoint():
-    endpoint = Endpoint("GET", "/v1/users")
-
-    EndpointRegister.register(endpoint)
-
-    assert EndpointRegister.registry[-1] is endpoint
-
-
-def test_endpoint_register_iter_yields_registered_endpoints_in_order():
-    first = Endpoint("GET", "/v1/users")
-    second = Endpoint("POST", "/v1/users")
-    EndpointRegister.registry = [first, second]
-
-    endpoints = list(EndpointRegister.iter())
-
-    assert endpoints == [first, second]
-    assert endpoints[0] is first
-    assert endpoints[1] is second

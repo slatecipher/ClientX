@@ -6,7 +6,6 @@ name should be a deliberate, changelogged decision, so it must fail a test first
 
 import clientx
 from clientx import decoders, exceptions, mcp, methods, tools
-from clientx.methods import get
 
 
 def test_top_level_exports():
@@ -26,9 +25,6 @@ def test_top_level_exports():
             "ClientX",
             "Resource",
             "DeprecatedMessage",
-            "Endpoint",
-            "EndpointRegister",
-            "URLPath",
             "ClientXError",
         ]
     )
@@ -64,15 +60,3 @@ def test_submodule_exports():
     for module in (methods, decoders, exceptions, tools, mcp):
         for name in module.__all__:
             assert hasattr(module, name), f"{module.__name__}.{name}"
-
-
-def test_registry_yields_public_endpoint_types():
-    class API(clientx.ClientX):
-        @get("/v1/users/{user_id}")
-        def get_user(self, user_id: str) -> clientx.Response: ...
-
-    (endpoint,) = clientx.EndpointRegister.iter()
-
-    assert isinstance(endpoint, clientx.Endpoint)
-    assert isinstance(endpoint.path, clientx.URLPath)
-    assert endpoint.path.parameters == ["user_id"]

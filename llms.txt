@@ -100,7 +100,7 @@ Using clients:
 - Test clients with `transport=httpx2.MockTransport(handler)`, where `handler(request: httpx2.Request) -> httpx2.Response`.
 - Errors all derive from `clientx.ClientXError`: `MissingReturnTypeError`, `MissingDecoderError`, `EndpointNameConflictError` (when the class is defined), `MissingPathArgumentsError`, `UnconsumableArgumentError`, `UnboundResourceError` (at call time). HTTP errors come from httpx2: connection errors, timeouts, and `HTTPStatusError` for 4xx and 5xx responses.
 - Logging: one DEBUG record per endpoint call on the `clientx` logger, such as `ClientX request: GET /users/42 -> 200 in 12.3 ms (Users.retrieve)` (or `-> 404 HTTPStatusError`), with attributes `clientx_endpoint`, `clientx_method`, `clientx_path`, `clientx_parts`, `clientx_stream`, `clientx_status`, `clientx_elapsed_ms`, and `clientx_error`. It never contains header values, bodies, or query strings. httpx2 separately logs each request at INFO on the `httpx2` logger. For custom request logging, pass httpx2 `event_hooks`.
-- `EndpointRegister.iter()` yields every decorated `Endpoint` (method, path, tags, return type) in the process, for tooling.
+- To list a client's endpoints for docs or tooling, use `clientx.tools.list_tools(client)` (below): name, method, full path, tags, docstring and schemas, including resources. There's no global endpoint registry, and `Endpoint` isn't public.
 
 AI tools and MCP:
 
