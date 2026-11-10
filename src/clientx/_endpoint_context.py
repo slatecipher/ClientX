@@ -10,6 +10,7 @@ from typing import Any, ClassVar, get_type_hints
 
 import httpx2
 
+from clientx._annotation_extractor import AnnotationExtractor
 from clientx._client import ClientX, Resource
 from clientx._client_types import (
     Decoder,
@@ -213,6 +214,8 @@ class Endpoint:
         self._signature = inspect.signature(value)
         self._return_type = self._resolve_return_type()
         self._check_decoder()
+        # Raises MisplacedHelperError when the class is defined, not on the first call.
+        AnnotationExtractor.from_signature(self._signature)
 
     @property
     def signature(self) -> inspect.Signature:

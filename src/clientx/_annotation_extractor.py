@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from inspect import Signature
 from typing import Annotated, Any, TypeAliasType, get_args, get_origin
@@ -8,6 +9,7 @@ from pydantic import BaseModel, TypeAdapter, ValidationError
 from pydantic.fields import ComputedFieldInfo, FieldInfo
 
 from clientx._annotations import Part
+from clientx.exceptions import MisplacedHelperError
 
 # Enough for any real chain of aliases, and a stop for cyclic ones such as `type A = B` with `type B = A`.
 _MAX_ALIAS_DEPTH = 100
@@ -33,6 +35,50 @@ def _unwrap_type_alias(annotation: Any) -> Any:
         else:
             break
     return annotation
+
+
+def _nested_part(annotation: Any, expanded: frozenset[TypeAliasType] = frozenset()) -> Part | None:
+    """Return a helper nested anywhere inside ``annotation``: in a union member, a type argument, or an alias.
+
+    Each ``type`` alias is expanded at most once per path, so a recursive alias such as
+    ``type Json = list[Json] | str`` doesn't loop.
+    """
+    for arg in get_args(annotation):
+        alias = arg if isinstance(arg, TypeAliasType) else get_origin(arg)
+        if isinstance(alias, TypeAliasType):
+            if alias in expanded:
+                continue
+            expanded |= {alias}
+            arg = _unwrap_type_alias(arg)
+        if get_origin(arg) is Annotated and (part := _first_part(get_args(arg)[1:])) is not None:
+            return part
+        if (part := _nested_part(arg, expanded)) is not None:
+            return part
+    return None
+
+
+def _first_part(metadata: Iterable[Any]) -> Part | None:
+    return next((item for item in metadata if isinstance(item, Part)), None)
+
+
+def _check_helpers(name: str, info: AnnotationInfo) -> AnnotationInfo:
+    """Return ``info``, or raise ``MisplacedHelperError`` if a helper is nested or there's more than one.
+
+    ``info`` is what the extractor read: the type left after the outermost ``Annotated``
+    layers and ``type`` aliases are removed, and their metadata. ClientX only reads a
+    helper from that metadata, so a helper anywhere inside the type would be ignored.
+    """
+    parts = [item for item in info.metadata if isinstance(item, Part)]
+    if len(parts) > 1:
+        helpers = ", ".join(f"{type(part).__name__}()" for part in parts)
+        raise MisplacedHelperError(name, info.annotation, f"{name!r} has more than one helper: {helpers}")
+    if (nested := _nested_part(info.annotation)) is not None:
+        helper = type(nested).__name__
+        problem = (
+            f"{name!r} has {helper}() nested inside another type, where ClientX doesn't read it: {info.annotation!r}"
+        )
+        raise MisplacedHelperError(name, info.annotation, problem)
+    return info
 
 
 @dataclass(frozen=True)
@@ -153,7 +199,7 @@ class AnnotationExtractor:
             A mapping of parameter name to AnnotationInfo.
         """
         return {
-            name: AnnotationExtractor.from_field_annotation(param.annotation)
+            name: _check_helpers(name, AnnotationExtractor.from_field_annotation(param.annotation))
             for name, param in signature.parameters.items()
         }
 
@@ -172,7 +218,7 @@ class AnnotationExtractor:
         fields = model_type.model_fields | model_type.model_computed_fields
         result: dict[str, AnnotationInfo] = {}
         for name, info in fields.items():
-            annotation = AnnotationExtractor.from_field_info(info)
+            annotation = _check_helpers(f"{model_type.__name__}.{name}", AnnotationExtractor.from_field_info(info))
             result[name] = annotation
             # A model dumped by alias uses the serialization alias, which can differ from the alias.
             serialization_alias = info.serialization_alias if isinstance(info, FieldInfo) else None

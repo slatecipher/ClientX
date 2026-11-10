@@ -119,9 +119,33 @@ class UnboundResourceError(ClientXError, TypeError):
         super().__init__(message)
 
 
+class MisplacedHelperError(ClientXError, TypeError):
+    """Raised when a request-part helper isn't the one helper in the outermost ``Annotated``.
+
+    A helper (``Query``, ``Header``, ``Form``, ``Body`` or ``File``) applies to a whole
+    parameter or model field, so it goes around the full type, ``None`` included:
+    ``Annotated[int | None, Query()]``. A helper nested inside another type, such as
+    ``Annotated[int, Query()] | None``, or a second helper, would be ignored.
+    """
+
+    def __init__(self, name: str, annotation: Any, problem: str) -> None:
+        self.name = name
+        self.annotation = annotation
+        message = (
+            f"{problem}.\n"
+            "A helper applies to the whole parameter or field: use one helper, in the outermost Annotated, "
+            "around the full type with None included, such as Annotated[int | None, Query()] rather than "
+            "Annotated[int, Query()] | None. If the request part depends on the value's type, use separate "
+            "endpoints."
+        )
+
+        super().__init__(message)
+
+
 __all__ = [
     "ClientXError",
     "EndpointNameConflictError",
+    "MisplacedHelperError",
     "MissingDecoderError",
     "MissingPathArgumentsError",
     "MissingReturnTypeError",
