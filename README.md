@@ -523,7 +523,7 @@ A model passed without a helper is expanded field by field. A field annotated wi
 
 ClientX dumps models with `mode="json"` and `by_alias=True`. Dates, UUIDs, and decimals become JSON values, and each field is sent under its alias, which is usually the API's own name for it (`user_id: int = Field(alias="userId")`, or `alias_generator=to_camel` for a whole model).
 
-`DumpConfig` passes options to Pydantic's `model_dump`, and each one overrides ClientX's default:
+`DumpConfig` takes these options of Pydantic's `model_dump`, and each one overrides ClientX's default:
 
 | Option | Effect |
 |---|---|

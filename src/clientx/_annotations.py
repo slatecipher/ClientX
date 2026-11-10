@@ -7,19 +7,21 @@ from clientx._client_types import RequestPartName
 
 
 class DumpConfig(TypedDict, total=False):
-    """Options forwarded to ``pydantic.BaseModel.model_dump``.
+    """The ``pydantic.BaseModel.model_dump`` options ClientX supports.
 
-    This typed dictionary mirrors the keyword arguments supported by Pydantic's
-    ``model_dump`` method. Because ``total=False``, all keys are optional.
-    When omitted, each option falls back to Pydantic's default behavior.
+    This is a chosen subset of ``model_dump``'s keyword arguments, not a full copy:
+    a Pydantic option is added here only when building a request needs it, and every
+    key exists in the lowest Pydantic version ClientX supports. Because
+    ``total=False``, all keys are optional. ClientX dumps with ``mode="json"`` and
+    ``by_alias=True``; any other option that is left out uses Pydantic's default.
 
     Attributes:
-        mode: Serialization mode. Use ``"json"`` for JSON-compatible output or
-            ``"python"`` to allow non-JSON Python objects.
+        mode: Serialization mode. ``"json"`` (ClientX's default) gives JSON-compatible
+            output; ``"python"`` keeps non-JSON Python objects.
         include: Include selector using Pydantic's include/exclude specification.
         exclude: Exclude selector using Pydantic's include/exclude specification.
         context: Extra context passed into Pydantic serializers. Defaults to ``None`` when not provided.
-        by_alias: Uses field aliases as output keys when ``True``.
+        by_alias: Uses field aliases as output keys when ``True`` (ClientX's default).
         exclude_unset: Excludes fields that were not explicitly set when ``True``.
         exclude_defaults: Excludes fields with default values when ``True``.
         exclude_none: Excludes fields with ``None`` values when ``True``.

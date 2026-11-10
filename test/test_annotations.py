@@ -117,6 +117,18 @@ def test_dump_config_typed_dict_returns_fields():
     }
 
 
+def test_dump_config_keys_are_model_dump_options():
+    """DumpConfig is a chosen subset of model_dump's options, not a full copy, so it needn't track new ones.
+
+    Every key must still be a model_dump parameter. If this fails under the lowest-versions
+    CI job, an option we list is newer than our pydantic lower bound.
+    """
+    dump_options = set(inspect.signature(BaseModel.model_dump).parameters) - {"self"}
+
+    assert DumpConfig.__required_keys__ == frozenset()
+    assert DumpConfig.__optional_keys__ - dump_options == set()
+
+
 def test_annotation_extractor_reads_metadata_through_a_type_alias():
     info = AnnotationExtractor.from_field_annotation(UserIdParam)
 
