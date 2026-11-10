@@ -47,18 +47,21 @@ def log_endpoint_call(
     Args:
         call: The endpoint call to log.
         started: ``time.perf_counter()`` value taken just before sending.
-        status: Response status code, or ``None`` if the request failed.
-        error: The exception the request raised, or ``None`` if it succeeded.
+        status: Response status code, or ``None`` if no response arrived.
+        error: The exception the call raised, or ``None`` if it succeeded. With a
+            status too, the response arrived but was rejected, such as a 404
+            raising ``HTTPStatusError``.
     """
     if not logger.isEnabledFor(logging.DEBUG):
         return
     elapsed_ms = round((time.perf_counter() - started) * 1000, 1)
     error_name = None if error is None else type(error).__name__
+    outcome = " ".join(str(part) for part in (status, error_name) if part is not None)
     logger.debug(
         "ClientX request: %s %s -> %s in %.1f ms (%s)",
         call.method,
         call.path,
-        status if error_name is None else error_name,
+        outcome,
         elapsed_ms,
         call.endpoint,
         extra={

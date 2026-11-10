@@ -96,7 +96,8 @@ def test_api_method_runs_decoder_for_response_return(monkeypatch):
         @ApiMethod("GET")("/v1/items", decoder=checked)
         def list_items(self) -> Response: ...
 
-    api = API("https://example.test")
+    # With the built-in check off, the decoder sees the 404 and raises it itself.
+    api = API("https://example.test", raise_for_status=False)
 
     def fake_send(client: ClientX, method: str, path: str, **request) -> Response:
         return Response(404, request=Request(method, f"https://example.test{path}"))

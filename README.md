@@ -95,6 +95,7 @@ Each decorator accepts:
 - `deprecated` (optional callable, including `DeprecatedMessage`)
 - `tags` (optional list of metadata labels for registry tooling)
 - `timeout` (optional per-endpoint `httpx2.Timeout` or seconds)
+- `raise_for_status` (optional `True` or `False`; overrides the client's setting, see [Raising errors for 4xx and 5xx responses](#raising-errors-for-4xx-and-5xx-responses))
 
 ```python
 from clientx import ClientX, Response
@@ -217,7 +218,7 @@ ClientX enforces explicit return annotations:
 - `-> None`: sends request and returns `None`.
 - Any other type: requires `decoder=...`.
 
-If you pass a decoder, it always runs and its output is returned, whatever the annotation or the status code. For example, a decoder can call `response.raise_for_status()` on a `-> Response` or `-> None` endpoint. To check every endpoint's status code, see [Raising errors for 4xx and 5xx responses](#raising-errors-for-4xx-and-5xx-responses).
+A 4xx or 5xx response raises `httpx2.HTTPStatusError` before any decoder runs (see [Raising errors for 4xx and 5xx responses](#raising-errors-for-4xx-and-5xx-responses)). Otherwise, if you pass a decoder, it always runs and its output is returned, whatever the annotation.
 
 A decoder is a callable that receives the raw `httpx2.Response` and returns the value that matches your method's return annotation. ClientX executes the HTTP request first, then passes the response into the decoder, and returns the decoder output to the caller.
 
@@ -603,27 +604,57 @@ client = ClientX(
 
 ### Raising errors for 4xx and 5xx responses
 
-ClientX doesn't check status codes. A decoder parses whatever body comes back, so a 404 usually fails as a Pydantic `ValidationError`, and `-> None` and `-> Response` endpoints return normally. To raise `httpx2.HTTPStatusError` for every 4xx and 5xx response, add a response event hook:
+A 4xx or 5xx response raises `httpx2.HTTPStatusError`, from every endpoint, before any decoder runs. The error has the request and the response, and the body is already read, so `exc.response.json()` works:
 
 ```python
 import httpx2
+from pydantic import BaseModel
 
 from clientx import ClientX
+from clientx.decoders import ModelDecoder
+from clientx.methods import get
 
 
-def raise_for_status(response: httpx2.Response) -> None:
-    if response.is_error:  # 4xx and 5xx only: hooks also see redirects
-        response.read()  # so the error body stays readable from the exception
-        response.raise_for_status()
+class User(BaseModel):
+    id: int
 
 
-client = ClientX("https://api.example.com", event_hooks={"response": [raise_for_status]})
+class UsersClient(ClientX):
+    @get("/users/{user_id}", decoder=ModelDecoder(User))
+    def get_user(self, user_id: int) -> User:
+        ...
+
+
+with UsersClient("https://api.example.com") as client:
+    try:
+        client.get_user(1000)
+    except httpx2.HTTPStatusError as exc:
+        print(exc.response.status_code, exc.response.json())  # for example: 404 {"error": "not found"}
 ```
 
-- **Keep the `is_error` check.** Response hooks also run on each redirect, and `raise_for_status()` raises for 3xx too, so without the check `follow_redirects=True` stops working.
-- **Keep `response.read()`.** Hooks run before the body is read, so without it `exc.response.json()` raises `httpx2.ResponseNotRead`. Only error responses are read, so streaming endpoints still stream.
-- The hook applies to every endpoint, including those on resources and those called as AI tools.
-- To check a single endpoint instead, call `response.raise_for_status()` in its decoder.
+- Redirects aren't errors. With `follow_redirects=True`, only the final response is checked; without it, a 3xx response is returned as it is.
+- For a streaming endpoint, an error response is read and closed before the error is raised, so its connection is released. A successful one still streams.
+- Endpoints called as AI tools raise it too. Over MCP, it comes back to the model as an error result.
+
+Turn it off for a whole client with `raise_for_status=False`, or set it per endpoint. An endpoint's setting wins over the client's:
+
+```python
+from clientx import ClientX, Response
+from clientx.methods import get
+
+
+class FilesClient(ClientX):
+    @get("/files/{name}", raise_for_status=False)
+    def get_file(self, name: str) -> Response:
+        """Return a 404 as a response instead of raising it, so the caller can check `status_code`."""
+        ...
+
+
+client = FilesClient("https://api.example.com")  # every other endpoint still raises
+unchecked = FilesClient("https://api.example.com", raise_for_status=False)  # no endpoint raises
+```
+
+With the check off, a decoder gets every response, so it can handle error statuses itself.
 
 ## Logging
 
@@ -651,9 +682,9 @@ Each record also has these attributes, for structured log handlers such as JSON 
 | `clientx_path` | `"/users/42"` | The rendered path, without the query string. |
 | `clientx_parts` | `["headers", "json"]` | The names of the request parts sent. |
 | `clientx_stream` | `False` | Whether the response is streamed. For a stream, the elapsed time covers the response headers only. |
-| `clientx_status` | `201` | The status code, or `None` if the request failed. |
+| `clientx_status` | `201` | The status code, or `None` if no response arrived. |
 | `clientx_elapsed_ms` | `12.3` | Time to send the request and receive the response, in milliseconds. |
-| `clientx_error` | `None` | The exception's class name if the request failed, such as `"ConnectTimeout"`. ClientX re-raises the exception. |
+| `clientx_error` | `None` | The exception's class name if the call failed, such as `"ConnectTimeout"`, or `"HTTPStatusError"` with the status for a 4xx or 5xx response. ClientX re-raises the exception. |
 
 ClientX never logs values: no header values, request bodies, or query strings.
 
@@ -778,7 +809,7 @@ Then point your MCP client at the command `python server.py`. In Claude Desktop'
 
 - The server's tools are exactly the ones `list_tools` returns, with the same names, descriptions, schemas, and filters (`read_only`, `include_tags`, `exclude_tags`, `include_deprecated`). `name=` and `instructions=` set what the server reports to MCP clients.
 - The HTTP-method hints become MCP tool annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`), which MCP clients can use to ask for confirmation before changing data.
-- Results come back as structured content and as JSON text. Invalid arguments and request failures come back as error results the model can read, and the server keeps running.
+- Results come back as structured content and as JSON text. Invalid arguments, request failures, and 4xx and 5xx responses come back as error results the model can read, and the server keeps running.
 - MCP messages use stdout, so don't print from the server process. Logging writes to stderr by default.
 - `run_mcp_server` serves over stdio. For other transports, `create_mcp_server` returns the low-level `mcp.server.lowlevel.Server` to run yourself.
 
@@ -795,7 +826,7 @@ ClientX raises explicit errors for common contract violations:
 
 All of them derive from `ClientXError` (importable from `clientx`), so `except ClientXError` catches any of them. Each also keeps its built-in base (`TypeError` or `ValueError`).
 
-HTTP errors come from httpx2. Connection errors and timeouts are always raised. Status codes aren't checked unless you add a hook: see [Raising errors for 4xx and 5xx responses](#raising-errors-for-4xx-and-5xx-responses).
+HTTP errors come from httpx2: connection errors and timeouts, and `HTTPStatusError` for 4xx and 5xx responses unless it's turned off (see [Raising errors for 4xx and 5xx responses](#raising-errors-for-4xx-and-5xx-responses)).
 
 ## Development
 

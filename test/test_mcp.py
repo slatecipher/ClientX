@@ -192,6 +192,15 @@ def test_request_failures_come_back_as_an_error_result():
     assert text_of(result) == "ConnectError: connection refused"
 
 
+def test_error_statuses_come_back_as_an_error_result():
+    api = ExampleAPI("https://api.example.com", transport=httpx2.MockTransport(lambda request: httpx2.Response(404)))
+
+    result = call_over_mcp(create_mcp_server(api), "users_retrieve", {"user_id": 42})
+
+    assert result.is_error is True
+    assert text_of(result).startswith("HTTPStatusError: Client error '404 Not Found' for url")
+
+
 def test_unknown_tool_comes_back_as_an_error_result():
     result = call_over_mcp(create_mcp_server(make_api([])), "users_explode", {})
 

@@ -33,7 +33,8 @@ def main() -> None:
             print(f"{company.name}: {company.employee_count:,} employees")
 
         # Raw response example: the return type is httpx2.Response, so no decoder runs.
-        # Use this when you want direct access to status codes or response bodies.
+        # Use this when you want direct access to headers or the body. A 4xx or 5xx response
+        # still raises httpx2.HTTPStatusError, unless the endpoint sets raise_for_status=False.
         response = client.companies.list_raw()
 
         print(f"HTTP Status Code: {response.status_code}")

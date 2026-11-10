@@ -100,6 +100,14 @@ class SearchClient(ClientX):
     def create(self, user: Annotated[User, Body()]) -> Response: ...
 
 
+class StatusClient(ClientX):
+    @get("/users/{user_id}", decoder=ModelDecoder(User), raise_for_status=False)
+    def lookup(self, user_id: str) -> User: ...
+
+    @delete("/users/{user_id}", raise_for_status=True)
+    def remove(self, user_id: str) -> None: ...
+
+
 def _transport() -> httpx2.MockTransport:
     payloads: dict[str, object] = {
         "/users/1": {"name": "Ada"},
@@ -225,6 +233,15 @@ def _construct_with_every_httpx2_option() -> ClientX:
         transport=httpx2.HTTPTransport(),
         default_encoding="utf-8",
     )
+
+
+def test_raise_for_status_options_keep_endpoint_signatures() -> None:
+    client = StatusClient("https://example.test", raise_for_status=False, transport=_transport())
+
+    assert_type(client.lookup("1"), User)
+    assert_type(client.remove("1"), None)
+    StatusClient("https://example.test", raise_for_status="no")  # pyright: ignore[reportArgumentType]
+    get("/users", raise_for_status="no")  # pyright: ignore[reportArgumentType]
 
 
 def test_request_part_helpers_keep_endpoint_signatures() -> None:
