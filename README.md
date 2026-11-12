@@ -2,7 +2,7 @@
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/assets/logo-dark.svg">
     <source media="(prefers-color-scheme: light)" srcset="docs/assets/logo-light.svg">
-    <img alt="ClientX" src="https://raw.githubusercontent.com/slatecipher/ClientX/mainline/docs/assets/logo-light.svg" width="320">
+    <img alt="ClientX" src="https://raw.githubusercontent.com/slatecipher/ClientX/mainline/docs/assets/logo-light.svg" width="400">
   </picture>
 </h1>
 
