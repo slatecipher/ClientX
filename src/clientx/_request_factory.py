@@ -12,8 +12,7 @@ from pydantic import BaseModel
 from pydantic_core import to_jsonable_python
 
 from clientx._annotation_extractor import NamedAnnotation, model_annotations
-from clientx._annotations import DumpConfig
-from clientx._client_types import RequestPartName
+from clientx._client_types import DumpConfig, RequestPartName
 from clientx._endpoint_context import Endpoint
 from clientx.exceptions import UnconsumableArgumentError
 

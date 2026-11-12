@@ -1,53 +1,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, ClassVar, Literal, TypedDict
+from typing import ClassVar
 
 from pydantic import GetJsonSchemaHandler
 from pydantic.json_schema import JsonSchemaValue
 from pydantic_core import CoreSchema
 
-from clientx._client_types import RequestPartName
-
-
-class DumpConfig(TypedDict, total=False):
-    """The ``pydantic.BaseModel.model_dump`` options ClientX supports.
-
-    This is a chosen subset of ``model_dump``'s keyword arguments, not a full copy:
-    a Pydantic option is added here only when building a request needs it, and every
-    key exists in the lowest Pydantic version ClientX supports. Because
-    ``total=False``, all keys are optional. ClientX dumps with ``mode="json"`` and
-    ``by_alias=True``; any other option that is left out uses Pydantic's default.
-
-    Attributes:
-        mode: Serialization mode. ``"json"`` (ClientX's default) gives JSON-compatible
-            output; ``"python"`` keeps non-JSON Python objects.
-        include: Include selector using Pydantic's include/exclude specification.
-        exclude: Exclude selector using Pydantic's include/exclude specification.
-        context: Extra context passed into Pydantic serializers. Defaults to ``None`` when not provided.
-        by_alias: Uses field aliases as output keys when ``True`` (ClientX's default).
-        exclude_unset: Excludes fields that were not explicitly set when ``True``.
-        exclude_defaults: Excludes fields with default values when ``True``.
-        exclude_none: Excludes fields with ``None`` values when ``True``.
-        exclude_computed_fields: Excludes computed fields when ``True``.
-        round_trip: Emits values suitable for round-tripping non-idempotent types when ``True``.
-        warnings: Serialization error behavior. ``False``/``"none"`` ignores errors,
-            ``True``/``"warn"`` emits warnings, and ``"error"`` raises.
-        serialize_as_any: Enables duck-typing serialization behavior when ``True``.
-    """
-
-    mode: Literal["json", "python"] | str
-    include: Any
-    exclude: Any
-    context: dict[str, Any] | None
-    by_alias: bool | None
-    exclude_unset: bool
-    exclude_defaults: bool
-    exclude_none: bool
-    exclude_computed_fields: bool
-    round_trip: bool
-    warnings: bool | Literal["none", "warn", "error"]
-    serialize_as_any: bool
+from clientx._client_types import DumpConfig, RequestPartName
 
 
 @dataclass
@@ -71,7 +31,8 @@ class Part:
         key: The name a single value is sent under in query parameters, headers,
             or form data.
         dump_config: Options for ``model_dump`` when the value is a Pydantic model,
-            on top of ClientX's defaults (``mode="json"``, ``by_alias=True``).
+            on top of ClientX's defaults (``mode="json"``, ``by_alias=True``). See
+            ``DumpConfig`` for the options it takes.
         description: Describes the parameter or field in its JSON Schema: the
             ``description`` in any schema Pydantic builds from the annotation, such as
             a model's ``model_json_schema()`` or the argument schemas ``clientx.tools``

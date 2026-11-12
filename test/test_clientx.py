@@ -2,9 +2,10 @@ import inspect
 
 import httpx2
 from httpx2 import Request, Response
+from pydantic import BaseModel
 
 from clientx._client import ClientX, send_request
-from clientx._client_types import HttpxClientKwargs
+from clientx._client_types import DumpConfig, HttpxClientKwargs
 from clientx._version import __version__
 
 
@@ -135,3 +136,24 @@ def test_httpx_client_kwargs_match_httpx2_client_signature():
 
     assert HttpxClientKwargs.__required_keys__ == frozenset()
     assert set(HttpxClientKwargs.__optional_keys__) == client_options
+
+
+def test_dump_config_typed_dict_returns_fields():
+    options = DumpConfig(exclude_none=True, exclude_defaults=True)
+
+    assert options == {
+        "exclude_none": True,
+        "exclude_defaults": True,
+    }
+
+
+def test_dump_config_keys_are_model_dump_options():
+    """DumpConfig is a chosen subset of model_dump's options, not a full copy, so it needn't track new ones.
+
+    Every key must still be a model_dump parameter. If this fails under the lowest-versions
+    CI job, an option we list is newer than our pydantic lower bound.
+    """
+    dump_options = set(inspect.signature(BaseModel.model_dump).parameters) - {"self"}
+
+    assert DumpConfig.__required_keys__ == frozenset()
+    assert DumpConfig.__optional_keys__ - dump_options == set()
