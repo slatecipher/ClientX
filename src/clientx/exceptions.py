@@ -14,19 +14,37 @@ class ClientXError(Exception):
 
 
 class UnconsumableArgumentError(ClientXError, TypeError):
-    """Raised when an argument cannot be mapped into an HTTP request part."""
+    """Raised when an argument, or a field of a model argument, cannot be mapped into an HTTP request part.
 
-    def __init__(self, *, field: str, annotation: Any, value: Any) -> None:
+    An argument can't be mapped when nothing chooses a request part for it. A model
+    field marked ``Body()`` or ``File()`` can't be mapped when its value isn't a
+    mapping or a model, because the value is merged into that part.
+    """
+
+    def __init__(self, *, field: str, annotation: Any, value: Any, problem: str | None = None) -> None:
+        """Store the argument or field, its annotation, and its value, and describe the problem.
+
+        Args:
+            field: The parameter name, or ``Model.field`` for a model field.
+            annotation: The parameter's or field's annotation.
+            value: The value that couldn't be mapped.
+            problem: What's wrong and how to fix it. Without it, the message lists
+                the ways an argument can be mapped to a request part.
+        """
         self.field = field
         self.annotation = annotation
         self.value = value
 
         value_type = type(value).__name__
+        details = f"  value_type: {value_type}\n  annotation: {annotation!r}\n"
+
+        if problem is not None:
+            super().__init__(f"Cannot map {field!r} into an HTTP request part.\n{details}{problem}")
+            return
 
         message = (
             f"Cannot map argument '{field}' into an HTTP request part.\n"
-            f"  value_type: {value_type}\n"
-            f"  annotation: {annotation!r}\n"
+            f"{details}"
             "Expected one of:\n"
             "  • argument name is a request part "
             "(e.g. 'json', 'params', 'data', 'files', 'headers')\n"

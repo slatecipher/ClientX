@@ -512,7 +512,7 @@ class UsersClient(ClientX):
 
 `create_user(CreateUserPayload(api_key="k-1", name="Ada", email="ada@example.com"))` sends `POST /users?notify=false` with an `X-Api-Key` header and the JSON body `{"name": "Ada", "email": "ada@example.com"}`.
 
-A model passed without a helper is expanded field by field. A field annotated with `Query`, `Header`, or `Form` follows the same rules as a parameter: a single value is sent under its `key`, or under its alias or field name, and a mapping is merged into the part. Fields annotated with `Body` or `File` must be mappings. Unannotated fields go to the JSON body.
+A model passed without a helper is expanded field by field. A field annotated with `Query`, `Header`, or `Form` follows the same rules as a parameter: a single value is sent under its `key`, or under its alias or field name, and a mapping is merged into the part. Fields annotated with `Body` or `File` are merged into that part, so their value must be a mapping or a model: any other value, `None` included, raises `UnconsumableArgumentError` when the model is sent. Unannotated fields go to the JSON body.
 
 `None` values are never sent as query parameters, headers, or form fields, whether they come from a single value, a mapping, or a model field. A JSON body keeps them as `null`. To leave them out of a JSON body too, use `DumpConfig(exclude_none=True)`, shown below.
 
@@ -858,7 +858,7 @@ ClientX raises explicit errors for common contract violations. Most of them are 
 At call time:
 
 - endpoint called on a resource that isn't mounted on a client -> `UnboundResourceError`
-- argument cannot map to request parts -> `UnconsumableArgumentError`
+- argument cannot map to request parts, or a model field marked `Body()` or `File()` holds something other than a mapping or a model -> `UnconsumableArgumentError`
 - argument doesn't match its annotation, when `validate_arguments` is on -> `ArgumentValidationError`
 
 Annotations are evaluated when the class is defined, so endpoints work in modules with `from __future__ import annotations`. Like `pydantic`, ClientX evaluates them against the module's globals: a type defined inside a function can't be named in a string annotation.

@@ -148,7 +148,7 @@ class RequestSpec:
         path: Rendered request path with template placeholders applied.
         parts: Merged request parts suitable for ``httpx2.Client.build_request``.
             Never contains ``method``, ``path``, or ``stream`` — those are passed
-            to ``ClientX.send`` as named arguments.
+            to ``send_request()`` as named arguments.
     """
 
     path: str
@@ -321,10 +321,10 @@ class ModelExtractor:
         """
         annotation_map = model_annotations(type(model))
         dump = dump_model(model, dump_config)
-        return self.build_request_arguments(dump, annotation_map)
+        return self.build_request_arguments(dump, annotation_map, model_name=type(model).__name__)
 
     def build_request_arguments(
-        self, dump: dict[str, Any], annotation_map: Mapping[str, NamedAnnotation]
+        self, dump: dict[str, Any], annotation_map: Mapping[str, NamedAnnotation], *, model_name: str
     ) -> dict[str, dict[str, Any]]:
         """Build request parts based on a model dump and annotation mapping.
 
@@ -332,24 +332,44 @@ class ModelExtractor:
             dump: Model dump to map into request parts. This dict is mutated as
                 fields are assigned.
             annotation_map: Mapping of model field names (and aliases) to annotations.
+            model_name: The model's class name, for error messages.
 
         Returns:
             dict[str, dict[str, Any]]: Request-part mapping grouped by
-                request part. A field marked with a request part is merged into
-                that section if it's a mapping. In ``params``, ``headers``, and
-                ``data``, any other value is sent under the field's ``key``, or
-                under its dumped name. Remaining fields default to ``json``.
+                request part. In ``params``, ``headers``, and ``data``, a field's
+                mapping is merged into the part, and any other value is sent under
+                the field's ``key``, or under its dumped name. A field marked
+                ``Body()`` or ``File()`` is merged into ``json`` or ``files``.
+                Remaining fields default to ``json``.
+
+        Raises:
+            UnconsumableArgumentError: A field marked ``Body()`` or ``File()`` holds
+                something other than a mapping or a model, which can't be merged.
         """
         request: defaultdict[str, dict[str, Any]] = defaultdict(dict)
 
         for key in list(dump):
-            marker = annotation_map[key].part
+            annotation = annotation_map[key]
+            marker = annotation.part
             if part := marker.request_part:
                 value = dump.pop(key)
                 if _sends_single_value(part, marker.key, value, whole_part=False):
                     request[part][marker.key or _default_name(key, part)] = value
+                elif isinstance(value, Mapping):
+                    request[part].update(cast(Mapping[str, Any], value))
                 else:
-                    request[part].update(value)
+                    # Only Body() and File() get here: in the other parts, a value that isn't a mapping is sent by name.
+                    helper = f"{type(marker).__name__}()"
+                    raise UnconsumableArgumentError(
+                        field=f"{model_name}.{key}",
+                        annotation=annotation.info.annotation,
+                        value=value,
+                        problem=(
+                            f"{helper} on a model field merges the field's value into that request part, so the "
+                            "value must be a mapping or a model. Give the field a mapping or model type, or pass "
+                            f"the value as an endpoint parameter marked {helper}, which sends it as given."
+                        ),
+                    )
 
         if dump:
             request["json"].update(**dump)

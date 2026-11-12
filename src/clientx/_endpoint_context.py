@@ -154,7 +154,7 @@ class URLPath:
             values: Mapping of template parameter names to replacement values.
 
         Raises:
-            KeyError: If the mapping does not contain all template parameters.
+            MissingPathArgumentsError: If the mapping does not contain all template parameters.
         """
         if missing := set(self.parameters).difference(values):
             raise MissingPathArgumentsError(self.path, list(missing))
