@@ -406,6 +406,7 @@ ClientX maps method arguments into request parts in this order:
    1. Its name is a request part: `json`, `params`, `data`, `files`, or `headers`. The name wins even over an annotation, so a parameter named `data` is always sent as form data.
    2. It's annotated with a request part: `Annotated[..., Query()]`, `Header()`, `Form()`, `Body()`, or `File()`.
    3. Its value is a Pydantic model, which is expanded field by field.
+3. Arguments for the same request part are merged in parameter order, and later ones win: dicts are merged key by key, so a later `Header("X-Request-Id")` parameter overrides that key in an earlier `headers` dict, and any other value replaces the part. There's no warning, so put the parameter that should win last.
 
 ### By parameter name
 

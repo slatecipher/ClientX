@@ -1,4 +1,5 @@
 import inspect
+import warnings
 from datetime import datetime
 from decimal import Decimal
 from enum import StrEnum
@@ -97,41 +98,21 @@ def test_request_factory_applies_part_dump_config():
     assert spec.parts["data"] == {"data": "d-1"}
 
 
-def test_merge_request_parts_warns_on_shared_dict_keys():
-    factory = RequestFactory(endpoint=Endpoint("GET", "/"), warn_on_conflict=True)
+def test_merge_request_parts_later_parts_win_without_warnings():
+    factory = RequestFactory(endpoint=Endpoint("GET", "/"))
 
-    with pytest.warns(UserWarning, match="share keys for 'headers'"):
-        factory.merge_request_parts(
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        merged = factory.merge_request_parts(
             [
-                {"headers": {"token": "a"}},
-                {"headers": {"token": "b", "other": "c"}},
-            ]
-        )
-
-
-def test_merge_request_parts_warns_on_full_overwrite():
-    factory = RequestFactory(endpoint=Endpoint("GET", "/"), warn_on_conflict=True)
-
-    with pytest.warns(UserWarning, match="fully overwritten"):
-        factory.merge_request_parts(
-            [
+                {"headers": {"token": "a", "keep": "k"}},
+                {"headers": {"token": "b"}},
                 {"json": {"a": 1}},
                 {"json": "raw"},
             ]
         )
 
-
-def test_merge_request_parts_silent_when_disabled():
-    factory = RequestFactory(endpoint=Endpoint("GET", "/"), warn_on_conflict=False)
-
-    factory.merge_request_parts(
-        [
-            {"headers": {"token": "a"}},
-            {"headers": {"token": "b"}},
-            {"json": {"a": 1}},
-            {"json": "raw"},
-        ]
-    )
+    assert merged == {"headers": {"token": "b", "keep": "k"}, "json": "raw"}
 
 
 def test_argument_cursor_consumption_and_state():
