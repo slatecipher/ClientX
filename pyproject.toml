@@ -51,8 +51,11 @@ dev = [
     "ruff>=0.14.10",
 ]
 
-[tool.pytest.ini_options]
-addopts = "--import-mode=importlib -vv --cov=clientx --cov-report=term-missing"
+[tool.pytest]
+addopts = ["--import-mode=importlib", "-vv", "--cov=clientx", "--cov-report=term-missing"]
+# All of pytest's strictness checks. pytest may add more in a release; uv.lock pins it,
+# so a new one shows up in the Dependabot PR that upgrades pytest, not on mainline.
+strict = true
 
 [tool.pyright]
 # Editors check both trees. CI splits them: `make typecheck` passes `src` on the
