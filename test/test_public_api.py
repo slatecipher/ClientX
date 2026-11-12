@@ -21,7 +21,7 @@ def test_top_level_exports():
             "File",
             "Form",
             "Header",
-            "Path",
+            "PathParam",
             "Query",
             "ClientX",
             "Resource",

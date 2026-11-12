@@ -10,7 +10,7 @@ from typing import Annotated, Any, TypeAliasType, get_args, get_origin
 from pydantic import BaseModel
 from pydantic.fields import ComputedFieldInfo, FieldInfo
 
-from clientx._annotations import Part, Path
+from clientx._annotations import Part, PathParam
 from clientx.exceptions import MisplacedHelperError
 
 # Enough for any real chain of aliases, and a stop for cyclic ones such as `type A = B` with `type B = A`.
@@ -197,8 +197,8 @@ class AnnotationExtractor:
         for name, info in fields.items():
             qualified = f"{model_type.__name__}.{name}"
             annotation = _check_helpers(qualified, AnnotationExtractor.from_field_info(info))
-            if isinstance(annotation.part, Path):
-                problem = f"{qualified!r} has Path(), which only applies to endpoint parameters"
+            if isinstance(annotation.part, PathParam):
+                problem = f"{qualified!r} has PathParam(), which only applies to endpoint parameters"
                 raise MisplacedHelperError(qualified, annotation.annotation, problem)
             result[name] = annotation
             # A model dumped by alias uses the serialization alias, which can differ from the alias.

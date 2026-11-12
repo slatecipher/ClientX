@@ -52,7 +52,7 @@ class DumpConfig(TypedDict, total=False):
 
 @dataclass
 class Part:
-    """Base class of the helpers: ``Query``, ``Header``, ``Form``, ``Body``, ``File``, and ``Path``.
+    """Base class of the helpers: ``Query``, ``Header``, ``Form``, ``Body``, ``File``, and ``PathParam``.
 
     Internal: users choose a request part by choosing a helper, never by name. Each
     helper sets ``request_part`` as a class constant, so it isn't an argument, a
@@ -180,14 +180,19 @@ class File(Part):
 
 
 @dataclass
-class Path(Part):
+class PathParam(Part):
     """Describe a path parameter for AI tools.
 
-    ``Annotated[int, Path(description="The user's ID")]`` puts the description in the
+    ``Annotated[int, PathParam(description="The user's ID")]`` puts the description in the
     tool's argument schema. It only describes: the parameter is still matched to its
-    ``{placeholder}`` by name. A parameter marked ``Path()`` must have a placeholder in
+    ``{placeholder}`` by name. A parameter marked ``PathParam()`` must have a placeholder in
     the endpoint's path, including a ``Resource`` prefix, or ``EndpointSignatureError``
     is raised when the class is defined. It can't be used on a model field.
+
+    It isn't named ``Path``, unlike FastAPI's, because ``pathlib.Path`` imported in the
+    same module would shadow it silently: on Python 3.12 and 3.13, ``pathlib.Path``
+    accepts ``description=`` with only a ``DeprecationWarning``, and the description
+    would be lost.
 
     Attributes:
         description: Describes the parameter for AI tools.

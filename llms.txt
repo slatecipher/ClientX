@@ -11,7 +11,7 @@ from typing import Annotated
 
 from pydantic import BaseModel, TypeAdapter
 
-from clientx import Body, ClientX, DumpConfig, Path, Query, Resource, Response
+from clientx import Body, ClientX, DumpConfig, PathParam, Query, Resource, Response
 from clientx.decoders import ModelDecoder, TypeAdapterDecoder
 from clientx.methods import delete, get, patch, post
 
@@ -31,7 +31,7 @@ class UserChanges(BaseModel):
 
 class Users(Resource, prefix="/users", tags=["users"]):
     @get("/{user_id}", decoder=ModelDecoder(User))
-    def retrieve(self, user_id: Annotated[int, Path(description="The user's ID")]) -> User:
+    def retrieve(self, user_id: Annotated[int, PathParam(description="The user's ID")]) -> User:
         """Fetch one user by ID."""
         ...
 
@@ -107,7 +107,7 @@ AI tools and MCP:
 
 - `clientx.tools.list_tools(client, read_only=False, include_tags=None, exclude_tags=(), include_deprecated=False)` returns one `Tool` per endpoint, including resources: `name` (attribute path with underscores, such as `users_retrieve`), `description` (the docstring), `input_schema` and `output_schema` (JSON Schema), `read_only` / `destructive` / `idempotent` (from the HTTP method: GET, HEAD and OPTIONS are read-only; PUT, PATCH and DELETE are destructive; POST is neither and isn't idempotent; GET, HEAD, OPTIONS, PUT and DELETE are idempotent), `method`, `path`, `tags`, and `deprecated`. `tool.call(arguments)` validates the arguments and calls the endpoint through the client, returning a JSON-friendly result; errors propagate, including `HTTPStatusError` for 4xx and 5xx responses (the MCP server turns them into error results). `read_only=True` keeps only GET, HEAD and OPTIONS endpoints. Streaming endpoints are left out.
 - `clientx.mcp.run_mcp_server(client, read_only=True)` serves those tools as an MCP server over stdio (it needs the `mcp` extra). `create_mcp_server(...)` returns the low-level `mcp.server.lowlevel.Server` for other transports. Don't print to stdout in an MCP server process.
-- Docstrings become tool descriptions. Describe a parameter with the helper's `description=`: `Annotated[int | None, Query("userId", description="...")]`, or `Annotated[int, Path(description="...")]` for a path parameter (`Path` only describes; a `Path()` parameter without a placeholder in the path, prefix included, raises `EndpointSignatureError` when the class is defined, and `Path` on a model field raises `MisplacedHelperError`). Only tool and MCP schemas use descriptions. `pydantic.Field(description=...)` also works and wins if both are given. Keep credentials in the client's configuration (`auth=`, `headers=`), never in endpoint parameters, which models see and fill in.
+- Docstrings become tool descriptions. Describe a parameter with the helper's `description=`: `Annotated[int | None, Query("userId", description="...")]`, or `Annotated[int, PathParam(description="...")]` for a path parameter (`PathParam` only describes; a `PathParam()` parameter without a placeholder in the path, prefix included, raises `EndpointSignatureError` when the class is defined, and `PathParam` on a model field raises `MisplacedHelperError`). Only tool and MCP schemas use descriptions. `pydantic.Field(description=...)` also works and wins if both are given. Keep credentials in the client's configuration (`auth=`, `headers=`), never in endpoint parameters, which models see and fill in.
 
 ## Docs
 

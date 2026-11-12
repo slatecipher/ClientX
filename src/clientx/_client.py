@@ -165,7 +165,7 @@ class Resource:
             if endpoint is not None:
                 endpoint.path = _join_path(cls.__clientx_prefix__, str(endpoint.path))
                 endpoint.tags = list(dict.fromkeys([*cls.__clientx_tags__, *endpoint.tags]))
-        # After the prefix is joined, since it can add the placeholder a Path() parameter needs.
+        # After the prefix is joined, since it can add the placeholder a PathParam() parameter needs.
         _check_path_helpers(cls)
 
     def __set_name__(self, owner: type[Any], name: str) -> None:
@@ -204,7 +204,7 @@ def _check_member_names(cls: type, reserved: frozenset[str], *, base: str) -> No
 
 
 def _check_path_helpers(cls: type) -> None:
-    """Raise if an endpoint in ``cls``'s body marks a parameter ``Path()`` that its path has no placeholder for."""
+    """Raise if an endpoint in ``cls``'s body marks a parameter ``PathParam()`` that its path has no placeholder for."""
     for value in vars(cls).values():
         if (endpoint := endpoint_for(value)) is not None:
             endpoint.check_path_helpers()

@@ -434,7 +434,7 @@ Annotate a parameter with the helper for the request part it goes to:
 | `Body()` | The JSON body (`json`) | `Annotated[UserChanges, Body()]` |
 | `File()` | Multipart files (`files`) | `Annotated[dict[str, bytes], File()]` |
 
-Every helper also takes `description=`, which describes the parameter or model field for AI tools (see [Using a Client from AI Agents](#using-a-client-from-ai-agents)). `Path(description=...)` does the same for a path parameter.
+Every helper also takes `description=`, which describes the parameter or model field for AI tools (see [Using a Client from AI Agents](#using-a-client-from-ai-agents)). `PathParam(description=...)` does the same for a path parameter.
 
 ```python
 from enum import Enum
@@ -762,7 +762,7 @@ from typing import Annotated
 
 from pydantic import BaseModel
 
-from clientx import ClientX, Path, Resource
+from clientx import ClientX, PathParam, Resource
 from clientx.decoders import ModelDecoder
 from clientx.methods import get
 from clientx.tools import list_tools
@@ -775,7 +775,7 @@ class User(BaseModel):
 
 class Users(Resource, prefix="/users"):
     @get("/{user_id}", decoder=ModelDecoder(User))
-    def retrieve(self, user_id: Annotated[int, Path(description="The user's ID")]) -> User:
+    def retrieve(self, user_id: Annotated[int, PathParam(description="The user's ID")]) -> User:
         """Fetch one user by ID."""
         ...
 
@@ -793,7 +793,7 @@ print(tool.input_schema)  # {"type": "object", "properties": {"user_id": {...}},
 result = tool.call({"user_id": 42})  # GET /users/42, returns {"id": 42, "name": "..."}
 ```
 
-Describe each parameter with its helper's `description=`, such as `Annotated[int | None, Query("userId", description="Only posts by this user")]`. A path parameter has no request-part helper, so use `Path(description=...)`: it only describes, and the parameter is still matched to its `{placeholder}` by name. A `Path()` parameter whose name isn't a placeholder in the path, including a resource prefix, raises `EndpointSignatureError` when the class is defined, and `Path` on a model field raises `MisplacedHelperError`. Descriptions only go into the tool and MCP schemas; they don't change requests. A `pydantic.Field(description=...)` on the same parameter still works, and wins if both are given.
+Describe each parameter with its helper's `description=`, such as `Annotated[int | None, Query("userId", description="Only posts by this user")]`. A path parameter has no request-part helper, so use `PathParam(description=...)`: it only describes, and the parameter is still matched to its `{placeholder}` by name. A `PathParam()` parameter whose name isn't a placeholder in the path, including a resource prefix, raises `EndpointSignatureError` when the class is defined, and `PathParam` on a model field raises `MisplacedHelperError`. Descriptions only go into the tool and MCP schemas; they don't change requests. A `pydantic.Field(description=...)` on the same parameter still works, and wins if both are given.
 
 To offer the tools to a model, pass each tool's `name`, `description`, and `input_schema` in the format your AI SDK expects, and call `tools[name].call(arguments)` when the model asks for a tool. With the Anthropic SDK, for example, that's `tools=[{"name": t.name, "description": t.description, "input_schema": t.input_schema} for t in tools.values()]`.
 

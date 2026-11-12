@@ -18,7 +18,7 @@ from clientx._annotations import (
     Form,
     Header,
     Part,
-    Path,
+    PathParam,
     Query,
 )
 
@@ -216,11 +216,11 @@ def test_body_and_file_take_no_key(helper: type[Body]):
 
 
 def test_path_takes_only_a_description():
-    assert list(inspect.signature(Path).parameters) == ["description"]
-    assert Path.request_part is None
-    assert Path(description="The user's ID").description == "The user's ID"
+    assert list(inspect.signature(PathParam).parameters) == ["description"]
+    assert PathParam.request_part is None
+    assert PathParam(description="The user's ID").description == "The user's ID"
     with pytest.raises(TypeError):
-        Path("The user's ID")  # pyright: ignore[reportCallIssue]
+        PathParam("The user's ID")  # pyright: ignore[reportCallIssue]
 
 
 def test_model_annotations_are_analysed_once_per_model_class():

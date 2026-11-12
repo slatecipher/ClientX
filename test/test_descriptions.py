@@ -1,4 +1,4 @@
-"""Parameter descriptions for AI tools, from the helpers' ``description=`` and from ``Path`` (#45)."""
+"""Parameter descriptions for AI tools, from the helpers' ``description=`` and from ``PathParam`` (#45)."""
 
 import re
 from typing import Annotated, Any
@@ -7,7 +7,7 @@ import httpx2
 import pytest
 from pydantic import BaseModel, Field
 
-from clientx import Body, ClientX, Header, Path, Query, Resource, Response
+from clientx import Body, ClientX, Header, PathParam, Query, Resource, Response
 from clientx.exceptions import EndpointSignatureError, MisplacedHelperError
 from clientx.methods import get, post
 from clientx.tools import list_tools
@@ -21,7 +21,7 @@ class PostsAPI(ClientX):
     @get("/users/{user_id}/posts")
     def list_posts(
         self,
-        user_id: Annotated[int, Path(description="The author's ID")],
+        user_id: Annotated[int, PathParam(description="The author's ID")],
         page: Annotated[int | None, Query("p", description="Page number, from 1")] = None,
         request_id: Annotated[str | None, Header("X-Request-Id")] = None,
     ) -> Response: ...
@@ -79,18 +79,20 @@ def test_descriptions_dont_change_the_request():
 
 
 def test_path_without_a_placeholder_raises_when_the_class_is_defined():
-    with pytest.raises(EndpointSignatureError, match=re.escape("marks 'user_id' with Path(), but its path '/users'")):
+    with pytest.raises(
+        EndpointSignatureError, match=re.escape("marks 'user_id' with PathParam(), but its path '/users'")
+    ):
 
         class API(ClientX):  # pyright: ignore[reportUnusedClass]
             @get("/users")
-            def users(self, user_id: Annotated[int, Path(description="The user's ID")]) -> Response: ...
+            def users(self, user_id: Annotated[int, PathParam(description="The user's ID")]) -> Response: ...
 
 
 def test_path_can_name_a_placeholder_from_a_resource_prefix():
     class Issues(Resource, prefix="/repos/{owner}/issues"):
         @get("/{number}")
         def retrieve(
-            self, owner: Annotated[str, Path(description="Repository owner")], number: Annotated[int, Path()]
+            self, owner: Annotated[str, PathParam(description="Repository owner")], number: Annotated[int, PathParam()]
         ) -> Response: ...
 
     class API(ClientX):
@@ -105,22 +107,24 @@ def test_path_without_a_placeholder_raises_when_the_resource_is_defined():
 
         class Items(Resource, prefix="/items"):  # pyright: ignore[reportUnusedClass]
             @get("/{item_id}")
-            def retrieve(self, owner: Annotated[str, Path()], item_id: int) -> Response: ...
+            def retrieve(self, owner: Annotated[str, PathParam()], item_id: int) -> Response: ...
 
 
 def test_path_with_another_helper_raises():
-    with pytest.raises(MisplacedHelperError, match=re.escape("has more than one helper: Path(), Query()")):
+    with pytest.raises(MisplacedHelperError, match=re.escape("has more than one helper: PathParam(), Query()")):
 
         class API(ClientX):  # pyright: ignore[reportUnusedClass]
             @get("/users/{user_id}")
-            def user(self, user_id: Annotated[int, Path(), Query()]) -> Response: ...
+            def user(self, user_id: Annotated[int, PathParam(), Query()]) -> Response: ...
 
 
 def test_path_on_a_model_field_raises():
     class Located(BaseModel):
-        user_id: Annotated[int, Path()]
+        user_id: Annotated[int, PathParam()]
 
-    with pytest.raises(MisplacedHelperError, match=re.escape("'Located.user_id' has Path(), which only applies to")):
+    with pytest.raises(
+        MisplacedHelperError, match=re.escape("'Located.user_id' has PathParam(), which only applies to")
+    ):
 
         class API(ClientX):  # pyright: ignore[reportUnusedClass]
             @post("/locate")
