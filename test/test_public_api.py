@@ -57,6 +57,7 @@ def test_submodule_exports():
         "MissingPathArgumentsError",
         "MissingReturnTypeError",
         "PathTemplateError",
+        "PathValueError",
         "UnboundResourceError",
         "UnconsumableArgumentError",
     ]

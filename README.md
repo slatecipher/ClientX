@@ -402,7 +402,7 @@ finally:
 
 ClientX maps method arguments into request parts in this order:
 
-1. Path placeholders (e.g. `{user_id}`) are consumed from arguments. Each value is converted like a query value (an `Enum` becomes its value, a `datetime` ISO 8601) and percent-encoded, so a value such as `"a/b"` or `"../admin"` stays one path segment and can't add a query string. For a value that spans segments, such as a file path, use `{file_path:path}`: slashes are kept, and each segment is still encoded. Any other converter raises `PathTemplateError` when the class is defined.
+1. Path placeholders (e.g. `{user_id}`) are consumed from arguments. Each value is converted like a query value (an `Enum` becomes its value, a `datetime` ISO 8601) and percent-encoded, so a value such as `"a/b"` or `"../admin"` stays one path segment and can't add a query string. For a value that spans segments, such as a file path, use `{file_path:path}`: slashes are kept, and each segment is still encoded. Any other converter raises `PathTemplateError` when the class is defined. A value that would change which path is called raises `PathValueError` before anything is sent: `None` (it would be sent as `null`), an empty value (`/users/{user_id}` with `""` would call `/users/`), or, in a `{name:path}` value, a leading, trailing, or doubled slash.
 2. Each remaining argument goes to the first of these that matches:
    1. Its name is a request part: `json`, `params`, `data`, `files`, or `headers`. The name wins even over an annotation, so a parameter named `data` is always sent as form data.
    2. It's annotated with a request part: `Annotated[..., Query()]`, `Header()`, `Form()`, `Body()`, or `File()`.
@@ -858,6 +858,7 @@ ClientX raises explicit errors for common contract violations. Most of them are 
 At call time:
 
 - endpoint called on a resource that isn't mounted on a client -> `UnboundResourceError`
+- path value that's `None` or empty, or a `{name:path}` value with a leading, trailing, or doubled slash -> `PathValueError`
 - argument cannot map to request parts, or a model field marked `Body()` or `File()` holds something other than a mapping or a model -> `UnconsumableArgumentError`
 - argument doesn't match its annotation, when `validate_arguments` is on -> `ArgumentValidationError`
 

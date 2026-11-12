@@ -34,6 +34,7 @@ from clientx.exceptions import (
     MissingPathArgumentsError,
     MissingReturnTypeError,
     PathTemplateError,
+    PathValueError,
 )
 
 _POSITIONAL = (inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD)
@@ -77,8 +78,8 @@ class DeprecatedMessage:
         warnings.warn(self.message, DeprecationWarning, stacklevel=self.stacklevel)
 
 
-def _encode_path_value(value: object, *, keep_slashes: bool) -> str:
-    """Return ``value`` as percent-encoded path text.
+def _encode_path_value(path: str, name: str, value: object, *, keep_slashes: bool) -> str:
+    """Return ``value`` as percent-encoded path text for placeholder ``name`` in ``path``.
 
     The value is converted like a query value: an ``Enum`` becomes its value, a
     ``datetime`` ISO 8601, a ``UUID`` its string, and a number or boolean JSON text
@@ -86,10 +87,22 @@ def _encode_path_value(value: object, *, keep_slashes: bool) -> str:
     unreserved is then percent-encoded, slashes included unless ``keep_slashes``, so
     a value can't add path segments, a query string, or a fragment. A ``.`` or ``..``
     segment is encoded too, so it can't move up the path.
+
+    Raises:
+        PathValueError: The value is ``None``, is empty, or (with ``keep_slashes``) has an
+            empty segment. Each would change the path: ``/users/{id}`` with ``""`` would
+            call ``/users/``, and a doubled slash can make the rest look like a host name.
     """
+    if value is None:
+        raise PathValueError(path, name, value, "None would be sent as 'null'")
     jsonable = to_jsonable_python(value, fallback=str)
     text = jsonable if isinstance(jsonable, str) else json.dumps(jsonable)
+    if not text:
+        raise PathValueError(path, name, value, "an empty value would remove the segment and call a different path")
     segments = text.split("/") if keep_slashes else [text]
+    if "" in segments:
+        problem = "a leading, trailing, or doubled slash leaves an empty segment, which would change the path"
+        raise PathValueError(path, name, value, problem)
     return "/".join(_DOT_SEGMENTS.get(segment) or quote(segment, safe="") for segment in segments)
 
 
@@ -136,6 +149,8 @@ class URLPath:
 
         Raises:
             MissingPathArgumentsError: If the mapping does not contain all template parameters.
+            PathValueError: If a value is ``None``, is empty, or has an empty segment in a
+                ``{name:path}`` placeholder.
         """
         self.validate_parameters(values)
 
@@ -143,7 +158,7 @@ class URLPath:
             name, converter = match.groups()
             if name is None:
                 return match.group()[0]
-            return _encode_path_value(values[name], keep_slashes=converter == "path")
+            return _encode_path_value(self.path, name, values[name], keep_slashes=converter == "path")
 
         return type(self).pattern.sub(render, self.path)
 

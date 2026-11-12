@@ -205,6 +205,29 @@ class PathTemplateError(ClientXError, ValueError):
         )
 
 
+class PathValueError(ClientXError, ValueError):
+    """Raised before a request is sent, if a path value would change which path is called.
+
+    A value fills one ``{placeholder}``, so it must render to at least one character:
+    ``None`` would be sent as ``null``, and an empty string would call a different path
+    (``/users/{user_id}`` with ``""`` would call ``/users/``). For a ``{name:path}``
+    placeholder, each segment between slashes must be non-empty too, so a leading,
+    trailing, or doubled slash raises this error.
+
+    Attributes:
+        path: The endpoint's path template.
+        parameter: The name of the placeholder the value was for.
+        value: The value that was passed.
+    """
+
+    def __init__(self, path: str, parameter: str, value: object, problem: str) -> None:
+        """Store the path template, the placeholder, and the value, and describe the problem."""
+        self.path = path
+        self.parameter = parameter
+        self.value = value
+        super().__init__(f"Can't fill {{{parameter}}} in {path!r} with {value!r}: {problem}. No request was sent.")
+
+
 class ArgumentValidationError(ClientXError, ValueError):
     """Raised before a request is sent, if an argument doesn't match its parameter's annotation.
 
@@ -241,6 +264,7 @@ __all__ = [
     "MissingPathArgumentsError",
     "MissingReturnTypeError",
     "PathTemplateError",
+    "PathValueError",
     "UnboundResourceError",
     "UnconsumableArgumentError",
 ]
