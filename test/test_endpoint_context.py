@@ -151,7 +151,7 @@ def test_endpoint_stream_is_read_only():
     endpoint = Endpoint("GET", "/v1/items")
 
     with pytest.raises(AttributeError):
-        endpoint.stream = True  # type: ignore[misc]
+        endpoint.stream = True  # pyright: ignore[reportAttributeAccessIssue]
 
 
 def test_endpoint_func_requires_decoder_for_decodable_return_type():

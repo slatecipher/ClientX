@@ -105,7 +105,7 @@ def test_named_annotation_extractor_from_signature():
 
 def test_annotation_extractor_from_field_info_rejects_invalid_type():
     with pytest.raises(TypeError, match="Expected FieldInfo or ComputedFieldInfo, got object"):
-        AnnotationExtractor.from_field_info(object())  # type: ignore[arg-type]
+        AnnotationExtractor.from_field_info(object())  # pyright: ignore[reportArgumentType]
 
 
 def test_annotation_extractor_reads_metadata_through_a_type_alias():

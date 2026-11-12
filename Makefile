@@ -15,6 +15,7 @@ lint-ci:
 # examples/ is checked in standard mode so the example client keeps working.
 typecheck:
 	uv run pyright src test/test_typing.py examples
+	uv run mypy
 
 # Advisory: reported in CI via continue-on-error, never blocks a merge.
 typecheck-tests:
