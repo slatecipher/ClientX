@@ -1,16 +1,18 @@
 from typing import Annotated
 
-from pydantic import Field, TypeAdapter
+from pydantic import TypeAdapter
 
-from clientx import Body, ClientX, DumpConfig, Query, Resource, methods
+from clientx import Body, ClientX, DumpConfig, PathParam, Query, Resource, methods
 from clientx.decoders import ModelDecoder, TypeAdapterDecoder
 
 from .jsonplaceholder_models import Comment, NewPost, Post, PostChanges, User
 
 JSONPLACEHOLDER_URL = "https://jsonplaceholder.typicode.com"
 
-PostId = Annotated[int, Field(description="The post's ID (1 to 100).")]
-UserId = Annotated[int, Field(description="The user's ID (1 to 10).")]
+# Path parameters are matched to their `{placeholder}` by name; PathParam() only describes them, for
+# the AI tool schemas. Each helper (Query, Header, ...) takes `description=` the same way.
+PostId = Annotated[int, PathParam(description="The post's ID (1 to 100).")]
+UserId = Annotated[int, PathParam(description="The user's ID (1 to 10).")]
 
 
 # The endpoints use `@methods.get(...)`, not `@get(...)`: a method named `get` would hide the decorator
@@ -20,7 +22,7 @@ class Posts(Resource, prefix="/posts", tags=["posts"]):
     def list(
         self,
         # Sent as `?userId=...`, and left out when it's None.
-        user_id: Annotated[int | None, Query("userId"), Field(description="Only list posts by this user.")] = None,
+        user_id: Annotated[int | None, Query("userId", description="Only list posts by this user.")] = None,
     ) -> list[Post]:
         """List blog posts. Without user_id, returns all 100 posts."""
         ...

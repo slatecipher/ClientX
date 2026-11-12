@@ -54,19 +54,19 @@ class Company(BaseModel):
         ceo_name: CEO full name.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(validate_by_name=True)
 
     id: int
     name: str
     address: str
-    zip: str = Field(..., description="Postal code (string because of hyphenated ZIP codes)")
+    zip: str = Field(description="Postal code (string because of hyphenated ZIP codes)")
     country: str
-    employee_count: int = Field(..., ge=0, alias="employeeCount")
+    employee_count: int = Field(alias="employeeCount", ge=0)
     industry: str
-    market_cap: int = Field(..., ge=0, alias="marketCap")
+    market_cap: int = Field(alias="marketCap", ge=0)
     domain: str
     logo: HttpUrl
-    ceo_name: str = Field(..., alias="ceoName")
+    ceo_name: str = Field(alias="ceoName")
 
 
 Companies = TypeAdapter(list[Company])

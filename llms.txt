@@ -117,7 +117,7 @@ AI tools and MCP:
 ## Examples
 
 - [Beeceptor example client](https://github.com/slatecipher/ClientX/tree/mainline/examples/beeceptor): a complete client with resources, model decoders, and a deprecated endpoint, run by `examples/beeceptor_example.py`
-- [JSONPlaceholder example client](https://github.com/slatecipher/ClientX/tree/mainline/examples/jsonplaceholder): a client for a real public API with the request-part helpers (`Query("userId")`, `Body` with `exclude_unset` for PATCH), camelCase aliases, and a 404 caught as `httpx2.HTTPStatusError`, run by `examples/jsonplaceholder_example.py` (it needs network access)
+- [JSONPlaceholder example client](https://github.com/slatecipher/ClientX/tree/mainline/examples/jsonplaceholder): a client for a real public API with the request-part helpers (`Query("userId", description=...)`, `Body` with `exclude_unset` for PATCH), `PathParam(description=...)` for path parameters, camelCase aliases, and a 404 caught as `httpx2.HTTPStatusError`, run by `examples/jsonplaceholder_example.py` (it needs network access)
 - [AI tools example](https://github.com/slatecipher/ClientX/blob/mainline/examples/beeceptor_tools_example.py): the same client's endpoints as AI tools, with definitions, schemas, filters, and calls
 
 ## Optional
