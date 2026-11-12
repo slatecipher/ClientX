@@ -1,5 +1,6 @@
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 
+import pytest
 from httpx2 import Response
 from pydantic import BaseModel, TypeAdapter
 
@@ -92,6 +93,54 @@ def test_type_adapter_decoder_validates_payload_by_key():
     result = TypeAdapterDecoder(TypeAdapter(list[dict[str, int]]), key="sessions")(response)
 
     assert result == [{"id": 1}, {"id": 2}]
+
+
+@pytest.mark.parametrize(
+    ("content", "body"),
+    [
+        (b'{"count": 2, "items": []}', "an object with the keys 'count', 'items'"),
+        (
+            b'{"a": 1, "b": 2, "c": 3, "d": 4, "e": 5, "f": 6, "g": 7}',
+            "an object with the keys 'a', 'b', 'c', 'd', 'e' and 2 more",
+        ),
+        (b"{}", "an empty object"),
+        (b"[1, 2]", "an array"),
+        (b'"text"', "a string"),
+        (b"3", "a number"),
+        (b"true", "a boolean"),
+        (b"null", "null"),
+    ],
+    ids=["other keys", "many keys", "empty object", "array", "string", "number", "boolean", "null"],
+)
+def test_type_adapter_decoder_says_when_the_key_is_missing(content: bytes, body: str):
+    decoder = TypeAdapterDecoder(TypeAdapter(list[int]), key="results")
+
+    with pytest.raises(ValueError) as raised:
+        decoder(Response(200, content=content))
+
+    assert str(raised.value) == (
+        "TypeAdapterDecoder(key='results') expected a JSON object with a 'results' key, "
+        f"but the response body is {body}."
+    )
+
+
+class Item(BaseModel):
+    id: int
+
+
+@pytest.mark.parametrize(
+    ("decoder", "content"),
+    [
+        (ModelDecoder(Item), b"<html>"),
+        (ModelDecoder(Item), b'{"id": "x"}'),
+        (TypeAdapterDecoder(TypeAdapter(list[Item]), key="items"), b"[]"),
+    ],
+    ids=["not JSON", "doesn't validate", "missing key"],
+)
+def test_built_in_decoder_failures_are_value_errors(decoder: Callable[[Response], object], content: bytes):
+    # The README promises `except ValueError` catches them all.
+    with pytest.raises(ValueError):
+        decoder(Response(200, content=content))
 
 
 def test_from_response_decoder_uses_model_constructor():

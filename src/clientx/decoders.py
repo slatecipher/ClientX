@@ -3,7 +3,7 @@
 from abc import ABC, abstractmethod
 from collections.abc import Iterator
 from dataclasses import dataclass, field
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 
 from httpx2 import Response
 from pydantic import BaseModel, TypeAdapter
@@ -97,23 +97,82 @@ class ModelDecoder[M: BaseModel]:
 
 @dataclass
 class TypeAdapterDecoder[T]:
-    """Decode a response body using a Pydantic TypeAdapter."""
+    """Decode a JSON response body with a Pydantic ``TypeAdapter``, for types that aren't models.
+
+    Use it for lists, unions, and other types: ``TypeAdapterDecoder(TypeAdapter(list[User]))``
+    for an endpoint annotated ``-> list[User]``. With ``key``, it validates one member of a
+    JSON object instead of the whole body, for APIs that wrap their data in an object::
+
+        @get("/users", decoder=TypeAdapterDecoder(TypeAdapter(list[User]), key="results"))
+        def list_users(self) -> list[User]: ...  # {"count": 2, "results": [...]} -> list[User]
+
+    Attributes:
+        adapter: The ``TypeAdapter`` that validates the data. It takes a ``TypeAdapter``,
+            not a bare type.
+        key: The member of the JSON object to validate instead of the whole body, or
+            ``None`` to validate the whole body.
+    """
 
     adapter: TypeAdapter[T]
     key: str | None = field(default=None, kw_only=True)
 
     def __call__(self, response: Response) -> T:
-        """Parse JSON content and validate it with the configured adapter.
+        """Parse the JSON body and validate it, or its ``key`` member, with the adapter.
 
         Args:
-            response: HTTP response containing a JSON body.
+            response: HTTP response with a JSON body.
 
         Returns:
-            The validated Python object produced by the adapter.
+            The validated value.
+
+        Raises:
+            json.JSONDecodeError: If the body isn't JSON. It's a ``ValueError``.
+            ValueError: If ``key`` is set and the body isn't a JSON object with that key.
+            pydantic.ValidationError: If the data doesn't match the adapter's type. It's a
+                ``ValueError`` too.
         """
         data = response.json()
-        data = data[self.key] if self.key else data
+        if self.key is not None:
+            data = _member(data, self.key)
         return self.adapter.validate_python(data)
+
+
+def _member(data: object, key: str) -> object:
+    """Return ``data[key]``, or raise ``ValueError`` if ``data`` isn't a JSON object with that key."""
+    members = _json_object(data)
+    if members is None or key not in members:
+        raise ValueError(
+            f"TypeAdapterDecoder(key={key!r}) expected a JSON object with a {key!r} key, "
+            f"but the response body is {_describe_json(data)}."
+        )
+    return members[key]
+
+
+def _json_object(data: object) -> dict[str, object] | None:
+    """Return ``data`` if it's a decoded JSON object, else ``None``."""
+    return cast("dict[str, object]", data) if isinstance(data, dict) else None
+
+
+# How a decoded JSON value is described in error messages, by its Python type.
+_JSON_TYPES: dict[type[object], str] = {
+    list: "an array",
+    str: "a string",
+    int: "a number",
+    float: "a number",
+    bool: "a boolean",
+}
+
+
+def _describe_json(data: object) -> str:
+    """Describe a decoded JSON value by its JSON type, naming an object's first keys."""
+    members = _json_object(data)
+    if members is None:
+        return "null" if data is None else _JSON_TYPES.get(type(data), type(data).__name__)
+    if not members:
+        return "an empty object"
+    shown = ", ".join(repr(name) for name in list(members)[:5])
+    more = f" and {len(members) - 5} more" if len(members) > 5 else ""
+    return f"an object with the keys {shown}{more}"
 
 
 class _FromResponseModel[M: BaseModel](Protocol):
