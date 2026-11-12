@@ -148,3 +148,40 @@ def test_a_model_field_with_the_helper_around_the_whole_type_is_sent():
     [request] = sent
     assert request.headers["X-Api-Key"] == "secret"
     assert request.content == b'{"q":"x"}'
+
+
+@pytest.mark.parametrize(
+    ("model", "problem"),
+    [
+        (KeyNested, "'KeyNested.api_key' has Header() nested inside another type"),
+        (TwoHelpers, "'TwoHelpers.api_key' has more than one helper: Query(), Header()"),
+    ],
+    ids=["nested", "two helpers"],
+)
+def test_a_misplaced_helper_in_a_parameters_model_raises_when_the_class_is_defined(
+    model: type[BaseModel], problem: str
+):
+    with pytest.raises(MisplacedHelperError, match=re.escape(problem)):
+
+        class API(ClientX):  # pyright: ignore[reportUnusedClass]
+            @post("/search")
+            def search(self, body: model) -> Response: ...  # pyright: ignore[reportInvalidTypeForm]
+
+
+def test_a_model_that_isnt_complete_is_checked_when_it_is_sent():
+    class Later(BaseModel):
+        api_key: Annotated[str, Header()] | None = None
+        child: "Undefined | None" = None  # noqa: F821  # pyright: ignore[reportUndefinedVariable]
+
+    class API(ClientX):
+        @post("/search")
+        def search(self, body: Later) -> Response: ...
+
+    class Undefined(BaseModel):
+        pass
+
+    Later.model_rebuild(_types_namespace={"Undefined": Undefined})
+    api = API("https://api.example.com", transport=httpx2.MockTransport(lambda r: httpx2.Response(200)))
+
+    with pytest.raises(MisplacedHelperError, match=re.escape("'Later.api_key' has Header() nested")):
+        api.search(Later())

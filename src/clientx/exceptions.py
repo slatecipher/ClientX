@@ -41,14 +41,43 @@ class UnconsumableArgumentError(ClientXError, TypeError):
 
 
 class MissingPathArgumentsError(ClientXError, ValueError):
-    """Raised when a path template is missing required arguments."""
+    """Raised when a path template has placeholders that no argument fills.
 
-    def __init__(self, path: str, missing_args: list[str]) -> None:
-        """Store the path template and the missing argument names."""
+    An endpoint raises it when its class is defined, if a placeholder in its path
+    (including one from a ``Resource`` prefix) doesn't name one of its parameters.
+    """
+
+    def __init__(self, path: str, missing_args: list[str], *, func: Callable[..., Any] | None = None) -> None:
+        """Store the path template, the missing argument names, and the endpoint function if known."""
         self.path = path
         self.missing_args = missing_args
         missing = ", ".join(missing_args)
-        super().__init__(f"Missing path arguments for {repr(path)}: {missing}")
+        if func is None:
+            super().__init__(f"Missing path arguments for {repr(path)}: {missing}")
+            return
+        qualname = getattr(func, "__qualname__", func.__name__)
+        module = getattr(func, "__module__", "<unknown>")
+        super().__init__(
+            f"Missing path arguments for {repr(path)}: {missing}. "
+            f"Endpoint function '{qualname}' (defined in {module}) needs a parameter "
+            "for each placeholder in its path."
+        )
+
+
+class EndpointSignatureError(ClientXError, TypeError):
+    """Raised when the class is defined, if an endpoint's parameters can't describe a request.
+
+    The first parameter receives the client or resource (it's usually named ``self``),
+    so it must be positional. Every other parameter must be named: ``*args`` and
+    ``**kwargs`` have no place in a request.
+    """
+
+    def __init__(self, func: Callable[..., Any], problem: str) -> None:
+        """Store the endpoint function and describe the problem."""
+        self.func = func
+        qualname = getattr(func, "__qualname__", func.__name__)
+        module = getattr(func, "__module__", "<unknown>")
+        super().__init__(f"Endpoint function '{qualname}' (defined in {module}) {problem}.")
 
 
 class MissingReturnTypeError(ClientXError, TypeError):
@@ -145,6 +174,7 @@ class MisplacedHelperError(ClientXError, TypeError):
 __all__ = [
     "ClientXError",
     "EndpointNameConflictError",
+    "EndpointSignatureError",
     "MisplacedHelperError",
     "MissingDecoderError",
     "MissingPathArgumentsError",

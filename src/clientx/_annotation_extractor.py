@@ -1,8 +1,10 @@
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
+from functools import lru_cache
 from inspect import Signature
+from types import MappingProxyType
 from typing import Annotated, Any, TypeAliasType, get_args, get_origin
 
 from pydantic import BaseModel, TypeAdapter, ValidationError
@@ -257,3 +259,15 @@ class NamedAnnotationExtractor:
         """
         annotations = AnnotationExtractor.from_base_model(model)
         return {name: NamedAnnotation(name=name, info=info) for name, info in annotations.items()}
+
+
+@lru_cache(maxsize=512)
+def model_annotations(model_type: type[BaseModel]) -> Mapping[str, NamedAnnotation]:
+    """Return the field annotations of ``model_type``, analysed once per model class.
+
+    The result depends only on the class, so it's cached, and read-only because it's
+    shared. The cache is bounded, so models created on the fly can't grow it forever.
+    ``MisplacedHelperError`` isn't cached: a model with a misplaced helper raises it
+    every time.
+    """
+    return MappingProxyType(NamedAnnotationExtractor.from_base_model(model_type))
