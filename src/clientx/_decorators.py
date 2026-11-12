@@ -215,7 +215,8 @@ class ApiMethod:
             endpoint_name = func.__qualname__
 
             @wraps(func)
-            def wrapper(_self: T, *args: P.args, **kwargs: P.kwargs) -> R:
+            # `_self` is positional-only, like the first parameter `Concatenate` describes.
+            def wrapper(_self: T, /, *args: P.args, **kwargs: P.kwargs) -> R:
                 # The client whose connection sends the request; `_self` may be a mounted resource.
                 client = client_of(_self)
                 endpoint.check_deprecation()

@@ -181,6 +181,20 @@ def test_decoders_called_directly_return_the_decoded_type() -> None:
     assert_type(TypeAdapterDecoder(TypeAdapter(list[User]))(response), list[User])
 
 
+def test_a_with_block_cant_swallow_an_error() -> None:
+    """``ClientX.__exit__`` returns ``None``, so a ``with`` block can't swallow an exception.
+
+    If it returned ``bool``, type checkers would report ``first_user_agent`` as missing a
+    return statement, since the block could exit without returning.
+    """
+
+    def first_user_agent() -> str:
+        with ClientX("https://example.test") as client:
+            return client.user_agent
+
+    assert first_user_agent().startswith("ClientX/")
+
+
 def test_methods_without_decoder_must_return_response_or_none() -> None:
     with pytest.raises(MissingDecoderError):
 

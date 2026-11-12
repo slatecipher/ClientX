@@ -102,7 +102,7 @@ class ArgumentCursor:
     consumed: dict[str, Any] = field(default_factory=dict[str, Any])
     bound_copy: dict[str, Any] = field(init=False)
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Initialize the mutable copy of bound arguments."""
         self.bound_copy = dict(self.bound.arguments)
 
