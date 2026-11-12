@@ -264,7 +264,7 @@ class RequestFactory:
                 parts.append(model_extractor(model=value, dump_config=marker.dump_config))
                 continue
 
-            raise UnconsumableArgumentError(field=field_name, annotation=annotation, value=value)
+            raise UnconsumableArgumentError(field=field_name, annotation=annotation.info.annotation, value=value)
 
         return parts
 

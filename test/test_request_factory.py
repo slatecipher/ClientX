@@ -230,8 +230,13 @@ def test_request_factory_raises_unconsumable_argument_error():
     client = cast(ClientX, object())
     arguments = endpoint.bind(client=client, args=("123", "t-1"), kwargs={})
 
-    with pytest.raises(UnconsumableArgumentError, match="Cannot map argument 'token'"):
+    with pytest.raises(UnconsumableArgumentError, match="Cannot map argument 'token'") as caught:
         RequestFactory(endpoint=endpoint)(arguments)
+
+    # The parameter's type, not ClientX's internal wrapper around it.
+    assert caught.value.annotation is str
+    assert "annotation: <class 'str'>" in str(caught.value)
+    assert "NamedAnnotation" not in str(caught.value)
 
 
 def test_request_factory_maps_scalar_param_using_part_key():
