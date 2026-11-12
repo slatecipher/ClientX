@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import inspect
 import json
-import warnings
 from collections import defaultdict
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -162,11 +161,9 @@ class RequestFactory:
 
     Attributes:
         endpoint: Endpoint metadata and signature used to consume arguments.
-        warn_on_conflict: Whether merge conflicts should emit warnings.
     """
 
     endpoint: Endpoint
-    warn_on_conflict: bool = False
 
     def __call__(self, arguments: BoundArguments) -> RequestSpec:
         """Build a rendered path and merged request parts from bound arguments.
@@ -278,8 +275,10 @@ class RequestFactory:
             request_parts: Request part mappings to merge.
 
         Returns:
-            Combined request mapping. Later parts win on conflicts. When both values
-            are dicts, they are shallow-merged and later parts win on shared keys.
+            Combined request mapping. Later parts win on conflicts, silently: that's
+            the documented rule, so a parameter can override part of a whole-part
+            argument such as ``headers``. When both values are dicts, they are
+            shallow-merged and later parts win on shared keys.
             ``None`` values are left out of ``params``, ``headers``, and ``data``;
             ``json`` keeps them as ``null``. Numbers and booleans in headers become
             text. Dicts passed in are never changed.
@@ -293,11 +292,9 @@ class RequestFactory:
                     merged[key] = dict(cast(dict[str, Any], value)) if isinstance(value, dict) else value
                     continue
                 if isinstance(merged[key], dict) and isinstance(value, dict):
-                    self._warn_on_conflict(key, merged[key], cast(dict[str, Any], value))
                     merged[key].update(value)
                     continue
 
-                self._warn_on_full_overlap(key, merged[key], value)
                 merged[key] = value
 
         for key in _KEYED_PARTS:
@@ -305,34 +302,6 @@ class RequestFactory:
                 merged[key] = _clean_keyed_part(key, cast(dict[str, Any], values))
 
         return merged
-
-    def _warn_on_conflict(self, request_part: str, existing: dict[str, Any], incoming: dict[str, Any]) -> None:
-        """Warn when request part dictionaries share keys.
-
-        Args:
-            request_part: Request part key being merged.
-            existing: Existing request part mapping.
-            incoming: Incoming request part mapping.
-        """
-        if self.warn_on_conflict and (overlap := set(existing).intersection(incoming)):
-            warnings.warn(
-                f"Request parts share keys for '{request_part}': {', '.join(sorted(overlap))}",
-                stacklevel=2,
-            )
-
-    def _warn_on_full_overlap(self, request_part: str, existing: Any, incoming: Any) -> None:
-        """Warn when a request part is fully replaced.
-
-        Args:
-            request_part: Request part key being overwritten.
-            existing: Existing request part value.
-            incoming: Incoming request part value.
-        """
-        if self.warn_on_conflict:
-            warnings.warn(
-                f"Request part '{request_part}' fully overwritten",
-                stacklevel=2,
-            )
 
 
 @dataclass(frozen=True)

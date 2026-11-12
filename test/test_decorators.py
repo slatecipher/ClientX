@@ -1,11 +1,12 @@
 from collections.abc import Iterator
-from typing import TypedDict
+from typing import Annotated, TypedDict
 
 import httpx2
 import pytest
 from httpx2 import HTTPStatusError, Request, Response
 
 import clientx._decorators as decorators_module
+from clientx import Body, Header
 from clientx._client import ClientX
 from clientx._decorators import ApiMethod, method
 from clientx._endpoint_context import Endpoint
@@ -400,3 +401,27 @@ def test_an_unknown_path_converter_raises_when_the_class_is_defined():
         class API(ClientX):  # pyright: ignore[reportUnusedClass]
             @method.get("/users/{user_id:int}")
             def user(self, user_id: int) -> Response: ...
+
+
+def test_arguments_for_the_same_part_merge_in_parameter_order():
+    sent: list[Request] = []
+
+    class API(ClientX):
+        @method.post("/items")
+        def create(
+            self,
+            headers: dict[str, str],
+            request_id: Annotated[str, Header("X-Request-Id")],
+            json: dict[str, object],
+            body: Annotated[object, Body()],
+        ) -> Response: ...
+
+    api = API(
+        "https://api.example.com", transport=httpx2.MockTransport(lambda r: sent.append(r) or httpx2.Response(200))
+    )
+    api.create({"X-Request-Id": "from-dict", "X-Other": "kept"}, "from-param", {"a": 1}, [1, 2])
+
+    [request] = sent
+    assert request.headers["X-Request-Id"] == "from-param"
+    assert request.headers["X-Other"] == "kept"
+    assert request.content == b"[1,2]"
