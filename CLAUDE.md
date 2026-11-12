@@ -68,7 +68,7 @@ The public API is `clientx/__init__.py`, which also re-exports `httpx2.Response`
 
 `llms.txt` (repo root) is a compact guide for AI coding assistants. Keep it in sync with the public API and the docs; its code sample must run and type-check.
 
-The README is the PyPI page, so it stays short: an overview, install, a quickstart, and links to the guide. The guide is in `docs/`, one Markdown page per topic, which the docs site (#13) will build from. The README links to the guide with absolute GitHub URLs, because relative links break on PyPI; pages in `docs/` link to each other relatively.
+The README is the PyPI page, so it stays short: an overview, install, a quickstart, and links to the guide. The guide is in `docs/`, one Markdown page per topic, which the docs site (#13) will build from. The README links to the guide with absolute GitHub URLs, because relative links break on PyPI; pages in `docs/` link to each other relatively. The README's header shows the logo, `docs/assets/logo-light.svg` and `logo-dark.svg`, with a `<picture>` element that picks one for GitHub's color mode; its absolute `raw.githubusercontent.com` URLs work once the repository is public. The logo's lettering is converted to paths, so it doesn't depend on the viewer's fonts.
 
 ## Conventions and releasing
 
