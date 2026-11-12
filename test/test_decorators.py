@@ -11,7 +11,7 @@ from clientx._decorators import ApiMethod, method
 from clientx._endpoint_context import Endpoint
 from clientx._registry import endpoint_for
 from clientx.decoders import StreamLinesDecoder
-from clientx.exceptions import EndpointNameConflictError, MissingPathArgumentsError
+from clientx.exceptions import EndpointNameConflictError, MissingPathArgumentsError, PathTemplateError
 
 
 def endpoint_of(function: object) -> Endpoint:
@@ -369,3 +369,34 @@ def test_a_placeholder_without_a_parameter_raises_when_the_class_is_defined():
         class API(ClientX):  # pyright: ignore[reportUnusedClass]
             @method.get("/users/{user_id}")
             def user(self, uid: int) -> Response: ...
+
+
+def test_path_values_cant_change_the_path():
+    sent: list[Request] = []
+
+    class API(ClientX):
+        @method.get("/users/{name}/posts")
+        def posts(self, name: str) -> Response: ...
+
+        @method.get("/repos/{repo}/contents/{file_path:path}")
+        def contents(self, repo: str, file_path: str) -> Response: ...
+
+    api = API(
+        "https://api.example.com/v1/",
+        transport=httpx2.MockTransport(lambda r: sent.append(r) or httpx2.Response(200)),
+    )
+    api.posts("../admin?x=1")
+    api.contents("clientx", "docs/guide.md")
+
+    assert [request.url.raw_path for request in sent] == [
+        b"/v1/users/..%2Fadmin%3Fx%3D1/posts",
+        b"/v1/repos/clientx/contents/docs/guide.md",
+    ]
+
+
+def test_an_unknown_path_converter_raises_when_the_class_is_defined():
+    with pytest.raises(PathTemplateError, match="unknown converter"):
+
+        class API(ClientX):  # pyright: ignore[reportUnusedClass]
+            @method.get("/users/{user_id:int}")
+            def user(self, user_id: int) -> Response: ...
