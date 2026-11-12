@@ -1,7 +1,8 @@
 from httpx2 import Auth, Request, Response, Timeout
 
-from clientx._annotations import Body, DumpConfig, File, Form, Header, PathParam, Query
+from clientx._annotations import Body, File, Form, Header, PathParam, Query
 from clientx._client import ClientX, Resource
+from clientx._client_types import DumpConfig
 from clientx._endpoint_context import DeprecatedMessage
 from clientx._version import __version__
 from clientx.exceptions import ClientXError
@@ -16,7 +17,6 @@ __all__ = [
     "Timeout",
     # clientx._annotations
     "Body",
-    "DumpConfig",
     "File",
     "Form",
     "Header",
@@ -25,6 +25,8 @@ __all__ = [
     # clientx._client
     "ClientX",
     "Resource",
+    # clientx._client_types
+    "DumpConfig",
     # clientx._endpoint_context
     "DeprecatedMessage",
     # clientx.exceptions

@@ -12,8 +12,9 @@ from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
 
 from clientx import Body, File, Form, Header, Query, Response
-from clientx._annotations import DumpConfig, Part
+from clientx._annotations import Part
 from clientx._client import ClientX
+from clientx._client_types import DumpConfig
 from clientx._endpoint_context import Endpoint
 from clientx._request_factory import ArgumentCursor, ModelExtractor, RequestFactory
 from clientx.exceptions import UnconsumableArgumentError
