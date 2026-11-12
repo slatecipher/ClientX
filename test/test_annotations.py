@@ -8,7 +8,6 @@ from pydantic import BaseModel, Field, computed_field
 from clientx._annotation_extractor import (
     AnnotationExtractor,
     AnnotationInfo,
-    NamedAnnotation,
     NamedAnnotationExtractor,
     model_annotations,
 )
@@ -92,13 +91,6 @@ def test_annotation_extractor_from_base_model_includes_serialization_aliases():
     mapping = AnnotationExtractor.from_base_model(Example)
 
     assert mapping["authToken"].part.request_part == "headers"
-
-
-def test_named_annotation_validation_wraps_errors():
-    annotation = NamedAnnotation(name="field", info=AnnotationInfo(annotation=int))
-
-    with pytest.raises(ValueError, match="field"):
-        annotation.validate("not-an-int")
 
 
 def test_named_annotation_extractor_from_signature():

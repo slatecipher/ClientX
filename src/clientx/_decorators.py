@@ -71,6 +71,13 @@ def _raises_for_status(endpoint: Endpoint, client: ClientX) -> bool:
     return client.__clientx_raise_for_status__ if endpoint.raise_for_status is None else endpoint.raise_for_status
 
 
+def _validates_arguments(endpoint: Endpoint, client: ClientX) -> bool:
+    """Whether ``endpoint`` checks its arguments: its own setting if it has one, or else the client's."""
+    if endpoint.validate_arguments is None:
+        return client.__clientx_validate_arguments__
+    return endpoint.validate_arguments
+
+
 def _raise_status_error(response: httpx2.Response) -> None:
     """Raise ``httpx2.HTTPStatusError`` for ``response``, which must be a 4xx or 5xx.
 
@@ -135,6 +142,7 @@ class ApiMethod:
         tags: list[str] | None = None,
         timeout: httpx2.Timeout | float | None = None,
         raise_for_status: bool | None = None,
+        validate_arguments: bool | None = None,
     ) -> DecodedEndpointDecorator[D]: ...
 
     @overload
@@ -147,6 +155,7 @@ class ApiMethod:
         tags: list[str] | None = None,
         timeout: httpx2.Timeout | float | None = None,
         raise_for_status: bool | None = None,
+        validate_arguments: bool | None = None,
     ) -> RawEndpointDecorator: ...
 
     def __call__(
@@ -158,6 +167,7 @@ class ApiMethod:
         tags: list[str] | None = None,
         timeout: httpx2.Timeout | float | None = None,
         raise_for_status: bool | None = None,
+        validate_arguments: bool | None = None,
     ) -> DecodedEndpointDecorator[Any] | RawEndpointDecorator:
         """Build a decorator that registers an endpoint for this HTTP method.
 
@@ -177,6 +187,11 @@ class ApiMethod:
                 ``httpx2.HTTPStatusError`` before the decoder runs. ``None`` (the
                 default) follows the client's ``raise_for_status``, which is on
                 unless the client turns it off.
+            validate_arguments: Whether each argument is checked against its
+                parameter's annotation before the request is sent, raising
+                ``ArgumentValidationError`` if it doesn't match. ``None`` (the
+                default) follows the client's ``validate_arguments``, which is off
+                unless the client turns it on.
 
         Returns:
             A decorator that wraps and registers the endpoint. Its type ties the
@@ -194,6 +209,7 @@ class ApiMethod:
                 tags=tags,
                 timeout=timeout,
                 raise_for_status=raise_for_status,
+                validate_arguments=validate_arguments,
             )
             request_factory = RequestFactory(endpoint)
             endpoint_name = func.__qualname__
@@ -204,7 +220,8 @@ class ApiMethod:
                 client = client_of(_self)
                 endpoint.check_deprecation()
 
-                spec = request_factory(arguments=endpoint.bind(_self, args, kwargs))
+                arguments = endpoint.bind(_self, args, kwargs, validate=_validates_arguments(endpoint, client))
+                spec = request_factory(arguments=arguments)
 
                 # Taken before `timeout` is added: it's a request option, not a request part.
                 call = EndpointCall(

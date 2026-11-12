@@ -187,7 +187,34 @@ class PathTemplateError(ClientXError, ValueError):
         )
 
 
+class ArgumentValidationError(ClientXError, ValueError):
+    """Raised before a request is sent, if an argument doesn't match its parameter's annotation.
+
+    Only raised when argument validation is on: ``ClientX(..., validate_arguments=True)``,
+    or ``validate_arguments=True`` on the endpoint's decorator. The check is strict, like
+    a type checker's: ``"1"`` doesn't match ``int``. ``Field`` constraints such as
+    ``ge=1`` apply too. The value is never changed.
+
+    Attributes:
+        func: The endpoint function.
+        parameter: The parameter whose argument didn't match.
+        validation_error: Pydantic's error, with the details.
+    """
+
+    def __init__(self, func: Callable[..., Any], parameter: str, validation_error: Exception) -> None:
+        """Store the endpoint function, the parameter, and Pydantic's error."""
+        self.func = func
+        self.parameter = parameter
+        self.validation_error = validation_error
+        qualname = getattr(func, "__qualname__", func.__name__)
+        super().__init__(
+            f"Argument {parameter!r} of '{qualname}' doesn't match its annotation, so no request was sent.\n"
+            f"{validation_error}"
+        )
+
+
 __all__ = [
+    "ArgumentValidationError",
     "ClientXError",
     "EndpointNameConflictError",
     "EndpointSignatureError",

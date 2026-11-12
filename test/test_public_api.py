@@ -47,6 +47,7 @@ def test_submodule_exports():
         "text_decoder",
     ]
     assert sorted(exceptions.__all__) == [
+        "ArgumentValidationError",
         "ClientXError",
         "EndpointNameConflictError",
         "EndpointSignatureError",

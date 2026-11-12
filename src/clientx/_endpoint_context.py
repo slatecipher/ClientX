@@ -12,7 +12,8 @@ from typing import Any, ClassVar, get_type_hints
 from urllib.parse import quote
 
 import httpx2
-from pydantic import BaseModel
+from pydantic import BaseModel, TypeAdapter, ValidationError
+from pydantic.errors import PydanticSchemaGenerationError
 from pydantic_core import to_jsonable_python
 
 from clientx._annotation_extractor import NamedAnnotation, NamedAnnotationExtractor, model_annotations
@@ -26,6 +27,7 @@ from clientx._client_types import (
 )
 from clientx.decoders import StreamDecoder, StreamResponseDecoder
 from clientx.exceptions import (
+    ArgumentValidationError,
     EndpointSignatureError,
     MissingDecoderError,
     MissingPathArgumentsError,
@@ -181,6 +183,7 @@ class Endpoint:
         tags: list[str] | None = None,
         timeout: httpx2.Timeout | float | None = None,
         raise_for_status: bool | None = None,
+        validate_arguments: bool | None = None,
     ) -> None:
         """Initialize endpoint metadata from decorator configuration.
 
@@ -199,7 +202,12 @@ class Endpoint:
             raise_for_status: Whether a 4xx or 5xx response raises
                 ``httpx2.HTTPStatusError``. ``None`` (the default) follows the
                 client's ``raise_for_status``.
+            validate_arguments: Whether arguments are checked against their
+                annotations before a request is sent. ``None`` (the default)
+                follows the client's ``validate_arguments``.
         """
+        # One validator per parameter, built on the first validated call; None for a type Pydantic can't validate.
+        self._validators: dict[str, TypeAdapter[Any] | None] = {}
         self._func: Callable[..., Any] | None = None
         self._signature: inspect.Signature | None = None
         self._return_type: Any | None = None
@@ -211,6 +219,7 @@ class Endpoint:
         self.deprecated = deprecated
         self.timeout = timeout
         self.raise_for_status = raise_for_status
+        self.validate_arguments = validate_arguments
         # Dedupe tags while preserving insertion order.
         self.tags = list(dict.fromkeys(tags or []))
 
@@ -221,7 +230,8 @@ class Endpoint:
             f"{type(self).__name__}(method={self.method!r}, path={str(self.path)!r}, "
             f"function={func_qualname!r}, has_decoder={self.decoder is not None!r}, "
             f"deprecated={self.deprecated is not None!r}, stream={self.stream!r}, "
-            f"timeout={self.timeout!r}, raise_for_status={self.raise_for_status!r}, tags={self.tags!r}, "
+            f"timeout={self.timeout!r}, raise_for_status={self.raise_for_status!r}, "
+            f"validate_arguments={self.validate_arguments!r}, tags={self.tags!r}, "
             f"return_type={_type_name(self._return_type)!r})"
         )
 
@@ -415,7 +425,14 @@ class Endpoint:
         """
         return self._return_type
 
-    def bind(self, client: ClientX | Resource, args: tuple[Any, ...], kwargs: dict[str, Any]) -> BoundArguments:
+    def bind(
+        self,
+        client: ClientX | Resource,
+        args: tuple[Any, ...],
+        kwargs: dict[str, Any],
+        *,
+        validate: bool = False,
+    ) -> BoundArguments:
         """Bind call arguments to the endpoint function signature.
 
         This helper binds the provided ``client``, positional arguments, and
@@ -426,6 +443,8 @@ class Endpoint:
             client: Client or mounted resource passed as the first argument (``self``).
             args: Positional arguments supplied by the caller.
             kwargs: Keyword arguments supplied by the caller.
+            validate: Check each argument the caller passed against its parameter's
+                annotation, before defaults are applied. Defaults aren't checked.
 
         Returns:
             BoundArguments: Bound argument mapping with defaults applied.
@@ -434,11 +453,49 @@ class Endpoint:
             RuntimeError: If the endpoint signature has not been captured yet.
             TypeError: If the provided arguments do not satisfy the function
                 signature.
+            ArgumentValidationError: If ``validate`` is set and an argument doesn't
+                match its annotation.
         """
         bound = self.signature.bind(client, *args, **kwargs)
+        if validate:
+            self._validate(bound.arguments)
         bound.apply_defaults()
 
         return bound
+
+    def _validate(self, arguments: dict[str, Any]) -> None:
+        """Check each request argument against its parameter's full annotation, strictly.
+
+        Strict mode rejects what a type checker would (``"1"`` for ``int``), and the
+        validated value is thrown away, so validation never changes what's sent.
+        """
+        for name, value in arguments.items():
+            if name == self.client_parameter:
+                continue
+            validator = self._validator(name)
+            if validator is None:
+                continue
+            try:
+                validator.validate_python(value, strict=True)
+            except ValidationError as error:
+                raise ArgumentValidationError(self.func, name, error) from error
+
+    def _validator(self, name: str) -> TypeAdapter[Any] | None:
+        """Return the cached validator for parameter ``name``, building it on first use.
+
+        Unannotated parameters, and types Pydantic can't validate (such as
+        ``BinaryIO``), get ``None`` and aren't checked.
+        """
+        if name not in self._validators:
+            annotation = self.signature.parameters[name].annotation
+            validator: TypeAdapter[Any] | None = None
+            if annotation is not inspect.Parameter.empty:
+                try:
+                    validator = TypeAdapter(annotation)
+                except PydanticSchemaGenerationError:
+                    validator = None
+            self._validators[name] = validator
+        return self._validators[name]
 
 
 def _with_resolved_annotations(func: Callable[..., Any], signature: inspect.Signature) -> inspect.Signature:
