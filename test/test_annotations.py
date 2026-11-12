@@ -18,6 +18,7 @@ from clientx._annotations import (
     Form,
     Header,
     Part,
+    PathParam,
     Query,
 )
 
@@ -201,16 +202,25 @@ def test_each_helper_is_a_part_with_a_fixed_request_part(helper: type[Part], req
 def test_keyed_helpers_take_the_key_first(helper: type[Query]):
     marker = helper("userId", dump_config=DumpConfig(exclude_none=True))
 
-    assert list(inspect.signature(helper).parameters) == ["key", "dump_config"]
+    assert list(inspect.signature(helper).parameters) == ["key", "dump_config", "description"]
+    assert inspect.signature(helper).parameters["description"].kind is inspect.Parameter.KEYWORD_ONLY
     assert marker.key == "userId"
     assert marker.dump_config == {"exclude_none": True}
 
 
 @pytest.mark.parametrize("helper", [Body, File])
 def test_body_and_file_take_no_key(helper: type[Body]):
-    assert list(inspect.signature(helper).parameters) == ["dump_config"]
+    assert list(inspect.signature(helper).parameters) == ["dump_config", "description"]
     with pytest.raises(TypeError):
         helper("key")  # pyright: ignore[reportCallIssue]
+
+
+def test_path_takes_only_a_description():
+    assert list(inspect.signature(PathParam).parameters) == ["description"]
+    assert PathParam.request_part is None
+    assert PathParam(description="The user's ID").description == "The user's ID"
+    with pytest.raises(TypeError):
+        PathParam("The user's ID")  # pyright: ignore[reportCallIssue]
 
 
 def test_model_annotations_are_analysed_once_per_model_class():

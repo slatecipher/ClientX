@@ -17,6 +17,7 @@ from pydantic.errors import PydanticSchemaGenerationError
 from pydantic_core import to_jsonable_python
 
 from clientx._annotation_extractor import NamedAnnotation, NamedAnnotationExtractor, model_annotations
+from clientx._annotations import PathParam
 from clientx._client import ClientX, Resource
 from clientx._client_types import (
     Decoder,
@@ -366,6 +367,20 @@ class Endpoint:
         self._path = URLPath(value)
         if self._func is not None:
             self._check_path()
+
+    def check_path_helpers(self) -> None:
+        """Raise ``EndpointSignatureError`` if a ``PathParam()`` parameter has no placeholder in the path.
+
+        Called by ``ClientX`` and ``Resource`` once the class body is done, because a
+        ``Resource`` prefix can add a placeholder after the method is decorated.
+        """
+        placeholders = set(self.path.parameters)
+        for name, annotation in self.parameters.items():
+            if isinstance(annotation.part, PathParam) and name not in placeholders:
+                raise EndpointSignatureError(
+                    self.func,
+                    f"marks {name!r} with PathParam(), but its path {str(self.path)!r} has no {{{name}}} placeholder",
+                )
 
     def _check_path(self) -> None:
         """Raise ``MissingPathArgumentsError`` if a placeholder names no request parameter."""

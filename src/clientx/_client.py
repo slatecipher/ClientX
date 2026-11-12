@@ -58,6 +58,7 @@ class ClientX:
         """Reject endpoints and resources named like something ``ClientX`` already has."""
         super().__init_subclass__(**kwargs)
         _check_member_names(cls, _CLIENTX_RESERVED_NAMES, base="ClientX")
+        _check_path_helpers(cls)
 
     def __enter__(self) -> Self:
         """Enter the client context and return the active client instance.
@@ -164,6 +165,8 @@ class Resource:
             if endpoint is not None:
                 endpoint.path = _join_path(cls.__clientx_prefix__, str(endpoint.path))
                 endpoint.tags = list(dict.fromkeys([*cls.__clientx_tags__, *endpoint.tags]))
+        # After the prefix is joined, since it can add the placeholder a PathParam() parameter needs.
+        _check_path_helpers(cls)
 
     def __set_name__(self, owner: type[Any], name: str) -> None:
         """Check that the resource is mounted on a ``ClientX`` or ``Resource`` subclass."""
@@ -198,6 +201,13 @@ def _check_member_names(cls: type, reserved: frozenset[str], *, base: str) -> No
     for name, value in vars(cls).items():
         if name in reserved and (endpoint_for(value) is not None or isinstance(value, Resource)):
             raise EndpointNameConflictError(owner=cls, name=name, base=base)
+
+
+def _check_path_helpers(cls: type) -> None:
+    """Raise if an endpoint in ``cls``'s body marks a parameter ``PathParam()`` that its path has no placeholder for."""
+    for value in vars(cls).values():
+        if (endpoint := endpoint_for(value)) is not None:
+            endpoint.check_path_helpers()
 
 
 def _join_path(prefix: str, path: str) -> str:

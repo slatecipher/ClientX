@@ -22,7 +22,7 @@ import httpx2
 import pytest
 from pydantic import BaseModel, TypeAdapter
 
-from clientx import Body, ClientX, Header, Query, Resource, Response
+from clientx import Body, ClientX, Header, PathParam, Query, Resource, Response
 from clientx.decoders import (
     ModelDecoder,
     StreamLinesDecoder,
@@ -268,3 +268,15 @@ def test_request_part_helpers_keep_endpoint_signatures() -> None:
     assert_type(client.create(User(name="Ada")), Response)
     client.search(name=1)  # pyright: ignore[reportArgumentType]
     client.create({"name": "Ada"})  # pyright: ignore[reportArgumentType]
+
+
+def test_helper_descriptions_are_keyword_only() -> None:
+    Query("userId", description="Only posts by this user")
+    Body(description="The new user")
+    PathParam(description="The user's ID")
+    with pytest.raises(TypeError):
+        Query("userId", "Only posts by this user")  # pyright: ignore[reportCallIssue]
+    with pytest.raises(TypeError):
+        PathParam("The user's ID")  # pyright: ignore[reportCallIssue]
+    with pytest.raises(TypeError):
+        PathParam(key="id")  # pyright: ignore[reportCallIssue]

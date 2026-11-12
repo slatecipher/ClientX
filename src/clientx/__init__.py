@@ -1,6 +1,6 @@
 from httpx2 import Auth, Request, Response, Timeout
 
-from clientx._annotations import Body, DumpConfig, File, Form, Header, Query
+from clientx._annotations import Body, DumpConfig, File, Form, Header, PathParam, Query
 from clientx._client import ClientX, Resource
 from clientx._endpoint_context import DeprecatedMessage
 from clientx._version import __version__
@@ -20,6 +20,7 @@ __all__ = [
     "File",
     "Form",
     "Header",
+    "PathParam",
     "Query",
     # clientx._client
     "ClientX",
