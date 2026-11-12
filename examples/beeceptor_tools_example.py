@@ -6,10 +6,10 @@ and calls with valid and invalid arguments.
 
 import json
 
-from beeceptor import Beeceptor
+from clientx.tools import list_tools
 from pydantic import ValidationError
 
-from clientx.tools import list_tools
+from beeceptor import Beeceptor
 
 
 def main() -> None:

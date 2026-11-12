@@ -1,9 +1,8 @@
 from typing import Annotated
 
-from pydantic import Field, TypeAdapter
-
 from clientx import Body, ClientX, DumpConfig, PathParam, Query, Resource, methods
 from clientx.decoders import ModelDecoder, TypeAdapterDecoder
+from pydantic import Field, TypeAdapter
 
 from .jsonplaceholder_models import Comment, NewPost, Post, PostChanges, User
 
