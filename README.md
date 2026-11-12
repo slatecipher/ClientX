@@ -828,7 +828,7 @@ Each `Tool` has:
 
 `list_tools` takes filters: `read_only=True`, `include_tags=[...]`, `exclude_tags=[...]`, and `include_deprecated=True` (deprecated endpoints are left out by default). Streaming endpoints are always left out, and so is any endpoint whose types have no JSON Schema, such as file uploads, with a warning.
 
-- **Expose only what an agent needs.** Tools can call `POST`, `PUT`, and `DELETE` endpoints. The hints come from the HTTP method, so an API that changes data on `GET` isn't flagged.
+- **Expose only what an agent needs.** Tools can call `POST`, `PUT`, `PATCH`, and `DELETE` endpoints. `list_tools(client, read_only=True)` keeps only the read-only ones, which is what the MCP server serves by default. The hints come from the HTTP method, so an API that changes data on `GET` isn't flagged.
 - **Keep credentials in the client's configuration** (`auth=`, `headers=`), never in endpoint parameters: parameters become arguments the model sees and fills in.
 - `call` validates the arguments before sending anything and raises `pydantic.ValidationError` if they don't match. Request and decoder errors propagate. Most agent loops send the error text back to the model, but an `HTTPStatusError`'s message includes the full URL, query string included: if your client sends credentials as query parameters (`params=`), describe the error from `error.response.status_code` and `error.request.url.path` instead of sending `str(error)`. The MCP server does this for you.
 
@@ -846,7 +846,7 @@ from clientx.mcp import run_mcp_server
 
 from myapp.clients import ExampleAPI
 
-run_mcp_server(ExampleAPI("https://api.example.com", auth=("user", "secret")), read_only=True)
+run_mcp_server(ExampleAPI("https://api.example.com", auth=("user", "secret")))
 ```
 
 Then point your MCP client at the command `python server.py`. In Claude Desktop's `claude_desktop_config.json`, for example:
@@ -855,8 +855,9 @@ Then point your MCP client at the command `python server.py`. In Claude Desktop'
 {"mcpServers": {"example-api": {"command": "python", "args": ["/path/to/server.py"]}}}
 ```
 
-- The server's tools are exactly the ones `list_tools` returns, with the same names, descriptions, schemas, and filters (`read_only`, `include_tags`, `exclude_tags`, `include_deprecated`). `name=` and `instructions=` set what the server reports to MCP clients.
-- The HTTP-method hints become MCP tool annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`), which MCP clients can use to ask for confirmation before changing data.
+- Only read-only endpoints (`GET`, `HEAD`, and `OPTIONS`) are served unless you pass `read_only=False`, which serves `POST`, `PUT`, `PATCH`, and `DELETE` endpoints too. This is the one default that differs from `list_tools`, which also lists endpoints for docs and tooling: a model can change data only if you choose that.
+- The full signature is `run_mcp_server(client, *, name=None, instructions=None, read_only=True, include_tags=None, exclude_tags=(), include_deprecated=False)`, and `create_mcp_server` takes the same arguments. The server's tools are exactly the ones `list_tools` returns with those filters, with the same names, descriptions, and schemas. `name=` (by default, the client's class name) and `instructions=` set what the server reports to MCP clients.
+- The HTTP-method hints become MCP tool annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`), which MCP clients can use to ask for confirmation before changing data. Every tool also has `openWorldHint` set, because it reaches an external API.
 - Results come back as structured content and as JSON text. Invalid arguments, request failures, and 4xx and 5xx responses come back as error results the model can read, and the server keeps running. A 4xx or 5xx error result has the status, the method and path, and the start of the response body, but never the host or the query string, so credentials in query parameters don't reach the model.
 - MCP messages use stdout, so don't print from the server process. Logging writes to stderr by default.
 - `run_mcp_server` serves over stdio. For other transports, `create_mcp_server` returns the low-level `mcp.server.lowlevel.Server` to run yourself.

@@ -62,7 +62,7 @@ The public API is `clientx/__init__.py`, which also re-exports `httpx2.Response`
 
 `tools.py` (public, `clientx.tools`) turns a client's endpoints into AI tools: it walks the client's class (and mounted resources) with `_registry.endpoint_for`, builds an argument model per endpoint (internal field names with parameter-name aliases, so `json` can't clash with `BaseModel`), and serializes results to JSON-friendly values. It must stay free of AI-SDK dependencies; protocol adapters build on it.
 
-`mcp.py` (public, `clientx.mcp`, needs the `mcp` extra; `mcp` is also in the dev group so CI tests it) serves `list_tools()` over MCP with the SDK's low-level `Server`, using the core's schemas as-is (one source of truth). Non-object output schemas are wrapped as `{"result": ...}` with `$defs` moved to the top. Tests talk to it in-process with `mcp.Client(server)`.
+`mcp.py` (public, `clientx.mcp`, needs the `mcp` extra; `mcp` is also in the dev group so CI tests it) serves `list_tools()` over MCP with the SDK's low-level `Server`, using the core's schemas as-is (one source of truth). Its `read_only` filter defaults to `True`, unlike `list_tools()`'s, so a server exposes endpoints that change data only when asked; tests that need write tools pass `read_only=False`. Non-object output schemas are wrapped as `{"result": ...}` with `$defs` moved to the top. Tests talk to it in-process with `mcp.Client(server)`.
 
 `examples/beeceptor/` and `examples/jsonplaceholder/` contain complete example clients, run by the `examples/*_example.py` scripts. Both call live public APIs, so the scripts need network access; lint and typecheck cover them, but the test suite doesn't run them.
 

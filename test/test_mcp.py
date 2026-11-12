@@ -95,7 +95,7 @@ def text_of(result: types.CallToolResult) -> str:
 
 
 def test_endpoints_are_listed_as_mcp_tools_with_their_schemas():
-    tools = {tool.name: tool for tool in list_tools_over_mcp(create_mcp_server(make_api([])))}
+    tools = {tool.name: tool for tool in list_tools_over_mcp(create_mcp_server(make_api([]), read_only=False))}
 
     assert list(tools) == ["users_retrieve", "users_list_all", "users_remove", "health"]
     retrieve = tools["users_retrieve"]
@@ -109,7 +109,7 @@ def test_endpoints_are_listed_as_mcp_tools_with_their_schemas():
     [("users_retrieve", True, False, True), ("users_remove", False, True, True)],
 )
 def test_http_method_hints_become_tool_annotations(name: str, read_only: bool, destructive: bool, idempotent: bool):
-    tools = {tool.name: tool for tool in list_tools_over_mcp(create_mcp_server(make_api([])))}
+    tools = {tool.name: tool for tool in list_tools_over_mcp(create_mcp_server(make_api([]), read_only=False))}
 
     assert tools[name].annotations == types.ToolAnnotations(
         read_only_hint=read_only, destructive_hint=destructive, idempotent_hint=idempotent, open_world_hint=True
@@ -117,7 +117,7 @@ def test_http_method_hints_become_tool_annotations(name: str, read_only: bool, d
 
 
 def test_non_object_output_schemas_are_wrapped_with_their_definitions_at_the_top():
-    tools = {tool.name: tool for tool in list_tools_over_mcp(create_mcp_server(make_api([])))}
+    tools = {tool.name: tool for tool in list_tools_over_mcp(create_mcp_server(make_api([]), read_only=False))}
 
     schema = tools["users_list_all"].output_schema
     assert schema is not None
@@ -147,7 +147,7 @@ def test_calling_a_tool_returns_structured_content_and_json_text():
     ],
 )
 def test_each_kind_of_result_is_returned(name: str, arguments: dict[str, Any], structured: Any, text: str):
-    result = call_over_mcp(create_mcp_server(make_api([])), name, arguments)
+    result = call_over_mcp(create_mcp_server(make_api([]), read_only=False), name, arguments)
 
     assert result.is_error is False
     assert result.structured_content == structured
@@ -232,6 +232,14 @@ def test_unknown_tool_comes_back_as_an_error_result():
 
     assert result.is_error is True
     assert text_of(result) == "Unknown tool: users_explode"
+
+
+def test_only_read_only_endpoints_are_served_unless_asked():
+    default = list_tools_over_mcp(create_mcp_server(make_api([])))
+    everything = list_tools_over_mcp(create_mcp_server(make_api([]), read_only=False))
+
+    assert [tool.name for tool in default] == ["users_retrieve", "users_list_all", "health"]
+    assert [tool.name for tool in everything] == ["users_retrieve", "users_list_all", "users_remove", "health"]
 
 
 def test_filters_choose_the_tools():

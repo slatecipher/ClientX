@@ -4,13 +4,14 @@ Requires the ``mcp`` extra: ``pip install "clientx[mcp]"``.
 
 Each tool from ``clientx.tools.list_tools`` becomes an MCP tool with the same name,
 description, and JSON Schemas, and the HTTP-method hints become MCP tool
-annotations. Tool calls run through the client, so its auth, decoders, and
-logging apply, and errors come back to the MCP client as error results instead of
-stopping the server::
+annotations. Only read-only endpoints (GET, HEAD, OPTIONS) are served unless
+``read_only=False`` is passed. Tool calls run through the client, so its auth,
+decoders, and logging apply, and errors come back to the MCP client as error results
+instead of stopping the server::
 
     from clientx.mcp import run_mcp_server
 
-    run_mcp_server(ExampleAPI("https://api.example.com"), read_only=True)
+    run_mcp_server(ExampleAPI("https://api.example.com"))
 """
 
 from __future__ import annotations
@@ -41,22 +42,24 @@ def create_mcp_server(
     *,
     name: str | None = None,
     instructions: str | None = None,
-    read_only: bool = False,
+    read_only: bool = True,
     include_tags: Iterable[str] | None = None,
     exclude_tags: Iterable[str] = (),
     include_deprecated: bool = False,
 ) -> Server[Any]:
     """Create an MCP server whose tools are the client's endpoints.
 
-    The tool filters work as in ``clientx.tools.list_tools``. To serve over stdio,
-    use ``run_mcp_server``; for other transports, run the returned low-level
-    ``mcp.server.lowlevel.Server`` yourself.
+    The tool filters work as in ``clientx.tools.list_tools``, except that ``read_only``
+    defaults to ``True``: a server exposes endpoints that change data only when asked to.
+    To serve over stdio, use ``run_mcp_server``; for other transports, run the returned
+    low-level ``mcp.server.lowlevel.Server`` yourself.
 
     Args:
         client: The client whose endpoints become tools. Tools call through it.
         name: Server name reported to MCP clients. Defaults to the client's class name.
         instructions: Optional instructions that MCP clients may show to the model.
-        read_only: Only include endpoints whose HTTP method is read-only.
+        read_only: Only include endpoints whose HTTP method is read-only (GET, HEAD,
+            OPTIONS). Pass ``False`` to serve POST, PUT, PATCH, and DELETE endpoints too.
         include_tags: Only include endpoints with at least one of these tags.
         exclude_tags: Leave out endpoints with any of these tags.
         include_deprecated: Include deprecated endpoints, which are left out by default.
@@ -103,7 +106,7 @@ def run_mcp_server(
     *,
     name: str | None = None,
     instructions: str | None = None,
-    read_only: bool = False,
+    read_only: bool = True,
     include_tags: Iterable[str] | None = None,
     exclude_tags: Iterable[str] = (),
     include_deprecated: bool = False,
@@ -112,7 +115,7 @@ def run_mcp_server(
 
     MCP messages use stdout, so the server process must not print to it; use
     logging, which writes to stderr by default. The arguments are the same as for
-    ``create_mcp_server``.
+    ``create_mcp_server``: only read-only endpoints are served unless ``read_only=False``.
     """
     server = create_mcp_server(
         client,
