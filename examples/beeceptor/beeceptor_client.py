@@ -12,7 +12,7 @@ from .beeceptor_models import Companies, Company, User, Users
 class UsersResource(Resource, prefix="/users"):
     """Beeceptor's sample users, under ``/users``."""
 
-    @get("", decoder=TypeAdapterDecoder(Users))
+    @get(decoder=TypeAdapterDecoder(Users))
     def list_all(self) -> list[User]:
         """Return Beeceptor sample users as `User` models.
 
@@ -36,7 +36,7 @@ class UsersResource(Resource, prefix="/users"):
 class CompaniesResource(Resource, prefix="/companies"):
     """Beeceptor's sample companies, under ``/companies``."""
 
-    @get("", decoder=TypeAdapterDecoder(Companies))
+    @get(decoder=TypeAdapterDecoder(Companies))
     def list_all(self) -> list[Company]:
         """Return Beeceptor sample companies as `Company` models.
 
@@ -47,7 +47,7 @@ class CompaniesResource(Resource, prefix="/companies"):
         """
         ...
 
-    @get("")
+    @get()
     def list_raw(self) -> Response:
         """Return the raw Beeceptor companies response.
 
