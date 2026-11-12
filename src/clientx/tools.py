@@ -50,8 +50,10 @@ class Tool:
         name: Tool name: the endpoint's attribute path joined with underscores,
             such as ``"get_health"`` or ``"users_retrieve"`` for ``client.users.retrieve``.
         description: The endpoint's docstring, or ``"METHOD /path"`` without one.
-        input_schema: JSON Schema (an object) for the arguments. Add a parameter
-            description with ``Annotated[..., pydantic.Field(description=...)]``.
+        input_schema: JSON Schema (an object) for the arguments. Describe a
+            parameter with its helper's ``description=``, such as
+            ``Annotated[int, Query(description=...)]`` or ``PathParam(description=...)``
+            for a path parameter, or with ``pydantic.Field(description=...)``.
         output_schema: JSON Schema for the result ``call`` returns, or ``None``
             when the endpoint returns nothing.
         method: HTTP method, such as ``"GET"``.

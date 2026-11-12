@@ -156,6 +156,10 @@ class Body(Part):
     and any other value must be JSON-serializable. For a PATCH, send only the fields
     that were set with ``Body(dump_config=DumpConfig(exclude_unset=True))``.
 
+    On a model field, the value is merged into the JSON body with the model's other
+    fields, so it must be a mapping or a model. Any other value, ``None`` included,
+    raises ``UnconsumableArgumentError`` when the model is sent.
+
     Attributes:
         dump_config: Options for ``model_dump`` when the value is a Pydantic model.
         description: Describes the parameter or field in its JSON Schema.
@@ -171,6 +175,10 @@ class File(Part):
 
     The value is passed to httpx2 as ``files``: a mapping of field names to file
     contents, file objects, or ``(filename, content, content_type)`` tuples.
+
+    On a model field, the value is merged into ``files``, so it must be a mapping.
+    Any other value, ``None`` included, raises ``UnconsumableArgumentError`` when the
+    model is sent.
 
     Attributes:
         dump_config: Options for ``model_dump`` when the value is a Pydantic model.

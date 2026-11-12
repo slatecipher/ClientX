@@ -156,6 +156,70 @@ def test_model_extractor_groups_sections_and_defaults_json():
     assert parts["json"] == {"data": "d"}
 
 
+def test_model_extractor_merges_body_and_file_fields_into_their_parts():
+    class Source(BaseModel):
+        source: str
+
+    class MergedPayload(BaseModel):
+        extra: Annotated[dict[str, str], Body()]
+        origin: Annotated[Source, Body()]
+        attachments: Annotated[dict[str, str], File()]
+        name: str
+
+    model = MergedPayload(extra={"note": "n"}, origin=Source(source="s"), attachments={"report": "r"}, name="Ada")
+    parts = ModelExtractor()(model, DumpConfig())
+
+    assert parts["json"] == {"note": "n", "source": "s", "name": "Ada"}
+    assert parts["files"] == {"report": "r"}
+
+
+class ListBody(BaseModel):
+    tags: Annotated[list[str], Body()]
+
+
+class OptionalBody(BaseModel):
+    extra: Annotated[dict[str, str] | None, Body()] = None
+
+
+class ScalarFile(BaseModel):
+    report: Annotated[str, File()]
+
+
+@pytest.mark.parametrize(
+    ("model", "field", "helper", "value_type"),
+    [
+        (ListBody(tags=["a", "b"]), "ListBody.tags", "Body()", "list"),
+        (OptionalBody(), "OptionalBody.extra", "Body()", "NoneType"),
+        (ScalarFile(report="r"), "ScalarFile.report", "File()", "str"),
+    ],
+)
+def test_model_extractor_rejects_body_and_file_fields_that_are_not_mappings(
+    model: BaseModel, field: str, helper: str, value_type: str
+):
+    with pytest.raises(UnconsumableArgumentError) as caught:
+        ModelExtractor()(model, DumpConfig())
+
+    message = str(caught.value)
+    assert caught.value.field == field
+    assert f"Cannot map '{field}' into an HTTP request part" in message
+    assert f"value_type: {value_type}" in message
+    assert f"{helper} on a model field merges the field's value into that request part" in message
+    assert f"endpoint parameter marked {helper}" in message
+
+
+def test_body_model_field_that_is_not_a_mapping_raises_before_sending():
+    class TagsClient(ClientX):
+        @post("/tags")
+        def tag(self, payload: ListBody) -> Response: ...
+
+    sent: list[httpx2.Request] = []
+    client = make_recording_client(TagsClient, sent)
+
+    with pytest.raises(UnconsumableArgumentError, match=r"Cannot map 'ListBody\.tags'"):
+        client.tag(ListBody(tags=["a"]))
+    assert sent == []
+
+
 def test_request_factory_raises_unconsumable_argument_error():
     endpoint = Endpoint("GET", "/v1/items/{item_id}")
 
@@ -166,8 +230,13 @@ def test_request_factory_raises_unconsumable_argument_error():
     client = cast(ClientX, object())
     arguments = endpoint.bind(client=client, args=("123", "t-1"), kwargs={})
 
-    with pytest.raises(UnconsumableArgumentError, match="Cannot map argument 'token'"):
+    with pytest.raises(UnconsumableArgumentError, match="Cannot map argument 'token'") as caught:
         RequestFactory(endpoint=endpoint)(arguments)
+
+    # The parameter's type, not ClientX's internal wrapper around it.
+    assert caught.value.annotation is str
+    assert "annotation: <class 'str'>" in str(caught.value)
+    assert "NamedAnnotation" not in str(caught.value)
 
 
 def test_request_factory_maps_scalar_param_using_part_key():
