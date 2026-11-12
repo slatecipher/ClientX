@@ -11,6 +11,7 @@ from typing import Annotated
 import httpx2
 import pytest
 from pydantic import BaseModel, Field
+from support import mock_transport
 
 from clientx import Body, ClientX, Header, Query, Response
 from clientx.exceptions import MisplacedHelperError
@@ -123,9 +124,7 @@ def test_a_misplaced_helper_on_a_model_field_raises_before_sending(model: BaseMo
         @post("/search")
         def search(self, body: BaseModel) -> Response: ...
 
-    api = API(
-        "https://api.example.com", transport=httpx2.MockTransport(lambda r: sent.append(r) or httpx2.Response(200))
-    )
+    api = API("https://api.example.com", transport=mock_transport(sent))
 
     with pytest.raises(MisplacedHelperError, match=re.escape(problem)):
         api.search(model)
@@ -140,9 +139,7 @@ def test_a_model_field_with_the_helper_around_the_whole_type_is_sent():
         @post("/search")
         def search(self, body: KeyInside) -> Response: ...
 
-    api = API(
-        "https://api.example.com", transport=httpx2.MockTransport(lambda r: sent.append(r) or httpx2.Response(200))
-    )
+    api = API("https://api.example.com", transport=mock_transport(sent))
     api.search(KeyInside(api_key="secret", q="x"))
 
     [request] = sent
@@ -181,7 +178,7 @@ def test_a_model_that_isnt_complete_is_checked_when_it_is_sent():
         pass
 
     Later.model_rebuild(_types_namespace={"Undefined": Undefined})
-    api = API("https://api.example.com", transport=httpx2.MockTransport(lambda r: httpx2.Response(200)))
+    api = API("https://api.example.com", transport=mock_transport())
 
     with pytest.raises(MisplacedHelperError, match=re.escape("'Later.api_key' has Header() nested")):
         api.search(Later())

@@ -7,6 +7,7 @@ from typing import Annotated, BinaryIO
 import httpx2
 import pytest
 from pydantic import BaseModel, Field
+from support import mock_transport
 
 from clientx import ClientX, File, Query, Resource, Response
 from clientx._registry import endpoint_for
@@ -59,15 +60,13 @@ def make_api(sent: list[httpx2.Request], *, validate_arguments: bool) -> API:
     return API(
         "https://api.example.com",
         validate_arguments=validate_arguments,
-        transport=httpx2.MockTransport(lambda r: sent.append(r) or httpx2.Response(200)),
+        transport=mock_transport(sent),
     )
 
 
 def test_validation_is_off_by_default():
     sent: list[httpx2.Request] = []
-    api = API(
-        "https://api.example.com", transport=httpx2.MockTransport(lambda r: sent.append(r) or httpx2.Response(200))
-    )
+    api = API("https://api.example.com", transport=mock_transport(sent))
 
     api.search("2")  # pyright: ignore[reportArgumentType]
 
@@ -194,7 +193,7 @@ def test_tool_calls_pass_validation_after_converting_json_arguments():
     api = Palette(
         "https://api.example.com",
         validate_arguments=True,
-        transport=httpx2.MockTransport(lambda r: sent.append(r) or httpx2.Response(200)),
+        transport=mock_transport(sent),
     )
     [tool] = list_tools(api)
 

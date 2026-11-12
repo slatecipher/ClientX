@@ -1,6 +1,7 @@
 import inspect
 
 import httpx2
+import pytest
 from httpx2 import Request, Response
 from pydantic import BaseModel
 
@@ -32,51 +33,31 @@ def test_clientx_user_agent_setter_updates_headers():
     assert client.client.headers["User-Agent"] == "AnotherApp/2.0"
 
 
-def test_send_request_builds_and_sends_request(monkeypatch):
+@pytest.mark.parametrize(("options", "streamed"), [({}, False), ({"stream": True}, True)], ids=["default", "stream"])
+def test_send_request_builds_and_sends_request(monkeypatch, options: dict[str, bool], streamed: bool):
     client = ClientX("https://example.test")
     call_log: dict[str, object] = {}
 
     def fake_build_request(method: str, url: str, **request):
-        call_log["method"] = method
-        call_log["url"] = url
-        call_log["request"] = request
+        call_log.update(method=method, url=url, request=request)
         return Request(method, f"https://example.test{url}")
 
     def fake_send(request: Request, *, stream: bool = False) -> Response:
-        call_log["built_request"] = request
         call_log["stream"] = stream
         return Response(status_code=204, request=request)
 
     monkeypatch.setattr(client.client, "build_request", fake_build_request)
     monkeypatch.setattr(client.client, "send", fake_send)
 
-    response = send_request(client, "DELETE", "/v1/items/123", params={"dry_run": 1})
+    response = send_request(client, "DELETE", "/v1/items/123", params={"dry_run": 1}, **options)
 
     assert response.status_code == 204
-    assert call_log["method"] == "DELETE"
-    assert call_log["url"] == "/v1/items/123"
-    assert call_log["request"] == {"params": {"dry_run": 1}}
-    assert call_log["stream"] is False
-
-
-def test_send_request_can_enable_stream_mode(monkeypatch):
-    client = ClientX("https://example.test")
-    call_log: dict[str, object] = {}
-
-    def fake_build_request(method: str, url: str, **request):
-        return Request(method, f"https://example.test{url}")
-
-    def fake_send(request: Request, *, stream: bool = False) -> Response:
-        call_log["stream"] = stream
-        return Response(status_code=200, request=request)
-
-    monkeypatch.setattr(client.client, "build_request", fake_build_request)
-    monkeypatch.setattr(client.client, "send", fake_send)
-
-    response = send_request(client, "GET", "/v1/stream", stream=True)
-
-    assert response.status_code == 200
-    assert call_log["stream"] is True
+    assert call_log == {
+        "method": "DELETE",
+        "url": "/v1/items/123",
+        "request": {"params": {"dry_run": 1}},
+        "stream": streamed,
+    }
 
 
 def test_clientx_repr_includes_base_url_and_user_agent():

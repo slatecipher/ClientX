@@ -35,6 +35,7 @@ When you change code:
 - New code in `src/` needs complete type annotations. Pyright checks `src/` in strict mode.
 - `test/test_typing.py` checks that decorated endpoints keep their signatures for type checkers. Update it if you change the decorators or other public signatures.
 - Add tests for new behavior and for bug fixes. `make test` prints a coverage report.
+- In tests that send requests, use `mock_transport` from `test/support.py` (`from support import mock_transport`): it records what's sent and answers without a network.
 - Ruff formats and lints the code with a 120-character line limit. `make lint` fixes most issues for you.
 
 ## Pull requests

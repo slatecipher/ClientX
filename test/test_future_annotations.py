@@ -11,6 +11,7 @@ from typing import Annotated
 
 import httpx2
 from pydantic import BaseModel
+from support import mock_transport
 
 from clientx import ClientX, Header, Query, Response
 from clientx.methods import get, post
@@ -38,9 +39,7 @@ class FutureAPI(ClientX):
 
 
 def _client(sent: list[httpx2.Request]) -> FutureAPI:
-    return FutureAPI(
-        "https://api.example.com", transport=httpx2.MockTransport(lambda r: sent.append(r) or httpx2.Response(200))
-    )
+    return FutureAPI("https://api.example.com", transport=mock_transport(sent))
 
 
 def test_helpers_in_string_annotations_are_read():

@@ -10,6 +10,7 @@ import httpx2
 import pytest
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
+from support import mock_transport
 
 from clientx import Body, File, Form, Header, Query, Response
 from clientx._annotations import Part
@@ -299,10 +300,6 @@ def test_request_factory_leaves_out_keyed_values_that_are_none(helper: type[Part
 def test_optional_keyed_values_are_only_sent_when_given():
     sent: list[httpx2.Request] = []
 
-    def handler(request: httpx2.Request) -> httpx2.Response:
-        sent.append(request)
-        return httpx2.Response(200)
-
     class PostsClient(ClientX):
         @get("/posts")
         def list_posts(
@@ -311,7 +308,7 @@ def test_optional_keyed_values_are_only_sent_when_given():
             trace_id: Annotated[str | None, Header("X-Trace-Id")] = None,
         ) -> Response: ...
 
-    client = PostsClient("https://example.test", transport=httpx2.MockTransport(handler))
+    client = PostsClient("https://example.test", transport=mock_transport(sent))
     client.list_posts()
     client.list_posts(user_id=1, trace_id="t-1")
 
@@ -338,10 +335,6 @@ def test_merge_request_parts_leaves_none_out_of_keyed_parts_but_not_json():
 def test_none_values_in_mappings_and_models_are_not_sent():
     sent: list[httpx2.Request] = []
 
-    def handler(request: httpx2.Request) -> httpx2.Response:
-        sent.append(request)
-        return httpx2.Response(200)
-
     class PostFilters(BaseModel):
         user_id: int | None = None
         topic: str | None = None
@@ -356,7 +349,7 @@ def test_none_values_in_mappings_and_models_are_not_sent():
         @patch("/posts/1")
         def update_post(self, changes: PostChanges) -> Response: ...
 
-    client = PostsClient("https://example.test", transport=httpx2.MockTransport(handler))
+    client = PostsClient("https://example.test", transport=mock_transport(sent))
     client.list_posts(PostFilters(topic="news"), {"X-Trace-Id": None, "X-Client": "docs"})
     client.update_post(PostChanges())
 
@@ -370,16 +363,12 @@ def test_none_values_in_mappings_and_models_are_not_sent():
 def test_merging_request_parts_never_changes_the_callers_dict():
     sent: list[httpx2.Request] = []
 
-    def handler(request: httpx2.Request) -> httpx2.Response:
-        sent.append(request)
-        return httpx2.Response(200)
-
     class ItemsClient(ClientX):
         @get("/items")
         def list_items(self, params: dict[str, str], kind: Annotated[str, Query("kind")]) -> Response: ...
 
     defaults = {"limit": "10"}
-    client = ItemsClient("https://example.test", transport=httpx2.MockTransport(handler))
+    client = ItemsClient("https://example.test", transport=mock_transport(sent))
     client.list_items(defaults, "book")
 
     assert defaults == {"limit": "10"}
@@ -415,11 +404,7 @@ class Upload(BaseModel):
 
 
 def make_recording_client[C: ClientX](client_class: type[C], sent: list[httpx2.Request]) -> C:
-    def handler(request: httpx2.Request) -> httpx2.Response:
-        sent.append(request)
-        return httpx2.Response(200)
-
-    return client_class("https://example.test", transport=httpx2.MockTransport(handler))
+    return client_class("https://example.test", transport=mock_transport(sent))
 
 
 class EventsClient(ClientX):
@@ -613,12 +598,6 @@ class PostChanges(BaseModel):
     body: str | None = None
 
 
-class HelperPost(BaseModel):
-    user_id: Annotated[int, Query("userId")]
-    trace_id: Annotated[str | None, Header()] = None
-    title: str
-
-
 class HelpersClient(ClientX):
     @get("/posts")
     def search(
@@ -639,9 +618,6 @@ class HelpersClient(ClientX):
 
     @post("/attachments")
     def attach(self, attachment: Annotated[dict[str, bytes], File()]) -> Response: ...
-
-    @post("/posts")
-    def create(self, new_post: HelperPost) -> Response: ...
 
 
 def test_query_and_header_helpers():
@@ -668,14 +644,3 @@ def test_form_body_and_file_helpers():
     assert sent[0].content == b"username=ada&pass=secret"
     assert sent[1].content == b'{"title":"New title"}'
     assert b'name="report"' in sent[2].read()
-
-
-def test_helpers_on_model_fields():
-    sent: list[httpx2.Request] = []
-    client = make_recording_client(HelpersClient, sent)
-
-    client.create(HelperPost(user_id=1, trace_id="t-1", title="Hello"))
-
-    assert str(sent[0].url) == "https://example.test/posts?userId=1"
-    assert sent[0].headers["trace-id"] == "t-1"
-    assert sent[0].content == b'{"title":"Hello"}'

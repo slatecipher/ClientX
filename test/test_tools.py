@@ -6,6 +6,7 @@ from typing import Annotated, Any, BinaryIO
 import httpx2
 import pytest
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
+from support import mock_transport
 
 from clientx import ClientX, DeprecatedMessage, Query, Resource, Response, methods
 from clientx.decoders import ModelDecoder, StreamLinesDecoder, TypeAdapterDecoder
@@ -74,11 +75,10 @@ RESPONSES: dict[tuple[str, str], httpx2.Response] = {
 
 
 def make_api(sent: list[httpx2.Request]) -> ExampleAPI:
-    def handler(request: httpx2.Request) -> httpx2.Response:
-        sent.append(request)
+    def answer(request: httpx2.Request) -> httpx2.Response:
         return RESPONSES.get((request.method, request.url.path), httpx2.Response(200, json={}))
 
-    return ExampleAPI("https://api.example.com", user_agent="tests/1.0", transport=httpx2.MockTransport(handler))
+    return ExampleAPI("https://api.example.com", user_agent="tests/1.0", transport=mock_transport(sent, answer))
 
 
 def tools_by_name(api: ClientX, **filters: Any) -> dict[str, Tool]:

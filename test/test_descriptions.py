@@ -6,6 +6,7 @@ from typing import Annotated, Any
 import httpx2
 import pytest
 from pydantic import BaseModel, Field
+from support import mock_transport
 
 from clientx import Body, ClientX, Header, PathParam, Query, Resource, Response
 from clientx.exceptions import EndpointSignatureError, MisplacedHelperError
@@ -65,9 +66,7 @@ def test_pydantic_field_description_wins_in_either_order():
 
 def test_descriptions_dont_change_the_request():
     sent: list[httpx2.Request] = []
-    api = PostsAPI(
-        "https://api.example.com", transport=httpx2.MockTransport(lambda r: sent.append(r) or httpx2.Response(200))
-    )
+    api = PostsAPI("https://api.example.com", transport=mock_transport(sent))
 
     api.list_posts(7, page=2)
     api.search(Filters(status="open"))
