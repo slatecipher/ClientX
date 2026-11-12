@@ -214,19 +214,24 @@ def test_endpoint_can_be_named_send(mock_transport):
     ]
 
 
-def test_endpoint_named_user_agent_is_rejected_when_the_class_is_defined():
-    with pytest.raises(EndpointNameConflictError) as excinfo:
+def test_endpoints_can_be_named_client_and_user_agent(mock_transport):
+    sent: list[Request] = []
 
-        class ProfileClient(ClientX):
-            @method.get("/user-agent")
-            def user_agent(self) -> Response: ...  # pyright: ignore[reportIncompatibleMethodOverride]
+    class EchoClient(ClientX):
+        @method.get("/user-agent")
+        def user_agent(self) -> Response: ...
 
-    message = str(excinfo.value)
-    assert "ProfileClient.user_agent" in message
-    assert "can't be named 'user_agent'" in message
+        @method.get("/client")
+        def client(self) -> Response: ...
+
+    api = EchoClient("https://example.test", transport=mock_transport(sent))
+    api.user_agent()
+    api.client()
+
+    assert [request.url.path for request in sent] == ["/user-agent", "/client"]
 
 
-@pytest.mark.parametrize("name", ["user_agent", "client", "_user_agent", "__clientx_user_agent__", "__enter__"])
+@pytest.mark.parametrize("name", ["close", "__clientx_client__", "__clientx_user_agent__", "__enter__"])
 def test_endpoint_cannot_use_a_name_clientx_already_uses(name: str):
     def endpoint(self: ClientX) -> Response: ...
 

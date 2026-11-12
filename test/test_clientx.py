@@ -10,34 +10,31 @@ from clientx._client_types import DumpConfig, HttpxClientKwargs
 from clientx._version import __version__
 
 
-def test_clientx_sets_default_user_agent():
-    client = ClientX("https://example.test")
+def user_agent_of(client: ClientX) -> str:
+    """The ``User-Agent`` the client sends with every request."""
+    return client.__clientx_client__.headers["User-Agent"]
 
-    assert client.user_agent == f"ClientX/{__version__}"
-    assert client.client.headers["User-Agent"] == f"ClientX/{__version__}"
+
+def test_clientx_sets_default_user_agent():
+    assert user_agent_of(ClientX("https://example.test")) == f"ClientX/{__version__}"
 
 
 def test_clientx_uses_custom_user_agent():
-    client = ClientX("https://example.test", user_agent="MyApp/1.0")
-
-    assert client.user_agent == "MyApp/1.0"
-    assert client.client.headers["User-Agent"] == "MyApp/1.0"
+    assert user_agent_of(ClientX("https://example.test", user_agent="MyApp/1.0")) == "MyApp/1.0"
 
 
 @pytest.mark.parametrize("name", ["User-Agent", "user-agent"])
 def test_clientx_keeps_a_user_agent_given_in_headers(name: str):
     client = ClientX("https://example.test", headers={name: "MyApp/2.0", "X-Env": "dev"})
 
-    assert client.user_agent == "MyApp/2.0"
-    assert client.client.headers["User-Agent"] == "MyApp/2.0"
-    assert client.client.headers["X-Env"] == "dev"
+    assert user_agent_of(client) == "MyApp/2.0"
+    assert client.__clientx_client__.headers["X-Env"] == "dev"
 
 
 def test_clientx_user_agent_argument_wins_over_headers():
     client = ClientX("https://example.test", user_agent="Explicit/1.0", headers={"User-Agent": "FromHeaders/1.0"})
 
-    assert client.user_agent == "Explicit/1.0"
-    assert client.client.headers["User-Agent"] == "Explicit/1.0"
+    assert user_agent_of(client) == "Explicit/1.0"
 
 
 def test_a_client_class_can_set_its_own_user_agent():
@@ -50,10 +47,10 @@ def test_a_client_class_can_set_its_own_user_agent():
     class OtherAPI(ExampleAPI, user_agent="other-api/2.0"):
         pass
 
-    assert ExampleAPI("https://example.test").client.headers["User-Agent"] == "example-api/1.0"
-    assert SubAPI("https://example.test").user_agent == "example-api/1.0"
-    assert OtherAPI("https://example.test").user_agent == "other-api/2.0"
-    assert ClientX("https://example.test").user_agent == f"ClientX/{__version__}"
+    assert user_agent_of(ExampleAPI("https://example.test")) == "example-api/1.0"
+    assert user_agent_of(SubAPI("https://example.test")) == "example-api/1.0"
+    assert user_agent_of(OtherAPI("https://example.test")) == "other-api/2.0"
+    assert user_agent_of(ClientX("https://example.test")) == f"ClientX/{__version__}"
 
 
 def test_a_client_class_can_set_its_own_base_url():
@@ -63,9 +60,13 @@ def test_a_client_class_can_set_its_own_base_url():
     class SubAPI(ExampleAPI):
         pass
 
-    assert str(ExampleAPI().client.base_url) == "https://api.example.com/v1/"
-    assert str(SubAPI().client.base_url) == "https://api.example.com/v1/"
-    assert str(ExampleAPI("https://staging.example.com/v1/").client.base_url) == "https://staging.example.com/v1/"
+    clients = [ExampleAPI(), SubAPI(), ExampleAPI("https://staging.example.com/v1/")]
+
+    assert [str(client.__clientx_client__.base_url) for client in clients] == [
+        "https://api.example.com/v1/",
+        "https://api.example.com/v1/",
+        "https://staging.example.com/v1/",
+    ]
 
 
 def test_a_client_without_a_base_url_says_how_to_set_one():
@@ -80,21 +81,17 @@ def test_a_callers_user_agent_wins_over_the_class_default():
     class ExampleAPI(ClientX, user_agent="example-api/1.0"):
         pass
 
-    assert ExampleAPI("https://example.test", user_agent="caller/1.0").user_agent == "caller/1.0"
-    assert ExampleAPI("https://example.test", headers={"User-Agent": "header/1.0"}).user_agent == "header/1.0"
-
-    client = ExampleAPI("https://example.test", user_agent="caller/1.0")
-    client.user_agent = None
-    assert (client.user_agent, client.client.headers["User-Agent"]) == ("example-api/1.0", "example-api/1.0")
+    assert user_agent_of(ExampleAPI("https://example.test", user_agent="caller/1.0")) == "caller/1.0"
+    assert user_agent_of(ExampleAPI("https://example.test", headers={"User-Agent": "header/1.0"})) == "header/1.0"
 
 
-def test_clientx_user_agent_setter_updates_headers():
-    client = ClientX("https://example.test")
+def test_requests_carry_the_user_agent(mock_transport):
+    sent: list[Request] = []
 
-    client.user_agent = "AnotherApp/2.0"
+    with ClientX("https://example.test", user_agent="MyApp/1.0", transport=mock_transport(sent)) as client:
+        send_request(client, "GET", "/items")
 
-    assert client.user_agent == "AnotherApp/2.0"
-    assert client.client.headers["User-Agent"] == "AnotherApp/2.0"
+    assert sent[0].headers["User-Agent"] == "MyApp/1.0"
 
 
 @pytest.mark.parametrize(("options", "streamed"), [({}, False), ({"stream": True}, True)], ids=["default", "stream"])
@@ -110,8 +107,8 @@ def test_send_request_builds_and_sends_request(monkeypatch, options: dict[str, b
         call_log["stream"] = stream
         return Response(status_code=204, request=request)
 
-    monkeypatch.setattr(client.client, "build_request", fake_build_request)
-    monkeypatch.setattr(client.client, "send", fake_send)
+    monkeypatch.setattr(client.__clientx_client__, "build_request", fake_build_request)
+    monkeypatch.setattr(client.__clientx_client__, "send", fake_send)
 
     response = send_request(client, "DELETE", "/v1/items/123", params={"dry_run": 1}, **options)
 
@@ -140,7 +137,7 @@ def test_clientx_enter_delegates_to_httpx2_client(monkeypatch):
         calls["entered"] = True
         return object()
 
-    monkeypatch.setattr(client.client, "__enter__", fake_enter)
+    monkeypatch.setattr(client.__clientx_client__, "__enter__", fake_enter)
 
     entered = client.__enter__()
 
@@ -156,7 +153,7 @@ def test_clientx_exit_delegates_to_httpx2_client_and_never_swallows_an_error(mon
         calls.update(exc_type=exc_type, exc=exc)
         return True  # Even if httpx2 asked to swallow the error, ClientX lets it propagate.
 
-    monkeypatch.setattr(client.client, "__exit__", fake_exit)
+    monkeypatch.setattr(client.__clientx_client__, "__exit__", fake_exit)
     error = RuntimeError("boom")
 
     with pytest.raises(RuntimeError) as raised, client:
@@ -164,6 +161,14 @@ def test_clientx_exit_delegates_to_httpx2_client_and_never_swallows_an_error(mon
 
     assert raised.value is error
     assert calls == {"exc_type": RuntimeError, "exc": error}
+
+
+def test_close_closes_the_connections():
+    client = ClientX("https://example.test")
+
+    client.close()
+
+    assert client.__clientx_client__.is_closed
 
 
 def test_httpx_client_kwargs_match_httpx2_client_signature():

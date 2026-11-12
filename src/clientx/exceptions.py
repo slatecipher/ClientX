@@ -138,7 +138,7 @@ class EndpointNameConflictError(ClientXError, TypeError):
     """Raised when an endpoint or mounted resource uses a name that its base class already uses.
 
     Endpoints and resources on a ``ClientX`` subclass can't reuse names that
-    ``ClientX`` defines (such as ``user_agent`` or ``client``); on a ``Resource``
+    ``ClientX`` defines (such as ``close`` or ``__enter__``); on a ``Resource``
     subclass, only the names ``Resource`` itself defines are reserved.
     """
 

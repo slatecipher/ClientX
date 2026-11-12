@@ -25,13 +25,13 @@ class ClientX:
 
         api = ExampleAPI()  # arguments given here win over the class's
 
-    Attributes:
-        client: Underlying ``httpx2.Client`` instance used to build and send requests.
+    Requests go through an internal ``httpx2.Client``. Close its connections with a
+    ``with`` block or ``close()``.
     """
 
-    _user_agent: str
-    client: Client
     # Internal state uses a ``__clientx_*__`` name, so it can't clash with an endpoint name.
+    # Every public attribute is a name endpoints can't use, so the httpx2 client isn't one.
+    __clientx_client__: Client
     __clientx_base_url__: ClassVar[URL | str | None] = None
     __clientx_user_agent__: ClassVar[str] = f"ClientX/{__version__}"
     __clientx_raise_for_status__: bool
@@ -68,9 +68,11 @@ class ClientX:
                 f'{name} needs a base URL: pass one, as in {name}("https://api.example.com"), or set it in '
                 f'the class statement, as in class {name}(ClientX, base_url="https://api.example.com").'
             )
-        self.client = Client(base_url=URL(base_url), **client_kwargs)
+        self.__clientx_client__ = Client(base_url=URL(base_url), **client_kwargs)
         # A User-Agent passed in `headers=` is the caller's choice too; only `user_agent=` overrides it.
-        self.user_agent = user_agent or Headers(client_kwargs.get("headers")).get("User-Agent")
+        self.__clientx_client__.headers["User-Agent"] = (
+            user_agent or Headers(client_kwargs.get("headers")).get("User-Agent") or type(self).__clientx_user_agent__
+        )
         self.__clientx_raise_for_status__ = raise_for_status
         self.__clientx_validate_arguments__ = validate_arguments
 
@@ -100,7 +102,7 @@ class ClientX:
         Returns:
             Self: The active client instance.
         """
-        self.client.__enter__()
+        self.__clientx_client__.__enter__()
         return self
 
     def __exit__(
@@ -121,35 +123,20 @@ class ClientX:
             exc: Exception instance raised inside the context, if any.
             tb: Exception traceback, if any.
         """
-        self.client.__exit__(exc_type, exc, tb)
+        self.__clientx_client__.__exit__(exc_type, exc, tb)
+
+    def close(self) -> None:
+        """Close the client's connections. A ``with`` block does this for you."""
+        self.__clientx_client__.close()
 
     def __repr__(self) -> str:
         """Return a concise debug representation of the client instance.
 
         Returns:
-            String containing the class name, configured base URL, and active user agent.
+            String containing the class name, configured base URL, and ``User-Agent``.
         """
-        return f"{type(self).__name__}(base_url={str(self.client.base_url)!r}, user_agent={self.user_agent!r})"
-
-    @property
-    def user_agent(self) -> str:
-        """Return the active ``User-Agent`` header value for this client.
-
-        Returns:
-            The current user agent string.
-        """
-        return self._user_agent
-
-    @user_agent.setter
-    def user_agent(self, value: str | None) -> None:
-        """Set the ``User-Agent`` header used by the underlying ``httpx2.Client``.
-
-        Args:
-            value: User agent string to apply. When ``None``, uses the class's default: its
-                ``user_agent=`` class argument, or ``ClientX/<version>``.
-        """
-        self._user_agent = value or type(self).__clientx_user_agent__
-        self.client.headers.update({"User-Agent": self._user_agent})
+        client = self.__clientx_client__
+        return f"{type(self).__name__}(base_url={str(client.base_url)!r}, user_agent={client.headers['User-Agent']!r})"
 
 
 class Resource:
@@ -171,8 +158,8 @@ class Resource:
     The prefix is joined to the path of each endpoint defined in the class body
     when the class is defined, so it's absolute: it doesn't depend on where the
     resource is mounted. A subclass without its own ``prefix`` or ``tags`` keeps
-    its parent's. Internal state uses ``__clientx_*__`` names, so endpoint names
-    such as ``send``, ``client``, or ``user_agent`` are free on a resource.
+    its parent's. Internal state uses ``__clientx_*__`` names, so names ``ClientX``
+    uses, such as ``close``, are free for endpoints on a resource.
     """
 
     __clientx_prefix__: ClassVar[str] = ""
@@ -227,7 +214,7 @@ class Resource:
 
 # Names an endpoint or mounted resource can't use on each base class: everything
 # the base defines, including the instance attributes it declares. Overriding them
-# breaks the client; for example, `ClientX.__init__` sets `client` and `user_agent`.
+# breaks the client; for example, an endpoint named `close` would replace `ClientX.close`.
 _CLIENTX_RESERVED_NAMES = frozenset(dir(ClientX)) | frozenset(inspect.get_annotations(ClientX))
 _RESOURCE_RESERVED_NAMES = frozenset(dir(Resource)) | frozenset(inspect.get_annotations(Resource))
 
@@ -298,8 +285,8 @@ def send_request(
     Returns:
         The HTTP response returned by ``httpx2.Client.send``.
     """
-    request = client.client.build_request(method=method, url=path, **request_parts)
-    return client.client.send(request, stream=stream)
+    request = client.__clientx_client__.build_request(method=method, url=path, **request_parts)
+    return client.__clientx_client__.send(request, stream=stream)
 
 
 __all__ = ["ClientX", "Resource"]

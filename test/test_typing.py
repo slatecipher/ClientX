@@ -188,15 +188,15 @@ def test_decoders_called_directly_return_the_decoded_type() -> None:
 def test_a_with_block_cant_swallow_an_error() -> None:
     """``ClientX.__exit__`` returns ``None``, so a ``with`` block can't swallow an exception.
 
-    If it returned ``bool``, type checkers would report ``first_user_agent`` as missing a
+    If it returned ``bool``, type checkers would report ``describe`` as missing a
     return statement, since the block could exit without returning.
     """
 
-    def first_user_agent() -> str:
+    def describe() -> str:
         with ClientX("https://example.test") as client:
-            return client.user_agent
+            return repr(client)
 
-    assert first_user_agent().startswith("ClientX/")
+    assert describe().startswith("ClientX(")
 
 
 def test_methods_without_decoder_must_return_response_or_none() -> None:
@@ -291,7 +291,7 @@ def test_client_options_accept_every_form_httpx2_accepts() -> None:
         ClientX("https://example.test", default_encoding=no_encoding),
     ]
 
-    assert all(isinstance(client.client, httpx2.Client) for client in clients)
+    assert all(isinstance(client.__clientx_client__, httpx2.Client) for client in clients)
 
 
 def test_a_client_class_can_ship_its_base_url_and_user_agent() -> None:
@@ -307,7 +307,7 @@ def test_a_client_class_can_ship_its_base_url_and_user_agent() -> None:
     class BadURL(ClientX, base_url=1):  # type: ignore[arg-type]  # pyright: ignore[reportGeneralTypeIssues, reportArgumentType]
         pass
 
-    assert ConfiguredClient().user_agent == "configured/1.0"
+    assert ConfiguredClient().__clientx_client__.headers["User-Agent"] == "configured/1.0"
 
 
 def test_raise_for_status_options_keep_endpoint_signatures() -> None:
