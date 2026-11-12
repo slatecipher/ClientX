@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from clientx import ClientX, DeprecatedMessage, Resource, Response
+from typing import Annotated
+
+from clientx import ClientX, DeprecatedMessage, PathParam, Resource, Response
 from clientx.decoders import ModelDecoder, TypeAdapterDecoder
 from clientx.methods import get
 
@@ -22,7 +24,7 @@ class UsersResource(Resource, prefix="/users"):
         ...
 
     @get("/{user_id}", decoder=ModelDecoder(User))
-    def retrieve(self, user_id: int) -> User:
+    def retrieve(self, user_id: Annotated[int, PathParam(description="The user's ID.")]) -> User:
         """Return one Beeceptor sample user as a `User` model.
 
         `user_id` fills the `{user_id}` placeholder in the path, so

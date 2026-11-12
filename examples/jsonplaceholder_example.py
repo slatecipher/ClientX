@@ -6,6 +6,7 @@ Run with `uv run python examples/jsonplaceholder_example.py`. It needs network a
 import httpx2
 from jsonplaceholder import JSONPLACEHOLDER_URL, JSONPlaceholder, NewPost, PostChanges
 
+from clientx.exceptions import ArgumentValidationError
 from clientx.tools import list_tools
 
 
@@ -32,6 +33,14 @@ def main() -> None:
             api.posts.get(1000)  # A 404 raises httpx2.HTTPStatusError before the decoder runs.
         except httpx2.HTTPStatusError as exc:
             print(f"Post 1000 doesn't exist: HTTP {exc.response.status_code}")
+
+        # Argument validation is off by default, so post 1000 was sent above. A second client for the same
+        # API, with it on, checks the bounds in the endpoint's annotations (post IDs are 1 to 100) first.
+        with JSONPlaceholder(api.client.base_url, validate_arguments=True) as checked:
+            try:
+                checked.posts.get(1000)
+            except ArgumentValidationError as exc:
+                print(f"With validate_arguments=True, post 1000 isn't sent: {exc.parameter} must be 1 to 100")
 
         print("\nAI tools:")
         for tool in list_tools(api):

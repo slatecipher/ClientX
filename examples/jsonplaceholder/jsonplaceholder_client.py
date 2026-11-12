@@ -2,15 +2,20 @@ from typing import Annotated
 
 from pydantic import Field, TypeAdapter
 
-from clientx import Body, ClientX, DumpConfig, Query, Resource, methods
+from clientx import Body, ClientX, DumpConfig, PathParam, Query, Resource, methods
 from clientx.decoders import ModelDecoder, TypeAdapterDecoder
 
 from .jsonplaceholder_models import Comment, NewPost, Post, PostChanges, User
 
 JSONPLACEHOLDER_URL = "https://jsonplaceholder.typicode.com"
 
-PostId = Annotated[int, Field(description="The post's ID (1 to 100).")]
-UserId = Annotated[int, Field(description="The user's ID (1 to 10).")]
+# Path parameters are matched to their `{placeholder}` by name; PathParam() only describes them, for
+# the AI tool schemas. Each helper (Query, Header, ...) takes `description=` the same way.
+# Field's bounds go into those schemas too (tool calls are checked against them), and direct calls
+# check them when argument validation is on. The upper bounds fit JSONPlaceholder's fixed fake data
+# (100 posts, 10 users); a real API's IDs keep growing, so a real client would set only ge=1.
+PostId = Annotated[int, PathParam(description="The post's ID."), Field(ge=1, le=100)]
+UserId = Annotated[int, PathParam(description="The user's ID."), Field(ge=1, le=10)]
 
 
 # The endpoints use `@methods.get(...)`, not `@get(...)`: a method named `get` would hide the decorator
@@ -20,7 +25,7 @@ class Posts(Resource, prefix="/posts", tags=["posts"]):
     def list(
         self,
         # Sent as `?userId=...`, and left out when it's None.
-        user_id: Annotated[int | None, Query("userId"), Field(description="Only list posts by this user.")] = None,
+        user_id: Annotated[int | None, Query("userId", description="Only list posts by this user.")] = None,
     ) -> list[Post]:
         """List blog posts. Without user_id, returns all 100 posts."""
         ...
