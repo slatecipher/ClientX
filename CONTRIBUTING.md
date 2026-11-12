@@ -35,7 +35,7 @@ When you change code:
 - New code in `src/` needs complete type annotations. Pyright checks `src/` in strict mode.
 - `test/test_typing.py` checks that decorated endpoints keep their signatures for type checkers. Update it if you change the decorators or other public signatures.
 - Add tests for new behavior and for bug fixes. `make test` prints a coverage report.
-- In tests that send requests, take the `mock_transport` fixture from `test/conftest.py` as a parameter: it records what's sent and answers without a network. pytest runs in its recommended `importlib` import mode, where test modules can't import helper modules, so share test helpers as fixtures in `conftest.py`.
+- In tests that send requests, take the `mock_transport` fixture from `test/conftest.py` as a parameter: it records what's sent and answers without a network. pytest runs in its recommended `importlib` import mode, where test modules can't import helper modules, so share test helpers as fixtures in `conftest.py`. It also runs in strict mode: an unregistered marker or a duplicate parametrize ID is an error.
 - Ruff formats and lints the code with a 120-character line limit. `make lint` fixes most issues for you.
 
 ## Pull requests
