@@ -1,0 +1,72 @@
+# Defining Endpoints
+
+Use decorators from `clientx.methods`:
+
+- `get`
+- `post`
+- `put`
+- `patch`
+- `delete`
+- `head`
+- `options`
+
+Each decorator accepts:
+
+- `path` (optional; defaults to `""`, the base URL, or on a resource the prefix itself: `@get()` in a resource with `prefix="/users"` is `GET /users`)
+- `decoder` (required when return type is not `Response` or `None`)
+- `deprecated` (optional callable, including `DeprecatedMessage`)
+- `tags` (optional list of labels; `list_tools()` can filter by them)
+- `timeout` (optional per-endpoint `httpx2.Timeout` or seconds)
+- `raise_for_status` (optional `True` or `False`; overrides the client's setting, see [Raising errors for 4xx and 5xx responses](configuration.md#raising-errors-for-4xx-and-5xx-responses))
+- `validate_arguments` (optional `True` or `False`; overrides the client's setting, see [Validating arguments](configuration.md#validating-arguments))
+
+```python
+from clientx import ClientX, Response
+from clientx.methods import post
+
+
+class ItemsClient(ClientX):
+    @post("/items")
+    def create_item(self, json: dict[str, object]) -> Response:
+        ...
+```
+
+There's no method for sending a raw request through a client: to call a URL the client has no method for, add an endpoint for it.
+
+## Empty method bodies and mypy
+
+Endpoint bodies never run, so `...` is all they need, after the docstring if there is one. Pyright accepts `...`, but not a body that's only a docstring: for an endpoint whose return type isn't `None`, it reports `Function with declared return type "User" must return value on all code paths`. Mypy reports `Missing return statement  [empty-body]` for every endpoint whose return type isn't `None`, even with `...`. Turn that one check off for your client modules, either at the top of the file:
+
+```python
+# mypy: disable-error-code="empty-body"
+```
+
+or in `pyproject.toml`:
+
+```toml
+[[tool.mypy.overrides]]
+module = "myapp.clients"
+disable_error_code = ["empty-body"]
+```
+
+Mypy still checks everything else in those modules, including the return types of calls to your endpoints.
+
+## Deprecating Endpoints
+
+Use `DeprecatedMessage` for warning-based deprecation:
+
+```python
+from clientx import ClientX, DeprecatedMessage, Response
+from clientx.methods import get
+
+
+class LegacyClient(ClientX):
+    @get(
+        "/v1/legacy",
+        deprecated=DeprecatedMessage("Deprecated: use /v2/new-endpoint instead."),
+    )
+    def legacy(self) -> Response:
+        ...
+```
+
+You can also pass any callable as `deprecated`, and it will run on endpoint invocation.

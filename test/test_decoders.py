@@ -138,7 +138,7 @@ class Item(BaseModel):
     ids=["not JSON", "doesn't validate", "missing key"],
 )
 def test_built_in_decoder_failures_are_value_errors(decoder: Callable[[Response], object], content: bytes):
-    # The README promises `except ValueError` catches them all.
+    # docs/decoders.md promises `except ValueError` catches them all.
     with pytest.raises(ValueError):
         decoder(Response(200, content=content))
 

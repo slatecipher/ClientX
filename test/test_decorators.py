@@ -190,7 +190,7 @@ def test_the_path_defaults_to_the_base_url(endpoint_of, mock_transport):
 
 
 def test_type_checker_messages_name_the_fix():
-    # The README and llms.txt quote checker messages that use these names, such as
+    # docs/decoders.md and llms.txt quote checker messages that use these names, such as
     # 'Type "User" is not assignable to constrained type variable "ResponseOrNone"'.
     assert [param.__name__ for param in RawEndpointDecorator.__call__.__type_params__] == ["C", "Q", "ResponseOrNone"]
     assert [param.__name__ for param in DecodedEndpointDecorator.__call__.__type_params__] == [
