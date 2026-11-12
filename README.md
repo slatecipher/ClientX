@@ -402,7 +402,7 @@ finally:
 
 ClientX maps method arguments into request parts in this order:
 
-1. Path placeholders (e.g. `{user_id}`) are consumed from arguments. Each value is converted like a query value (an `Enum` becomes its value, a `datetime` ISO 8601) and percent-encoded, so a value such as `"a/b"` or `"../admin"` stays one path segment and can't add a query string. For a value that spans segments, such as a file path, use `{file_path:path}`: slashes are kept, and each segment is still encoded. Any other converter raises `PathTemplateError` when the class is defined.
+1. Path placeholders (e.g. `{user_id}`) are consumed from arguments. Each value is converted like a query value (an `Enum` becomes its value, a `datetime` ISO 8601) and percent-encoded, so a value such as `"a/b"` or `"../admin"` stays one path segment and can't add a query string. For a value that spans segments, such as a file path, use `{file_path:path}`: slashes are kept, and each segment is still encoded. Any other converter raises `PathTemplateError` when the class is defined. A value that would change which path is called raises `PathValueError` before anything is sent: `None` (it would be sent as `null`), an empty value (`/users/{user_id}` with `""` would call `/users/`), or, in a `{name:path}` value, a leading, trailing, or doubled slash.
 2. Each remaining argument goes to the first of these that matches:
    1. Its name is a request part: `json`, `params`, `data`, `files`, or `headers`. The name wins even over an annotation, so a parameter named `data` is always sent as form data.
    2. It's annotated with a request part: `Annotated[..., Query()]`, `Header()`, `Form()`, `Body()`, or `File()`.
@@ -593,7 +593,7 @@ client = ClientX(
 )
 ```
 
-- `user_agent` defaults to `ClientX/<version>`.
+- `user_agent` sets the `User-Agent` header. Without it, a `User-Agent` in `headers=` is kept, or else `ClientX/<version>` is sent.
 - Additional kwargs are forwarded to `httpx2.Client(...)`.
 
 ### Raising errors for 4xx and 5xx responses
@@ -812,7 +812,7 @@ Each `Tool` has:
 
 - **Expose only what an agent needs.** Tools can call `POST`, `PUT`, and `DELETE` endpoints. The hints come from the HTTP method, so an API that changes data on `GET` isn't flagged.
 - **Keep credentials in the client's configuration** (`auth=`, `headers=`), never in endpoint parameters: parameters become arguments the model sees and fills in.
-- `call` validates the arguments before sending anything and raises `pydantic.ValidationError` if they don't match. Request and decoder errors propagate. Most agent loops send the error text back to the model.
+- `call` validates the arguments before sending anything and raises `pydantic.ValidationError` if they don't match. Request and decoder errors propagate. Most agent loops send the error text back to the model, but an `HTTPStatusError`'s message includes the full URL, query string included: if your client sends credentials as query parameters (`params=`), describe the error from `error.response.status_code` and `error.request.url.path` instead of sending `str(error)`. The MCP server does this for you.
 
 ### Serving a client over MCP
 
@@ -839,7 +839,7 @@ Then point your MCP client at the command `python server.py`. In Claude Desktop'
 
 - The server's tools are exactly the ones `list_tools` returns, with the same names, descriptions, schemas, and filters (`read_only`, `include_tags`, `exclude_tags`, `include_deprecated`). `name=` and `instructions=` set what the server reports to MCP clients.
 - The HTTP-method hints become MCP tool annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`), which MCP clients can use to ask for confirmation before changing data.
-- Results come back as structured content and as JSON text. Invalid arguments, request failures, and 4xx and 5xx responses come back as error results the model can read, and the server keeps running.
+- Results come back as structured content and as JSON text. Invalid arguments, request failures, and 4xx and 5xx responses come back as error results the model can read, and the server keeps running. A 4xx or 5xx error result has the status, the method and path, and the start of the response body, but never the host or the query string, so credentials in query parameters don't reach the model.
 - MCP messages use stdout, so don't print from the server process. Logging writes to stderr by default.
 - `run_mcp_server` serves over stdio. For other transports, `create_mcp_server` returns the low-level `mcp.server.lowlevel.Server` to run yourself.
 
@@ -858,6 +858,7 @@ ClientX raises explicit errors for common contract violations. Most of them are 
 At call time:
 
 - endpoint called on a resource that isn't mounted on a client -> `UnboundResourceError`
+- path value that's `None` or empty, or a `{name:path}` value with a leading, trailing, or doubled slash -> `PathValueError`
 - argument cannot map to request parts, or a model field marked `Body()` or `File()` holds something other than a mapping or a model -> `UnconsumableArgumentError`
 - argument doesn't match its annotation, when `validate_arguments` is on -> `ArgumentValidationError`
 

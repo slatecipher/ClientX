@@ -244,7 +244,7 @@ def _construct_with_every_httpx2_option() -> ClientX:
     return ClientX(
         "https://example.test",
         auth=("user", "secret"),
-        params=httpx2.QueryParams({"q": "1"}),
+        params={"q": "1"},
         headers={"X-Env": "dev"},
         cookies={"session": "abc"},
         verify=True,
@@ -262,6 +262,32 @@ def _construct_with_every_httpx2_option() -> ClientX:
         transport=httpx2.HTTPTransport(),
         default_encoding="utf-8",
     )
+
+
+def test_client_options_accept_every_form_httpx2_accepts() -> None:
+    """Each httpx2.Client option takes the forms httpx2 itself takes, not just one of them."""
+
+    def sign(request: httpx2.Request) -> httpx2.Request:
+        return request
+
+    def no_encoding(content: bytes) -> str | None:
+        return None
+
+    clients = [
+        ClientX("https://example.test", params={"page": 1, "tags": ["a", "b"], "q": None}),
+        ClientX("https://example.test", params=[("page", 1)]),
+        ClientX("https://example.test", params="page=1"),
+        ClientX("https://example.test", headers=httpx2.Headers({"X-Env": "dev"})),
+        ClientX("https://example.test", headers=[("X-Env", "dev")]),
+        ClientX("https://example.test", auth=sign),
+        ClientX("https://example.test", auth=("user", b"secret")),
+        ClientX("https://example.test", timeout=(1.0, 5.0, 5.0, None)),
+        ClientX("https://example.test", timeout=None),
+        ClientX("https://example.test", transport=None),
+        ClientX("https://example.test", default_encoding=no_encoding),
+    ]
+
+    assert all(isinstance(client.client, httpx2.Client) for client in clients)
 
 
 def test_raise_for_status_options_keep_endpoint_signatures() -> None:

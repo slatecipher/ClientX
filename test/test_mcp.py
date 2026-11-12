@@ -198,7 +198,33 @@ def test_error_statuses_come_back_as_an_error_result():
     result = call_over_mcp(create_mcp_server(api), "users_retrieve", {"user_id": 42})
 
     assert result.is_error is True
-    assert text_of(result).startswith("HTTPStatusError: Client error '404 Not Found' for url")
+    assert text_of(result) == "HTTPStatusError: 404 Not Found for GET /users/42"
+
+
+def test_an_error_status_never_shows_the_model_the_host_or_query_string():
+    # An API that takes its key as a query parameter, set on the client as credentials should be.
+    api = ExampleAPI(
+        "https://user:password@api.example.com",
+        params=httpx2.QueryParams({"api_key": "SECRET-KEY"}),
+        transport=httpx2.MockTransport(lambda request: httpx2.Response(401, json={"error": "bad key"})),
+    )
+
+    text = text_of(call_over_mcp(create_mcp_server(api), "users_retrieve", {"user_id": 42}))
+
+    assert text == 'HTTPStatusError: 401 Unauthorized for GET /users/42\nResponse body: {"error":"bad key"}'
+    assert "SECRET-KEY" not in text
+    assert "api.example.com" not in text
+    assert "password" not in text
+
+
+def test_a_long_error_body_is_cut_short():
+    api = ExampleAPI(
+        "https://api.example.com", transport=httpx2.MockTransport(lambda request: httpx2.Response(500, text="x" * 5000))
+    )
+
+    text = text_of(call_over_mcp(create_mcp_server(api), "users_retrieve", {"user_id": 42}))
+
+    assert text == "HTTPStatusError: 500 Internal Server Error for GET /users/42\nResponse body: " + "x" * 1000 + "…"
 
 
 def test_unknown_tool_comes_back_as_an_error_result():
