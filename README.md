@@ -132,11 +132,10 @@ Mypy still checks everything else in those modules, including the return types o
 For larger APIs, group related endpoints into `Resource` classes, much like FastAPI's `APIRouter`. Mount an instance on your client, and its endpoints send through the client's connection and configuration, so there's no second client to create or pass around:
 
 ```python
-from pydantic import BaseModel
-
 from clientx import ClientX, Resource, Response
 from clientx.decoders import ModelDecoder
 from clientx.methods import get, post
+from pydantic import BaseModel
 
 
 class User(BaseModel):
@@ -184,11 +183,10 @@ A client or resource can also have ordinary, undecorated methods. They aren't en
 from typing import Annotated
 
 import httpx2
-from pydantic import BaseModel
-
 from clientx import ClientX, Query, Resource, Response
 from clientx.decoders import ModelDecoder
 from clientx.methods import get
+from pydantic import BaseModel
 
 
 class NamedLink(BaseModel):
@@ -289,11 +287,10 @@ In practice, decoders are where you define response parsing and validation behav
 ### `ModelDecoder`
 
 ```python
-from pydantic import BaseModel
-
 from clientx import ClientX
 from clientx.decoders import ModelDecoder
 from clientx.methods import get
+from pydantic import BaseModel
 
 
 class User(BaseModel):
@@ -310,12 +307,10 @@ class UsersClient(ClientX):
 ### `TypeAdapterDecoder`
 
 ```python
-from pydantic import TypeAdapter
-
 from clientx import ClientX
 from clientx.decoders import TypeAdapterDecoder
 from clientx.methods import get
-
+from pydantic import TypeAdapter
 
 UserList = TypeAdapter(list[dict[str, str]])
 
@@ -329,12 +324,11 @@ class UsersClient(ClientX):
 ### `FromResponseDecoder`
 
 ```python
-from httpx2 import Response
-from pydantic import BaseModel
-
 from clientx import ClientX
 from clientx.decoders import FromResponseDecoder
 from clientx.methods import get
+from httpx2 import Response
+from pydantic import BaseModel
 
 
 class SessionPayload(BaseModel):
@@ -389,11 +383,10 @@ You can pass any callable with signature `(response: httpx2.Response) -> T` as `
 Use BYOD when you need behavior that is specific to your API contract, such as envelope unwrapping, fallback parsing, or custom validation rules.
 
 ```python
-from httpx2 import Response
-from pydantic import BaseModel, TypeAdapter
-
 from clientx import ClientX
 from clientx.methods import get
+from httpx2 import Response
+from pydantic import BaseModel, TypeAdapter
 
 
 class Item(BaseModel):
@@ -556,10 +549,9 @@ Only ClientX's helpers must be outermost. Pydantic metadata, such as `Field` con
 ```python
 from typing import Annotated
 
-from pydantic import Field
-
 from clientx import ClientX, PathParam, Response
 from clientx.methods import get
+from pydantic import Field
 
 
 class UsersClient(ClientX):
@@ -584,10 +576,9 @@ The helpers are named like FastAPI's, but they do the opposite job: FastAPI's re
 ```python
 from typing import Annotated
 
-from pydantic import BaseModel
-
 from clientx import ClientX, Header, Query, Response
 from clientx.methods import post
+from pydantic import BaseModel
 
 
 class CreateUserPayload(BaseModel):
@@ -628,10 +619,9 @@ ClientX dumps models with `mode="json"` and `by_alias=True`. Dates, UUIDs, and d
 ```python
 from typing import Annotated
 
-from pydantic import BaseModel
-
 from clientx import Body, ClientX, DumpConfig, Response
 from clientx.methods import patch
+from pydantic import BaseModel
 
 
 class UserChanges(BaseModel):
@@ -715,11 +705,10 @@ A 4xx or 5xx response raises `httpx2.HTTPStatusError`, from every endpoint, befo
 
 ```python
 import httpx2
-from pydantic import BaseModel
-
 from clientx import ClientX
 from clientx.decoders import ModelDecoder
 from clientx.methods import get
+from pydantic import BaseModel
 
 
 class User(BaseModel):
@@ -770,11 +759,10 @@ Type checkers catch wrong argument types in your own code, but not in values tha
 ```python
 from typing import Annotated
 
-from pydantic import Field
-
 from clientx import ClientX, Query, Response
 from clientx.exceptions import ArgumentValidationError
 from clientx.methods import get
+from pydantic import Field
 
 
 class SearchClient(ClientX):
@@ -840,7 +828,6 @@ To log requests in your own format or with your own logger, use httpx2's event h
 import logging
 
 import httpx2
-
 from clientx import ClientX
 
 log = logging.getLogger("myapp.http")
@@ -874,12 +861,11 @@ Deprecated endpoints emit a `DeprecationWarning` through Python's `warnings` mod
 ```python
 from typing import Annotated
 
-from pydantic import BaseModel
-
 from clientx import ClientX, PathParam, Resource
 from clientx.decoders import ModelDecoder
 from clientx.methods import get
 from clientx.tools import list_tools
+from pydantic import BaseModel
 
 
 class User(BaseModel):
@@ -967,11 +953,10 @@ from typing import Annotated
 
 import httpx2
 import pytest
-from pydantic import BaseModel
-
 from clientx import ClientX, Query
 from clientx.decoders import ModelDecoder
 from clientx.methods import get
+from pydantic import BaseModel
 
 
 class User(BaseModel):
@@ -1026,9 +1011,8 @@ To test a client's tools, call them through `list_tools(client)` and `Tool.call`
 ```python
 import anyio
 import httpx2
-from mcp import Client, types
-
 from clientx.mcp import create_mcp_server
+from mcp import Client, types
 
 
 def test_the_mcp_server_returns_the_user() -> None:

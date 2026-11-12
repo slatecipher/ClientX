@@ -4,10 +4,10 @@ Run with `uv run python examples/jsonplaceholder_example.py`. It needs network a
 """
 
 import httpx2
-from jsonplaceholder import JSONPlaceholder, NewPost, PostChanges
-
 from clientx.exceptions import ArgumentValidationError
 from clientx.tools import list_tools
+
+from jsonplaceholder import JSONPlaceholder, NewPost, PostChanges
 
 
 def main() -> None:

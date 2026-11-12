@@ -9,11 +9,10 @@ A complete client:
 ```python
 from typing import Annotated
 
-from pydantic import BaseModel, TypeAdapter
-
 from clientx import Body, ClientX, DumpConfig, PathParam, Query, Resource, Response
 from clientx.decoders import ModelDecoder, TypeAdapterDecoder
 from clientx.methods import delete, get, patch, post
+from pydantic import BaseModel, TypeAdapter
 
 
 class User(BaseModel):
