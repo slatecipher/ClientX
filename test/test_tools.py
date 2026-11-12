@@ -353,6 +353,20 @@ def test_endpoint_without_a_json_schema_is_left_out_with_a_warning():
 
     assert names == ["health"]
     assert caught[0].filename == __file__
+    # Only the first line of Pydantic's message, which names the type.
+    message = str(caught[0].message)
+    assert "\n" not in message
+    assert "Unable to generate pydantic-core schema for <class 'typing.BinaryIO'>" in message
+
+
+def test_uploads_typed_as_bytes_are_listed():
+    class UploadAPI(ClientX):
+        @post("/upload")
+        def upload(self, files: dict[str, bytes]) -> Response: ...
+
+    [tool] = list_tools(UploadAPI("https://api.example.com"))
+
+    assert tool.input_schema["properties"]["files"]["additionalProperties"] == {"format": "binary", "type": "string"}
 
 
 def test_tool_repr_shows_the_description_not_internals(make_api):
