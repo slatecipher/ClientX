@@ -714,7 +714,7 @@ Each record also has these attributes, for structured log handlers such as JSON 
 | `clientx_elapsed_ms` | `12.3` | Time to send the request and receive the response, in milliseconds. |
 | `clientx_error` | `None` | The exception's class name if the call failed, such as `"ConnectTimeout"`, or `"HTTPStatusError"` with the status for a 4xx or 5xx response. ClientX re-raises the exception. |
 
-ClientX never logs values: no header values, request bodies, or query strings.
+ClientX never logs header values, request bodies, or query strings. The path is logged with its placeholders filled in (`/users/42`), so keep secrets out of path parameters.
 
 httpx2 also logs every request, at `INFO` level on the `httpx2` logger, and its message includes the full URL with the query string. To hide those records, use `logging.getLogger("httpx2").setLevel(logging.WARNING)`.
 
@@ -803,7 +803,7 @@ Each `Tool` has:
 |---|---|
 | `name` | The endpoint's attribute path joined with underscores: `users_retrieve` for `api.users.retrieve`. |
 | `description` | The endpoint's docstring, or `"GET /users/{user_id}"` without one. It's what the model reads, so write docstrings. |
-| `input_schema` | JSON Schema for the arguments. Describe a parameter with its helper's `description=` (see below). |
+| `input_schema` | JSON Schema for the arguments. Describe a parameter with its helper's `description=` (see above). |
 | `output_schema` | JSON Schema for the result: from the return type, `{"status_code", "body"}` for an endpoint that returns a `Response`, or `None` for one that returns nothing. |
 | `read_only`, `destructive`, `idempotent` | Hints from the HTTP method: GET, HEAD, and OPTIONS are read-only; PUT, PATCH, and DELETE may change or delete data; GET, HEAD, OPTIONS, PUT, and DELETE are idempotent. |
 | `method`, `path`, `tags`, `deprecated` | The endpoint's metadata. |
@@ -852,8 +852,8 @@ ClientX raises explicit errors for common contract violations. Most of them are 
 - endpoint or mounted resource named like something `ClientX` already has (`user_agent`, `client`, or a dunder method) -> `EndpointNameConflictError`
 - path placeholder, including one from a resource prefix, that names no parameter -> `MissingPathArgumentsError`
 - path placeholder with a converter other than `{name:path}` -> `PathTemplateError`
-- no positional first parameter for the client (usually `self`, but any name works), or a `*args` or `**kwargs` parameter -> `EndpointSignatureError`
-- request-part helper nested inside another type, or two helpers on one parameter or field -> `MisplacedHelperError` (for a model field, when the class is defined if a parameter is annotated with the model, or else when the model is sent)
+- no positional first parameter for the client (usually `self`, but any name works), a `*args` or `**kwargs` parameter, or a `PathParam()` parameter with no placeholder in the path (including a resource prefix) -> `EndpointSignatureError`
+- request-part helper nested inside another type, two helpers on one parameter or field, or `PathParam()` on a model field -> `MisplacedHelperError` (for a model field, when the class is defined if a parameter is annotated with the model, or else when the model is sent)
 
 At call time:
 

@@ -7,6 +7,10 @@ on:
     types: [published]
   workflow_dispatch:
 
+# Read-only by default; the publish jobs ask for the OIDC token they need.
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
