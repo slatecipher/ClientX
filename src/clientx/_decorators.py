@@ -37,9 +37,9 @@ class RawEndpointDecorator(Protocol):
     a bare ``Callable``, mypy sees every endpoint as ``Any``.
     """
 
-    def __call__[C: ClientX | Resource, **Q, S: (httpx2.Response, None)](
-        self, func: Callable[Concatenate[C, Q], S], /
-    ) -> Callable[Concatenate[C, Q], S]:
+    def __call__[C: ClientX | Resource, **Q, ResponseOrNone: (httpx2.Response, None)](
+        self, func: Callable[Concatenate[C, Q], ResponseOrNone], /
+    ) -> Callable[Concatenate[C, Q], ResponseOrNone]:
         """Register ``func`` as an endpoint and return its request-sending replacement."""
         ...
 
@@ -51,15 +51,15 @@ class DecodedEndpointDecorator[D](Protocol):
     that type, and the method's declared return type must be the same or
     narrower: ``decoder=ModelDecoder(User)`` fits ``-> User`` but not ``-> str``.
 
-    The ``self`` annotation on ``__call__`` binds ``S`` to the decoder output
-    before the method is checked against it. Decoders returning ``Any`` (such as
-    ``json_decoder``) accept any annotation; pyright then reports the call result
-    as ``Any`` while mypy keeps the annotation.
+    The ``self`` annotation on ``__call__`` binds ``DecoderOutput`` to the decoder's
+    output type before the method is checked against it. Decoders returning ``Any``
+    (such as ``json_decoder``) accept any annotation; pyright then reports the call
+    result as ``Any`` while mypy keeps the annotation.
     """
 
-    def __call__[C: ClientX | Resource, **Q, S](
-        self: "DecodedEndpointDecorator[S]", func: Callable[Concatenate[C, Q], S], /
-    ) -> Callable[Concatenate[C, Q], S]:
+    def __call__[C: ClientX | Resource, **Q, DecoderOutput](
+        self: "DecodedEndpointDecorator[DecoderOutput]", func: Callable[Concatenate[C, Q], DecoderOutput], /
+    ) -> Callable[Concatenate[C, Q], DecoderOutput]:
         """Register ``func`` as an endpoint and return its request-sending replacement."""
         ...
 
