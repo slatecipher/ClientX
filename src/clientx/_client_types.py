@@ -1,5 +1,5 @@
 import ssl
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from http.cookiejar import CookieJar
 from typing import Any, Literal, TypedDict
 
@@ -10,6 +10,33 @@ type Decoder = Callable[[httpx2.Response], object]
 type DeprecatedType = Callable[..., None]
 
 type MethodType = Literal["GET", "PUT", "POST", "PATCH", "DELETE", "HEAD", "OPTIONS"]
+
+# The option types below mirror httpx2's private aliases (httpx2._types), so each `ClientX(...)` option
+# accepts what `httpx2.Client` does. test/test_typing.py passes every form to catch a narrower copy.
+type PrimitiveData = str | int | float | bool | None
+
+type QueryParamTypes = (
+    httpx2.QueryParams
+    | Mapping[str, PrimitiveData | Sequence[PrimitiveData]]
+    | list[tuple[str, PrimitiveData]]
+    | tuple[tuple[str, PrimitiveData], ...]
+    | str
+    | bytes
+)
+
+type HeaderTypes = (
+    httpx2.Headers
+    | Mapping[str, str]
+    | Mapping[bytes, bytes]
+    | Sequence[tuple[str, str]]
+    | Sequence[tuple[bytes, bytes]]
+)
+
+type AuthTypes = tuple[str | bytes, str | bytes] | Callable[[httpx2.Request], httpx2.Request] | httpx2.Auth
+
+type TimeoutTypes = float | None | tuple[float | None, float | None, float | None, float | None] | httpx2.Timeout
+
+type ProxyTypes = httpx2.URL | str | httpx2.Proxy
 
 type CookieTypes = httpx2.Cookies | CookieJar | dict[str, str] | list[tuple[str, str]]
 
@@ -50,14 +77,14 @@ class HttpxClientKwargs(TypedDict, total=False):
     IDE autocomplete and static type checking.
     """
 
-    auth: httpx2.Auth | tuple[str, str] | tuple[bytes, bytes] | None
-    """An authentication class or tuple to use when sending requests."""
+    auth: AuthTypes | None
+    """Authentication: an ``httpx2.Auth``, a (username, password) tuple, or a callable that signs each request."""
 
-    params: httpx2.QueryParams | None
-    """Query parameters to include in request URLs."""
+    params: QueryParamTypes | None
+    """Query parameters to include in request URLs: a mapping, a list of pairs, a string, or ``QueryParams``."""
 
-    headers: Mapping[str, str] | None
-    """HTTP headers to include when sending requests."""
+    headers: HeaderTypes | None
+    """HTTP headers to include when sending requests: a mapping, a list of pairs, or ``Headers``."""
 
     cookies: CookieTypes | None
     """Cookie items to include when sending requests."""
@@ -74,14 +101,14 @@ class HttpxClientKwargs(TypedDict, total=False):
     http2: bool
     """Enable or disable HTTP/2 support."""
 
-    proxy: str | httpx2.URL | httpx2.Proxy | None
+    proxy: ProxyTypes | None
     """A proxy URL or configuration where all traffic should be routed."""
 
     mounts: Mapping[str, httpx2.BaseTransport | None] | None
     """Transports to use for requests matching URL patterns, keyed by pattern."""
 
-    timeout: httpx2.Timeout | float | None
-    """Timeout configuration to use when sending requests."""
+    timeout: TimeoutTypes
+    """Timeouts: seconds, ``None`` for none, a (connect, read, write, pool) tuple, or an ``httpx2.Timeout``."""
 
     follow_redirects: bool
     """Whether to follow HTTP redirect responses."""
@@ -92,13 +119,13 @@ class HttpxClientKwargs(TypedDict, total=False):
     max_redirects: int
     """Maximum number of redirect responses to follow."""
 
-    transport: httpx2.BaseTransport
+    transport: httpx2.BaseTransport | None
     """Transport instance used to send requests over the network."""
 
     trust_env: bool
     """Enable or disable usage of environment variables for configuration."""
 
-    default_encoding: str | Callable[[bytes], str]
+    default_encoding: str | Callable[[bytes], str | None]
     """Default encoding for decoding response text when no charset is present."""
 
     event_hooks: EventHooks | None
