@@ -3,6 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, ClassVar, Literal, TypedDict
 
+from pydantic import GetJsonSchemaHandler
+from pydantic.json_schema import JsonSchemaValue
+from pydantic_core import CoreSchema
+
 from clientx._client_types import RequestPartName
 
 
@@ -48,7 +52,7 @@ class DumpConfig(TypedDict, total=False):
 
 @dataclass
 class Part:
-    """Base class of the request-part helpers: ``Query``, ``Header``, ``Form``, ``Body``, and ``File``.
+    """Base class of the helpers: ``Query``, ``Header``, ``Form``, ``Body``, ``File``, and ``Path``.
 
     Internal: users choose a request part by choosing a helper, never by name. Each
     helper sets ``request_part`` as a class constant, so it isn't an argument, a
@@ -68,11 +72,25 @@ class Part:
             or form data.
         dump_config: Options for ``model_dump`` when the value is a Pydantic model,
             on top of ClientX's defaults (``mode="json"``, ``by_alias=True``).
+        description: Describes the parameter or field for AI tools: it becomes the
+            ``description`` in ``clientx.tools`` and MCP argument schemas. A
+            ``pydantic.Field(description=...)`` on the same parameter wins.
     """
 
     request_part: ClassVar[RequestPartName | None] = None
     dump_config: DumpConfig = field(kw_only=True, default_factory=DumpConfig)
     key: str | None = field(default=None)
+    description: str | None = field(kw_only=True, default=None)
+
+    def __get_pydantic_json_schema__(self, core_schema: CoreSchema, handler: GetJsonSchemaHandler) -> JsonSchemaValue:
+        """Add ``description`` to the JSON Schema Pydantic builds for the annotated type.
+
+        Pydantic applies a field's own ``Field(description=...)`` after this, so that one wins.
+        """
+        json_schema = handler(core_schema)
+        if self.description is not None:
+            json_schema = {**json_schema, "description": self.description}
+        return json_schema
 
 
 @dataclass
@@ -86,6 +104,7 @@ class Query(Part):
     Attributes:
         key: The query parameter name. Defaults to the parameter or field name.
         dump_config: Options for ``model_dump`` when the value is a Pydantic model.
+        description: Describes the parameter or field for AI tools.
     """
 
     request_part: ClassVar[RequestPartName | None] = "params"
@@ -104,6 +123,7 @@ class Header(Part):
         key: The header name, used as given. Defaults to the parameter or field name,
             with hyphens instead of underscores.
         dump_config: Options for ``model_dump`` when the value is a Pydantic model.
+        description: Describes the parameter or field for AI tools.
     """
 
     request_part: ClassVar[RequestPartName | None] = "headers"
@@ -120,6 +140,7 @@ class Form(Part):
     Attributes:
         key: The form field name. Defaults to the parameter or field name.
         dump_config: Options for ``model_dump`` when the value is a Pydantic model.
+        description: Describes the parameter or field for AI tools.
     """
 
     request_part: ClassVar[RequestPartName | None] = "data"
@@ -135,6 +156,7 @@ class Body(Part):
 
     Attributes:
         dump_config: Options for ``model_dump`` when the value is a Pydantic model.
+        description: Describes the parameter or field for AI tools.
     """
 
     request_part: ClassVar[RequestPartName | None] = "json"
@@ -150,7 +172,27 @@ class File(Part):
 
     Attributes:
         dump_config: Options for ``model_dump`` when the value is a Pydantic model.
+        description: Describes the parameter or field for AI tools.
     """
 
     request_part: ClassVar[RequestPartName | None] = "files"
+    key: str | None = field(default=None, init=False)
+
+
+@dataclass
+class Path(Part):
+    """Describe a path parameter for AI tools.
+
+    ``Annotated[int, Path(description="The user's ID")]`` puts the description in the
+    tool's argument schema. It only describes: the parameter is still matched to its
+    ``{placeholder}`` by name. A parameter marked ``Path()`` must have a placeholder in
+    the endpoint's path, including a ``Resource`` prefix, or ``EndpointSignatureError``
+    is raised when the class is defined. It can't be used on a model field.
+
+    Attributes:
+        description: Describes the parameter for AI tools.
+    """
+
+    request_part: ClassVar[RequestPartName | None] = None
+    dump_config: DumpConfig = field(init=False, default_factory=DumpConfig)
     key: str | None = field(default=None, init=False)
