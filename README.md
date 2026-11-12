@@ -111,7 +111,7 @@ class ItemsClient(ClientX):
 
 ### Empty method bodies and mypy
 
-Endpoint bodies never run, so `...` is all they need. Pyright accepts this, but mypy reports `Missing return statement  [empty-body]` for every endpoint whose return type isn't `None`. Turn that one check off for your client modules, either at the top of the file:
+Endpoint bodies never run, so `...` is all they need, after the docstring if there is one. Pyright accepts `...`, but not a body that's only a docstring: for an endpoint whose return type isn't `None`, it reports `Function with declared return type "User" must return value on all code paths`. Mypy reports `Missing return statement  [empty-body]` for every endpoint whose return type isn't `None`, even with `...`. Turn that one check off for your client modules, either at the top of the file:
 
 ```python
 # mypy: disable-error-code="empty-body"
@@ -176,6 +176,62 @@ Type checkers see `api.users` as `Users`, and its endpoints keep their signature
   - If an endpoint is named `list` (or `dict`, `type`, ...), a later `list[Post]` in an annotation or a decorator argument fails when the class is defined: `TypeError: 'function' object is not subscriptable`. Pyright reports it too. Define that endpoint last in the class, or write `builtins.list[Post]` after it.
 - Mount an instance (`users = Users()`), not the class. Calling an endpoint on a resource that isn't mounted on a client, such as `Users().retrieve(42)`, raises `UnboundResourceError`.
 
+### Plain methods
+
+A client or resource can also have ordinary, undecorated methods. They aren't endpoints, so they aren't tools either, and they can call endpoints through `self`. They're the place for logic around requests, such as following pages or normalizing an argument:
+
+```python
+from typing import Annotated
+
+import httpx2
+from pydantic import BaseModel
+
+from clientx import ClientX, Query, Resource, Response
+from clientx.decoders import ModelDecoder
+from clientx.methods import get
+
+
+class NamedLink(BaseModel):
+    name: str
+    url: str
+
+
+class Page(BaseModel):
+    count: int
+    next: str | None
+    results: list[NamedLink]
+
+
+class Pokemon(Resource, prefix="/pokemon"):
+    @get(decoder=ModelDecoder(Page))
+    def page(self, limit: Annotated[int, Query()] = 20, offset: Annotated[int, Query()] = 0) -> Page:
+        """List Pokémon, one page at a time."""
+        ...
+
+    @get("/{name}")
+    def retrieve(self, name: str) -> Response:
+        """Fetch one Pokémon by its lowercase name."""
+        ...
+
+    def next_page(self, page: Page) -> Page | None:
+        """Fetch the page after `page`, or return None after the last one."""
+        if page.next is None:
+            return None
+        params = httpx2.URL(page.next).params
+        return self.page(limit=int(params["limit"]), offset=int(params["offset"]))
+
+    def find(self, name: str) -> Response:
+        """Fetch a Pokémon by name, whatever its case or surrounding spaces."""
+        return self.retrieve(name.strip().lower())
+
+
+class PokeAPI(ClientX, base_url="https://pokeapi.co/api/v2"):
+    pokemon = Pokemon()
+```
+
+- `next_page` reads the next page's parameters from the `next` URL. The URL itself can't be passed back as a path value, because path values are percent-encoded.
+- `find` lowercases the name before calling `retrieve`. Endpoint bodies never run, and [argument validation](#validating-arguments) never converts a value, so a plain method is where to change one.
+
 ## Listing a Client's Endpoints
 
 To build documentation, metadata files, or other tooling from a client, list its endpoints with `clientx.tools.list_tools()`. It includes endpoints on resources, and gives each one's name, HTTP method, full path, tags, docstring, deprecation status, and JSON Schemas for its arguments and result:
@@ -203,11 +259,11 @@ It leaves out streaming endpoints, and endpoints whose types have no JSON Schema
 
 ClientX enforces explicit return annotations:
 
-- `-> Response`: returns raw `httpx2.Response`.
+- `-> Response`: returns raw `httpx2.Response`. `clientx.Response` is the same class: `clientx` re-exports it from httpx2, along with `Auth`, `Request`, and `Timeout`, so a client module doesn't need to import httpx2 for them.
 - `-> None`: sends request and returns `None`.
 - Any other type: requires `decoder=...`.
 
-A 4xx or 5xx response raises `httpx2.HTTPStatusError` before any decoder runs (see [Raising errors for 4xx and 5xx responses](#raising-errors-for-4xx-and-5xx-responses)). Otherwise, if you pass a decoder, it always runs and its output is returned, whatever the annotation.
+A 4xx or 5xx response raises `httpx2.HTTPStatusError` before any decoder runs (see [Raising errors for 4xx and 5xx responses](#raising-errors-for-4xx-and-5xx-responses)). Otherwise, if you pass a decoder, it always runs and its output is returned, whatever the annotation. If the decoder raises, its exception reaches the caller unchanged: `ModelDecoder` raises `pydantic.ValidationError` when the body doesn't match the model, so catch that around a `ModelDecoder` endpoint. The request itself succeeded, so its [log record](#logging) shows the response's status and no error.
 
 A decoder is a callable that receives the raw `httpx2.Response` and returns the value that matches your method's return annotation. ClientX executes the HTTP request first, then passes the response into the decoder, and returns the decoder output to the caller.
 
@@ -495,6 +551,32 @@ To reuse an annotation, name it with a `type` alias, plain or generic: `type Use
 
 A helper applies to the whole parameter or field, so use one helper, in the outermost `Annotated`, around the full type with `None` included: `Annotated[int | None, Query()]`, or `QueryParam[int | None]` with an alias. A helper nested inside another type, such as `Annotated[int, Query()] | None` or `list[Annotated[str, Query()]]`, and a second helper on the same parameter raise `MisplacedHelperError`: for a parameter when the class is defined, for a model field when the model is sent. If the request part depends on the value's type (a `str` header or a `dict` body, say), write separate endpoints.
 
+Only ClientX's helpers must be outermost. Pydantic metadata, such as `Field` constraints, can go anywhere in the type, so each member of a union can have its own. For example, a path parameter that takes an ID or a login:
+
+```python
+from typing import Annotated
+
+from pydantic import Field
+
+from clientx import ClientX, PathParam, Response
+from clientx.methods import get
+
+
+class UsersClient(ClientX):
+    @get("/users/{id_or_login}")
+    def retrieve(
+        self,
+        id_or_login: Annotated[
+            Annotated[int, Field(ge=1)] | Annotated[str, Field(pattern=r"^[a-z0-9-]+$")],
+            PathParam(description="The user's numeric ID, or their lowercase login"),
+        ],
+    ) -> Response:
+        """Fetch one user by ID or login."""
+        ...
+```
+
+With `validate_arguments=True`, `retrieve(0)` and `retrieve("Ada!")` raise `ArgumentValidationError` before anything is sent, and the parameter's tool schema has both constraints (`anyOf` with `minimum` and `pattern`).
+
 The helpers are named like FastAPI's, but they do the opposite job: FastAPI's read the incoming request, and ClientX's build the outgoing one. In a FastAPI app that calls other APIs, import one of them under another name (`from clientx import Query as ClientQuery`), or use the module (`import clientx`, then `clientx.Query("userId")`).
 
 ### By Pydantic model
@@ -625,6 +707,8 @@ staging = ExampleAPI("https://staging.example.com", timeout=10.0)  # arguments g
 
 A subclass keeps its parent's class arguments unless it sets its own. Without a base URL in the class or in the call, creating the client raises `TypeError`.
 
+`base_url` and `user_agent` are the only class arguments. Pass every other option, such as `timeout=` or `transport=`, when creating the client. Python rejects any other keyword in the class statement, a misspelling included, with `TypeError: ExampleAPI.__init_subclass__() takes no keyword arguments`.
+
 ### Raising errors for 4xx and 5xx responses
 
 A 4xx or 5xx response raises `httpx2.HTTPStatusError`, from every endpoint, before any decoder runs. The error has the request and the response, and the body is already read, so `exc.response.json()` works:
@@ -708,6 +792,7 @@ except ArgumentValidationError as exc:
 
 - It's off by default. Turn it on for a whole client with `validate_arguments=True`, or set it per endpoint with the decorators' `validate_arguments=` option. An endpoint's setting wins over the client's.
 - The check is strict, like a type checker's: `"1"` doesn't match `int`, and a string doesn't match an `Enum`. Values are never converted, so a request is the same with validation on or off. Constraints in the annotation, such as `Field(ge=1)`, are checked too.
+- To normalize a value instead of rejecting it, such as lowercasing a name, call the endpoint from a [plain method](#plain-methods) that changes the value first.
 - Only the arguments the caller passes are checked, not defaults.
 - A parameter whose type Pydantic can't validate, such as `BinaryIO`, isn't checked. Neither is a parameter without an annotation.
 - `ArgumentValidationError` has the `parameter` name and Pydantic's error as `validation_error`. It's a `ClientXError` and a `ValueError`.
@@ -736,12 +821,12 @@ Each record also has these attributes, for structured log handlers such as JSON 
 |---|---|---|
 | `clientx_endpoint` | `"UsersClient.update_user"` | The endpoint method. |
 | `clientx_method` | `"POST"` | The HTTP method. |
-| `clientx_path` | `"/users/42"` | The rendered path, without the query string. |
+| `clientx_path` | `"/users/42"` | The endpoint's rendered path, relative to the base URL, without the query string. With a base URL of `https://api.example.com/v1`, it's `/users/42`, not `/v1/users/42`. |
 | `clientx_parts` | `["headers", "json"]` | The names of the request parts sent. |
 | `clientx_stream` | `False` | Whether the response is streamed. For a stream, the elapsed time covers the response headers only. |
 | `clientx_status` | `201` | The status code, or `None` if no response arrived. |
 | `clientx_elapsed_ms` | `12.3` | Time to send the request and receive the response, in milliseconds. |
-| `clientx_error` | `None` | The exception's class name if the call failed, such as `"ConnectTimeout"`, or `"HTTPStatusError"` with the status for a 4xx or 5xx response. ClientX re-raises the exception. |
+| `clientx_error` | `None` | The exception's class name if the call failed, such as `"ConnectTimeout"`, or `"HTTPStatusError"` with the status for a 4xx or 5xx response. ClientX re-raises the exception. The record is written when the response arrives, before any decoder runs, so a decoder's exception isn't recorded. |
 
 ClientX never logs header values, request bodies, or query strings. The path is logged with its placeholders filled in (`/users/42`), so keep secrets out of path parameters.
 
@@ -869,7 +954,7 @@ Then point your MCP client at the command `python server.py`. In Claude Desktop'
 - Only read-only endpoints (`GET`, `HEAD`, and `OPTIONS`) are served unless you pass `read_only=False`, which serves `POST`, `PUT`, `PATCH`, and `DELETE` endpoints too. This is the one default that differs from `list_tools`, which also lists endpoints for docs and tooling: a model can change data only if you choose that.
 - The full signature is `run_mcp_server(client, *, name=None, instructions=None, read_only=True, include_tags=None, exclude_tags=(), include_deprecated=False)`, and `create_mcp_server` takes the same arguments. The server's tools are exactly the ones `list_tools` returns with those filters, with the same names, descriptions, and schemas. `name=` (by default, the client's class name) and `instructions=` set what the server reports to MCP clients.
 - The HTTP-method hints become MCP tool annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`), which MCP clients can use to ask for confirmation before changing data. Every tool also has `openWorldHint` set, because it reaches an external API.
-- Results come back as structured content and as JSON text. Invalid arguments, request failures, and 4xx and 5xx responses come back as error results the model can read, and the server keeps running. A 4xx or 5xx error result has the status, the method and path, and the start of the response body, but never the host or the query string, so credentials in query parameters don't reach the model.
+- Results come back as structured content and as JSON text. Invalid arguments, request failures, and 4xx and 5xx responses come back as error results the model can read, and the server keeps running. A 4xx or 5xx error result has the status, the method and the request URL's path, and the start of the response body, but never the host or the query string, so credentials in query parameters don't reach the model. The path includes any path in the base URL (`/v1/users/42`), unlike a log record's `clientx_path` (`/users/42`).
 - MCP messages use stdout, so don't print from the server process. Logging writes to stderr by default.
 - `run_mcp_server` serves over stdio. For other transports, `create_mcp_server` returns the low-level `mcp.server.lowlevel.Server` to run yourself.
 
