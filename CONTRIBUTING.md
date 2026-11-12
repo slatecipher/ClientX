@@ -20,7 +20,7 @@ uv sync --all-groups --reinstall-package clientx
 make check   # lint, type check, and tests
 ```
 
-The package is installed as a regular wheel, not in editable mode. If your changes to `src/` don't show up, run the `uv sync` command again.
+uv installs the package in editable mode, so your changes to `src/` take effect right away. Its metadata, such as the version `clientx.__version__` reports, is read from the installation: after changing `pyproject.toml`, run the `uv sync` command again.
 
 Other useful commands:
 

@@ -9,6 +9,10 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Read-only by default; a job that needs more (dependabot-auto-merge) asks for it.
+permissions:
+  contents: read
+
 jobs:
   lint:
     runs-on: ubuntu-latest
@@ -81,8 +85,8 @@ jobs:
       - name: Set up Python ${{ matrix.python-version }}
         run: uv python install ${{ matrix.python-version }}
 
-      # --reinstall-package clientx: uv_build does not install the project in
-      # editable mode, so a cached wheel from a previous run can shadow src/.
+      # --reinstall-package clientx: rebuild the project's editable install, so its
+      # metadata (such as the version clientx.__version__ reads) matches pyproject.toml.
       - name: Install dependencies
         run: uv sync --locked --all-groups --reinstall-package clientx
 
