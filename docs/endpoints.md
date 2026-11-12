@@ -1,5 +1,17 @@
 # Defining Endpoints
 
+An endpoint is a method whose signature describes one API call, in two halves:
+
+- **The parameters build the request.** A parameter named like a `{placeholder}` in the path fills it. The others become query parameters, headers, form fields, files, or the body (see [Building requests](requests.md)).
+- **The return type describes the response.** The decorator's `decoder` turns the response into a value of that type.
+
+```python
+@get("/users/{user_id}", decoder=ModelDecoder(User))
+def retrieve(self, user_id: int) -> User: ...
+```
+
+`retrieve(42)` sends `GET /users/42`, because `user_id` matches `{user_id}`, and returns the JSON response as a `User`. The two halves are independent: `User`'s fields come from the API's response, not from the arguments.
+
 Use decorators from `clientx.methods`:
 
 - `get`
