@@ -116,16 +116,14 @@ class TwoHelpers(BaseModel):
     ],
     ids=["nested", "two helpers"],
 )
-def test_a_misplaced_helper_on_a_model_field_raises_before_sending(model: BaseModel, problem: str):
+def test_a_misplaced_helper_on_a_model_field_raises_before_sending(model: BaseModel, problem: str, mock_transport):
     sent: list[httpx2.Request] = []
 
     class API(ClientX):
         @post("/search")
         def search(self, body: BaseModel) -> Response: ...
 
-    api = API(
-        "https://api.example.com", transport=httpx2.MockTransport(lambda r: sent.append(r) or httpx2.Response(200))
-    )
+    api = API("https://api.example.com", transport=mock_transport(sent))
 
     with pytest.raises(MisplacedHelperError, match=re.escape(problem)):
         api.search(model)
@@ -133,16 +131,14 @@ def test_a_misplaced_helper_on_a_model_field_raises_before_sending(model: BaseMo
     assert sent == []
 
 
-def test_a_model_field_with_the_helper_around_the_whole_type_is_sent():
+def test_a_model_field_with_the_helper_around_the_whole_type_is_sent(mock_transport):
     sent: list[httpx2.Request] = []
 
     class API(ClientX):
         @post("/search")
         def search(self, body: KeyInside) -> Response: ...
 
-    api = API(
-        "https://api.example.com", transport=httpx2.MockTransport(lambda r: sent.append(r) or httpx2.Response(200))
-    )
+    api = API("https://api.example.com", transport=mock_transport(sent))
     api.search(KeyInside(api_key="secret", q="x"))
 
     [request] = sent
@@ -168,7 +164,7 @@ def test_a_misplaced_helper_in_a_parameters_model_raises_when_the_class_is_defin
             def search(self, body: model) -> Response: ...  # pyright: ignore[reportInvalidTypeForm]
 
 
-def test_a_model_that_isnt_complete_is_checked_when_it_is_sent():
+def test_a_model_that_isnt_complete_is_checked_when_it_is_sent(mock_transport):
     class Later(BaseModel):
         api_key: Annotated[str, Header()] | None = None
         child: "Undefined | None" = None  # noqa: F821  # pyright: ignore[reportUndefinedVariable]
@@ -181,7 +177,7 @@ def test_a_model_that_isnt_complete_is_checked_when_it_is_sent():
         pass
 
     Later.model_rebuild(_types_namespace={"Undefined": Undefined})
-    api = API("https://api.example.com", transport=httpx2.MockTransport(lambda r: httpx2.Response(200)))
+    api = API("https://api.example.com", transport=mock_transport())
 
     with pytest.raises(MisplacedHelperError, match=re.escape("'Later.api_key' has Header() nested")):
         api.search(Later())

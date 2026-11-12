@@ -1,5 +1,5 @@
 import logging
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from enum import Enum
 from typing import Annotated, Any, BinaryIO
 
@@ -73,26 +73,29 @@ RESPONSES: dict[tuple[str, str], httpx2.Response] = {
 }
 
 
-def make_api(sent: list[httpx2.Request]) -> ExampleAPI:
-    def handler(request: httpx2.Request) -> httpx2.Response:
-        sent.append(request)
+@pytest.fixture
+def make_api(mock_transport) -> Callable[[list[httpx2.Request]], ExampleAPI]:
+    def answer(request: httpx2.Request) -> httpx2.Response:
         return RESPONSES.get((request.method, request.url.path), httpx2.Response(200, json={}))
 
-    return ExampleAPI("https://api.example.com", user_agent="tests/1.0", transport=httpx2.MockTransport(handler))
+    def make(sent: list[httpx2.Request]) -> ExampleAPI:
+        return ExampleAPI("https://api.example.com", user_agent="tests/1.0", transport=mock_transport(sent, answer))
+
+    return make
 
 
 def tools_by_name(api: ClientX, **filters: Any) -> dict[str, Tool]:
     return {tool.name: tool for tool in list_tools(api, **filters)}
 
 
-def test_tools_cover_client_and_resource_endpoints_in_definition_order():
+def test_tools_cover_client_and_resource_endpoints_in_definition_order(make_api):
     names = [tool.name for tool in list_tools(make_api([]))]
 
     # `events` streams and `legacy_health` is deprecated, so both are left out.
     assert names == ["users_retrieve", "users_list_all", "users_create", "users_remove", "health"]
 
 
-def test_tool_describes_its_endpoint():
+def test_tool_describes_its_endpoint(make_api):
     tool = tools_by_name(make_api([]))["users_retrieve"]
 
     assert tool.description == "Fetch one user by ID."
@@ -108,7 +111,7 @@ def test_tool_describes_its_endpoint():
     assert tool.output_schema == User.model_json_schema(mode="serialization")
 
 
-def test_endpoint_without_a_docstring_is_described_by_method_and_path():
+def test_endpoint_without_a_docstring_is_described_by_method_and_path(make_api):
     tool = tools_by_name(make_api([]))["health"]
 
     assert tool.description == "GET /health"
@@ -119,7 +122,7 @@ def test_endpoint_without_a_docstring_is_described_by_method_and_path():
     }
 
 
-def test_defaults_and_enums_appear_in_the_input_schema():
+def test_defaults_and_enums_appear_in_the_input_schema(make_api):
     schema = tools_by_name(make_api([]))["users_list_all"].input_schema
 
     assert schema["properties"]["sort"] == {"$ref": "#/$defs/Sort", "default": "newest"}
@@ -148,7 +151,7 @@ def test_results_use_field_aliases_like_the_output_schema():
     assert tool.call({"company_id": 1}) == {"employeeCount": 3187}
 
 
-def test_endpoint_returning_nothing_has_no_output_schema():
+def test_endpoint_returning_nothing_has_no_output_schema(make_api):
     assert tools_by_name(make_api([]))["users_remove"].output_schema is None
 
 
@@ -185,15 +188,15 @@ def test_hints_follow_the_http_method(verb: str, read_only: bool, destructive: b
         ),
     ],
 )
-def test_filters_choose_which_endpoints_become_tools(filters: dict[str, Any], expected: list[str]):
+def test_filters_choose_which_endpoints_become_tools(filters: dict[str, Any], expected: list[str], make_api):
     assert list(tools_by_name(make_api([]), **filters)) == expected
 
 
-def test_included_deprecated_endpoint_is_marked():
+def test_included_deprecated_endpoint_is_marked(make_api):
     assert tools_by_name(make_api([]), include_deprecated=True)["legacy_health"].deprecated is True
 
 
-def test_call_validates_arguments_and_returns_json_friendly_results():
+def test_call_validates_arguments_and_returns_json_friendly_results(make_api):
     sent: list[httpx2.Request] = []
     tools = tools_by_name(make_api(sent))
 
@@ -219,7 +222,7 @@ def test_call_validates_arguments_and_returns_json_friendly_results():
     [{"user_id": 42, "extra": 1}, {}, {"user_id": "not a number"}],
     ids=["unknown argument", "missing argument", "wrong type"],
 )
-def test_call_rejects_invalid_arguments_without_sending(arguments: dict[str, Any]):
+def test_call_rejects_invalid_arguments_without_sending(arguments: dict[str, Any], make_api):
     sent: list[httpx2.Request] = []
 
     with pytest.raises(ValidationError):
@@ -227,7 +230,7 @@ def test_call_rejects_invalid_arguments_without_sending(arguments: dict[str, Any
     assert sent == []
 
 
-def test_tool_calls_go_through_the_client(caplog):
+def test_tool_calls_go_through_the_client(caplog, make_api):
     caplog.set_level(logging.DEBUG, logger="clientx")
     sent: list[httpx2.Request] = []
 
@@ -321,7 +324,7 @@ def test_endpoint_without_a_json_schema_is_left_out_with_a_warning():
     assert caught[0].filename == __file__
 
 
-def test_tool_repr_shows_the_description_not_internals():
+def test_tool_repr_shows_the_description_not_internals(make_api):
     text = repr(tools_by_name(make_api([]))["health"])
 
     assert text.startswith("Tool(name='health', description='GET /health'")

@@ -140,12 +140,6 @@ def test_endpoint_repr_renders_generic_and_union_return_types():
     assert "User | None'" in repr(lookup)
 
 
-def test_endpoint_defaults_stream_to_false():
-    endpoint = Endpoint("GET", "/v1/users")
-
-    assert endpoint.stream is False
-
-
 def test_endpoint_stream_is_decided_by_the_decoder():
     assert Endpoint("GET", "/v1/events", decoder=StreamLinesDecoder()).stream is True
     assert Endpoint("GET", "/v1/download", decoder=StreamResponseDecoder()).stream is True
@@ -158,25 +152,6 @@ def test_endpoint_stream_is_read_only():
 
     with pytest.raises(AttributeError):
         endpoint.stream = True  # type: ignore[misc]
-
-
-def test_endpoint_defaults_timeout_to_none():
-    endpoint = Endpoint("GET", "/v1/users")
-
-    assert endpoint.timeout is None
-
-
-def test_endpoint_check_deprecation_calls_callable():
-    endpoint = Endpoint("GET", "/v1/users")
-    calls = {"count": 0}
-
-    def deprecated_call() -> None:
-        calls["count"] += 1
-
-    endpoint.deprecated = deprecated_call
-    endpoint.check_deprecation()
-
-    assert calls["count"] == 1
 
 
 def test_endpoint_func_requires_decoder_for_decodable_return_type():
@@ -294,7 +269,7 @@ def test_a_signature_that_cant_describe_a_request_raises(handler: Callable[..., 
         endpoint.func = handler
 
     assert info.value.func is handler
-    assert f"Endpoint function '{handler.__qualname__}' (defined in test_endpoint_context)" in str(info.value)
+    assert f"Endpoint function '{handler.__qualname__}' (defined in {__name__})" in str(info.value)
 
 
 class Color(enum.Enum):

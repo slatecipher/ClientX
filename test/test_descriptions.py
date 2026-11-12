@@ -63,11 +63,9 @@ def test_pydantic_field_description_wins_in_either_order():
     assert properties["second"]["description"] == "from Field"
 
 
-def test_descriptions_dont_change_the_request():
+def test_descriptions_dont_change_the_request(mock_transport):
     sent: list[httpx2.Request] = []
-    api = PostsAPI(
-        "https://api.example.com", transport=httpx2.MockTransport(lambda r: sent.append(r) or httpx2.Response(200))
-    )
+    api = PostsAPI("https://api.example.com", transport=mock_transport(sent))
 
     api.list_posts(7, page=2)
     api.search(Filters(status="open"))

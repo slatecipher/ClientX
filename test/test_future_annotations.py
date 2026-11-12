@@ -7,9 +7,11 @@ because annotations are evaluated against the module's globals.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Annotated
 
 import httpx2
+import pytest
 from pydantic import BaseModel
 
 from clientx import ClientX, Header, Query, Response
@@ -37,34 +39,36 @@ class FutureAPI(ClientX):
     def search(self, filters: Filters) -> Response: ...
 
 
-def _client(sent: list[httpx2.Request]) -> FutureAPI:
-    return FutureAPI(
-        "https://api.example.com", transport=httpx2.MockTransport(lambda r: sent.append(r) or httpx2.Response(200))
-    )
+@pytest.fixture
+def make_client(mock_transport) -> Callable[[list[httpx2.Request]], FutureAPI]:
+    def make(sent: list[httpx2.Request]) -> FutureAPI:
+        return FutureAPI("https://api.example.com", transport=mock_transport(sent))
+
+    return make
 
 
-def test_helpers_in_string_annotations_are_read():
+def test_helpers_in_string_annotations_are_read(make_client):
     sent: list[httpx2.Request] = []
 
-    _client(sent).item(7, page=2, request_id="abc")
+    make_client(sent).item(7, page=2, request_id="abc")
 
     [request] = sent
     assert str(request.url) == "https://api.example.com/items/7?p=2"
     assert request.headers["X-Request-Id"] == "abc"
 
 
-def test_models_in_string_annotations_are_expanded():
+def test_models_in_string_annotations_are_expanded(make_client):
     sent: list[httpx2.Request] = []
 
-    _client(sent).search(Filters(status="open", trace="t-1"))
+    make_client(sent).search(Filters(status="open", trace="t-1"))
 
     [request] = sent
     assert request.headers["X-Trace"] == "t-1"
     assert request.content == b'{"status":"open"}'
 
 
-def test_tool_schemas_use_the_evaluated_annotations():
-    tools = {tool.name: tool for tool in list_tools(_client([]))}
+def test_tool_schemas_use_the_evaluated_annotations(make_client):
+    tools = {tool.name: tool for tool in list_tools(make_client([]))}
 
     properties = tools["item"].input_schema["properties"]
     assert properties["item_id"]["type"] == "integer"

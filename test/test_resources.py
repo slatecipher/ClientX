@@ -6,17 +6,9 @@ import pytest
 from pydantic import BaseModel
 
 from clientx import ClientX, Resource, Response
-from clientx._endpoint_context import Endpoint
-from clientx._registry import endpoint_for
 from clientx.decoders import ModelDecoder, StreamLinesDecoder
 from clientx.exceptions import EndpointNameConflictError, MissingPathArgumentsError, UnboundResourceError
 from clientx.methods import get, post
-
-
-def endpoint_of(function: object) -> Endpoint:
-    endpoint = endpoint_for(function)
-    assert endpoint is not None
-    return endpoint
 
 
 class User(BaseModel):
@@ -56,47 +48,44 @@ class ExampleAPI(ClientX):
     repos = Repos()
 
 
-Handler = Callable[[httpx2.Request], httpx2.Response]
+@pytest.fixture
+def make_api(mock_transport) -> Callable[[list[httpx2.Request]], ExampleAPI]:
+    def make(sent: list[httpx2.Request]) -> ExampleAPI:
+        return ExampleAPI(
+            "https://api.example.com",
+            user_agent="tests/1.0",
+            transport=mock_transport(sent, json={"id": 42, "name": "Ada"}),
+        )
 
-
-def recording_handler(sent: list[httpx2.Request]) -> Handler:
-    def handler(request: httpx2.Request) -> httpx2.Response:
-        sent.append(request)
-        return httpx2.Response(200, json={"id": 42, "name": "Ada"})
-
-    return handler
-
-
-def make_api(handler: Handler) -> ExampleAPI:
-    return ExampleAPI("https://api.example.com", user_agent="tests/1.0", transport=httpx2.MockTransport(handler))
+    return make
 
 
 def paths(sent: list[httpx2.Request]) -> list[str]:
     return [f"{request.method} {request.url.path}" for request in sent]
 
 
-def test_resource_endpoint_sends_through_the_clients_connection():
+def test_resource_endpoint_sends_through_the_clients_connection(make_api):
     sent: list[httpx2.Request] = []
 
-    user = make_api(recording_handler(sent)).users.retrieve(42)
+    user = make_api(sent).users.retrieve(42)
 
     assert user == User(id=42, name="Ada")
     assert str(sent[0].url) == "https://api.example.com/users/42"
     assert sent[0].headers["User-Agent"] == "tests/1.0"
 
 
-def test_endpoint_with_an_empty_path_uses_the_prefix():
+def test_endpoint_with_an_empty_path_uses_the_prefix(make_api):
     sent: list[httpx2.Request] = []
 
-    make_api(recording_handler(sent)).users.create({"name": "Ada"})
+    make_api(sent).users.create({"name": "Ada"})
 
     assert paths(sent) == ["POST /users"]
     assert sent[0].content == b'{"name":"Ada"}'
 
 
-def test_names_reserved_on_clientx_are_free_on_a_resource():
+def test_names_reserved_on_clientx_are_free_on_a_resource(make_api):
     sent: list[httpx2.Request] = []
-    api = make_api(recording_handler(sent))
+    api = make_api(sent)
 
     api.users.send(42, {"text": "hi"})
     api.users.client(42)
@@ -104,29 +93,29 @@ def test_names_reserved_on_clientx_are_free_on_a_resource():
     assert paths(sent) == ["POST /users/42/messages", "GET /users/42/client"]
 
 
-def test_prefix_placeholders_are_filled_from_the_method_arguments():
+def test_prefix_placeholders_are_filled_from_the_method_arguments(make_api):
     sent: list[httpx2.Request] = []
 
-    make_api(recording_handler(sent)).repos.retrieve("octo", "hello")
+    make_api(sent).repos.retrieve("octo", "hello")
 
     assert paths(sent) == ["GET /repos/octo/hello"]
 
 
-def test_nested_resources_send_through_the_root_client():
+def test_nested_resources_send_through_the_root_client(make_api):
     sent: list[httpx2.Request] = []
 
-    make_api(recording_handler(sent)).repos.issues.retrieve("octo", "hello", 5)
+    make_api(sent).repos.issues.retrieve("octo", "hello", 5)
 
     assert paths(sent) == ["GET /repos/octo/hello/issues/5"]
     assert sent[0].headers["User-Agent"] == "tests/1.0"
 
 
-def test_each_client_instance_binds_its_own_resource():
+def test_each_client_instance_binds_its_own_resource(make_api):
     first: list[httpx2.Request] = []
     second: list[httpx2.Request] = []
 
-    make_api(recording_handler(first)).users.retrieve(1)
-    make_api(recording_handler(second)).users.retrieve(2)
+    make_api(first).users.retrieve(1)
+    make_api(second).users.retrieve(2)
 
     assert paths(first) == ["GET /users/1"]
     assert paths(second) == ["GET /users/2"]
@@ -167,7 +156,7 @@ def test_calling_an_endpoint_on_something_other_than_a_client_raises():
         PlainAPI.health(object())  # pyright: ignore[reportArgumentType]
 
 
-def test_endpoints_get_full_paths_and_resource_tags_first():
+def test_endpoints_get_full_paths_and_resource_tags_first(endpoint_of):
     class Teams(Resource, prefix="/teams", tags=["teams", "read"]):
         @get("/{team_id}", tags=["read", "detail"])
         def retrieve(self, team_id: int) -> Response: ...
@@ -188,7 +177,7 @@ def test_endpoints_get_full_paths_and_resource_tags_first():
         ("", "/health", "/health"),
     ],
 )
-def test_prefix_and_path_are_joined_with_one_slash(prefix: str, path: str, expected: str):
+def test_prefix_and_path_are_joined_with_one_slash(prefix: str, path: str, expected: str, endpoint_of):
     class Things(Resource, prefix=prefix):
         @get(path)
         def call(self, user_id: int = 0) -> Response: ...
@@ -197,7 +186,7 @@ def test_prefix_and_path_are_joined_with_one_slash(prefix: str, path: str, expec
     assert str(endpoint.path) == expected
 
 
-def test_subclasses_keep_the_parent_prefix_and_tags_unless_they_set_their_own():
+def test_subclasses_keep_the_parent_prefix_and_tags_unless_they_set_their_own(endpoint_of):
     class Base(Resource, prefix="/base", tags=["base"]):
         @get("/a")
         def a(self) -> Response: ...
@@ -247,10 +236,10 @@ def test_resource_endpoint_cannot_use_a_name_resource_uses(name: str):
         type("Dynamic", (Resource,), {name: get("/x")(endpoint)})
 
 
-def test_resource_calls_are_logged_with_the_resource_endpoint_name(caplog):
+def test_resource_calls_are_logged_with_the_resource_endpoint_name(caplog, make_api):
     caplog.set_level(logging.DEBUG, logger="clientx")
 
-    make_api(recording_handler([])).users.retrieve(42)
+    make_api([]).users.retrieve(42)
 
     [record] = [record for record in caplog.records if record.name == "clientx"]
     assert record.__dict__["clientx_endpoint"] == "Users.retrieve"

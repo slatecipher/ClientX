@@ -52,7 +52,7 @@ dev = [
 ]
 
 [tool.pytest.ini_options]
-addopts = "-vv --cov=clientx --cov-report=term-missing"
+addopts = "--import-mode=importlib -vv --cov=clientx --cov-report=term-missing"
 
 [tool.pyright]
 # Editors check both trees. CI splits them: `make typecheck` passes `src` on the
