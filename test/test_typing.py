@@ -1,16 +1,23 @@
 # pyright: reportUnnecessaryTypeIgnoreComment=true, reportUntypedFunctionDecorator=true
+# mypy: disable-error-code="empty-body"
 """Static typing contract for decorated endpoints and decoders.
 
-Pyright checks this file in the blocking ``make typecheck`` step, so it fails CI
-if the typing contract regresses:
+Pyright and mypy both check this file in the blocking ``make typecheck`` step, so CI
+fails if the typing contract regresses for users of either checker:
 
+- ``assert_type`` fails if the inferred type is not exactly the expected one.
+- Each line that must be rejected has one comment per checker: ``# type: ignore[code]``
+  for mypy, then ``# pyright: ignore[rule]``. Pyright doesn't read mypy's comments
+  (``enableTypeIgnoreComments = false`` in ``pyproject.toml``), so each checker reports
+  its own comment if it's unused: pyright through the file-level
+  ``reportUnnecessaryTypeIgnoreComment``, mypy through ``warn_unused_ignores`` in its
+  ``strict`` mode. Code that should be rejected but is accepted is reported.
 - ``reportUntypedFunctionDecorator`` is enabled because pyright otherwise hides an
   untyped decorator by falling back to the undecorated signature. mypy has no such
-  fallback and would see every endpoint as ``Any``.
-- ``assert_type`` fails if the inferred type is not exactly the expected one.
-- Each ``# pyright: ignore[...]`` comment is an expected error. The file-level
-  ``reportUnnecessaryTypeIgnoreComment`` setting turns an unused ignore into an
-  error, so code that should be rejected but is accepted is reported.
+  fallback and would see every endpoint as ``Any``; its ``strict`` mode reports an
+  untyped decorator too.
+- mypy's ``empty-body`` check is off, as the README tells mypy users to do, because
+  endpoint bodies are ``...``.
 
 The tests also run under pytest against a mock transport.
 """
@@ -67,7 +74,7 @@ class UsersClient(ClientX):
     def export(self) -> Response: ...
 
     # The decoder produces a User, so declaring a str return is rejected.
-    @get("/users/{user_id}/name", decoder=ModelDecoder(User))  # pyright: ignore[reportArgumentType]
+    @get("/users/{user_id}/name", decoder=ModelDecoder(User))  # type: ignore[arg-type]  # pyright: ignore[reportArgumentType]
     def get_user_name(self, user_id: str) -> str: ...
 
 
@@ -136,10 +143,10 @@ def test_decorated_methods_keep_their_declared_types() -> None:
 def test_decorated_methods_reject_wrong_arguments() -> None:
     client = ItemsClient("https://example.test", transport=_transport())
 
-    client.get_item(1)  # pyright: ignore[reportArgumentType]
-    client.create_item(json="not a dict")  # pyright: ignore[reportArgumentType]
+    client.get_item(1)  # type: ignore[arg-type]  # pyright: ignore[reportArgumentType]
+    client.create_item(json="not a dict")  # type: ignore[arg-type]  # pyright: ignore[reportArgumentType]
     with pytest.raises(TypeError):
-        client.delete_item()  # pyright: ignore[reportCallIssue]
+        client.delete_item()  # type: ignore[call-arg]  # pyright: ignore[reportCallIssue]
 
 
 def test_resources_are_typed_attributes_and_keep_endpoint_signatures() -> None:
@@ -150,9 +157,9 @@ def test_resources_are_typed_attributes_and_keep_endpoint_signatures() -> None:
     assert_type(client.groups.members, UsersResource)
     assert_type(client.users.retrieve("1"), User)
     assert_type(client.users.create({"name": "x"}), Response)
-    client.users.retrieve(1)  # pyright: ignore[reportArgumentType]
+    client.users.retrieve(1)  # type: ignore[arg-type]  # pyright: ignore[reportArgumentType]
     with pytest.raises(TypeError):
-        client.users.create()  # pyright: ignore[reportCallIssue]
+        client.users.create()  # type: ignore[call-arg]  # pyright: ignore[reportCallIssue]
 
 
 def test_decoded_methods_return_the_decoder_output_type() -> None:
@@ -178,7 +185,7 @@ def test_methods_without_decoder_must_return_response_or_none() -> None:
     with pytest.raises(MissingDecoderError):
 
         class Broken(ClientX):
-            @get("/users/{user_id}")  # pyright: ignore[reportArgumentType]
+            @get("/users/{user_id}")  # type: ignore[type-var]  # pyright: ignore[reportArgumentType]
             def get_user(self, user_id: str) -> User: ...
 
 
@@ -186,11 +193,11 @@ def test_stream_is_decided_by_the_decoder_not_a_flag() -> None:
     with pytest.raises(TypeError):
 
         class Broken(ClientX):
-            @get("/users/{user_id}", decoder=ModelDecoder(User), stream=True)  # pyright: ignore[reportCallIssue, reportUntypedFunctionDecorator]
+            @get("/users/{user_id}", decoder=ModelDecoder(User), stream=True)  # type: ignore[call-overload, untyped-decorator]  # pyright: ignore[reportCallIssue, reportUntypedFunctionDecorator]
             def get_user(self, user_id: str) -> User: ...
 
 
-def test_event_hooks_accept_hooks_typed_for_what_they_receive():
+def test_event_hooks_accept_hooks_typed_for_what_they_receive() -> None:
     """Request hooks get an httpx2.Request and response hooks an httpx2.Response."""
     seen: list[str] = []
 
@@ -219,7 +226,7 @@ def _construct_with_every_httpx2_option() -> ClientX:
 
     Not run under pytest because a real ``cert`` would be loaded from disk.
     """
-    ClientX("https://example.test", timout=5.0)  # pyright: ignore[reportCallIssue]
+    ClientX("https://example.test", timout=5.0)  # type: ignore[call-arg]  # pyright: ignore[reportCallIssue]
     return ClientX(
         "https://example.test",
         auth=("user", "secret"),
@@ -248,8 +255,8 @@ def test_raise_for_status_options_keep_endpoint_signatures() -> None:
 
     assert_type(client.lookup("1"), User)
     assert_type(client.remove("1"), None)
-    StatusClient("https://example.test", raise_for_status="no")  # pyright: ignore[reportArgumentType]
-    get("/users", raise_for_status="no")  # pyright: ignore[reportArgumentType]
+    StatusClient("https://example.test", raise_for_status="no")  # type: ignore[arg-type]  # pyright: ignore[reportArgumentType]
+    get("/users", raise_for_status="no")  # type: ignore[call-overload]  # pyright: ignore[reportArgumentType]
 
 
 def test_validate_arguments_options_keep_endpoint_signatures() -> None:
@@ -257,8 +264,8 @@ def test_validate_arguments_options_keep_endpoint_signatures() -> None:
 
     assert_type(client.lookup("1"), User)
     assert_type(client.remove("1"), None)
-    ValidatingClient("https://example.test", validate_arguments="yes")  # pyright: ignore[reportArgumentType]
-    get("/users", validate_arguments="yes")  # pyright: ignore[reportArgumentType]
+    ValidatingClient("https://example.test", validate_arguments="yes")  # type: ignore[arg-type]  # pyright: ignore[reportArgumentType]
+    get("/users", validate_arguments="yes")  # type: ignore[call-overload]  # pyright: ignore[reportArgumentType]
 
 
 def test_request_part_helpers_keep_endpoint_signatures() -> None:
@@ -266,8 +273,8 @@ def test_request_part_helpers_keep_endpoint_signatures() -> None:
 
     assert_type(client.search(name="Ada", authorization="Bearer t"), list[User])
     assert_type(client.create(User(name="Ada")), Response)
-    client.search(name=1)  # pyright: ignore[reportArgumentType]
-    client.create({"name": "Ada"})  # pyright: ignore[reportArgumentType]
+    client.search(name=1)  # type: ignore[arg-type]  # pyright: ignore[reportArgumentType]
+    client.create({"name": "Ada"})  # type: ignore[arg-type]  # pyright: ignore[reportArgumentType]
 
 
 def test_helper_descriptions_are_keyword_only() -> None:
@@ -275,8 +282,8 @@ def test_helper_descriptions_are_keyword_only() -> None:
     Body(description="The new user")
     PathParam(description="The user's ID")
     with pytest.raises(TypeError):
-        Query("userId", "Only posts by this user")  # pyright: ignore[reportCallIssue]
+        Query("userId", "Only posts by this user")  # type: ignore[arg-type, call-arg]  # pyright: ignore[reportCallIssue]
     with pytest.raises(TypeError):
-        PathParam("The user's ID")  # pyright: ignore[reportCallIssue]
+        PathParam("The user's ID")  # type: ignore[call-arg]  # pyright: ignore[reportCallIssue]
     with pytest.raises(TypeError):
-        PathParam(key="id")  # pyright: ignore[reportCallIssue]
+        PathParam(key="id")  # type: ignore[call-arg]  # pyright: ignore[reportCallIssue]

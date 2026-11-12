@@ -100,7 +100,7 @@ def test_closing_a_partially_consumed_stream_closes_the_response(api: StreamingA
     assert next(lines) == "a"
     assert not streams[0].closed
 
-    lines.close()  # type: ignore[attr-defined]  # the returned iterator is a generator
+    lines.close()  # pyright: ignore[reportAttributeAccessIssue]  # the returned iterator is a generator
 
     assert streams[0].closed
 

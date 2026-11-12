@@ -45,6 +45,7 @@ build-backend = "uv_build"
 [dependency-groups]
 dev = [
     "mcp>=2.3,<3",
+    "mypy>=2.4.1",
     "pyright>=1.1.411",
     "pytest>=9.0.2",
     "pytest-cov>=7.0.0",
@@ -66,3 +67,16 @@ pythonVersion = "3.12"
 typeCheckingMode = "standard"
 # The shipped package is held to strict mode; tests stay on standard.
 strict = ["src"]
+# Pyright reads only `# pyright: ignore[...]` comments, and mypy only `# type: ignore[...]`.
+# test/test_typing.py marks each expected error for both checkers, and each checker reports
+# its own comment if it's unused, which it couldn't if pyright also honoured mypy's.
+enableTypeIgnoreComments = false
+
+[tool.mypy]
+# mypy checks only the typing contract, the file that pins what type checkers see of
+# decorated endpoints, so mypy users get the same guarantees as pyright users. `make
+# typecheck` runs it, which gates CI. strict mode includes warn_unused_ignores (an
+# expected error that disappears is reported) and check_untyped_defs.
+files = ["test/test_typing.py"]
+python_version = "3.12"
+strict = true
