@@ -294,6 +294,22 @@ def test_client_options_accept_every_form_httpx2_accepts() -> None:
     assert all(isinstance(client.client, httpx2.Client) for client in clients)
 
 
+def test_a_client_class_can_ship_its_base_url_and_user_agent() -> None:
+    class ConfiguredClient(ClientX, base_url="https://example.test", user_agent="configured/1.0"):
+        pass
+
+    assert_type(ConfiguredClient(), ConfiguredClient)
+    assert_type(ConfiguredClient("https://staging.example.test"), ConfiguredClient)
+
+    class BadAgent(ClientX, user_agent=1):  # type: ignore[arg-type]  # pyright: ignore[reportGeneralTypeIssues, reportArgumentType]
+        pass
+
+    class BadURL(ClientX, base_url=1):  # type: ignore[arg-type]  # pyright: ignore[reportGeneralTypeIssues, reportArgumentType]
+        pass
+
+    assert ConfiguredClient().user_agent == "configured/1.0"
+
+
 def test_raise_for_status_options_keep_endpoint_signatures() -> None:
     client = StatusClient("https://example.test", raise_for_status=False, transport=_transport())
 

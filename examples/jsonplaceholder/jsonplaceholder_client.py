@@ -80,7 +80,7 @@ class Users(Resource, prefix="/users", tags=["users"]):
         ...
 
 
-class JSONPlaceholder(ClientX):
+class JSONPlaceholder(ClientX, base_url=JSONPLACEHOLDER_URL, user_agent="jsonplaceholder-example/0.1"):
     """Client for JSONPlaceholder (https://jsonplaceholder.typicode.com), a free fake REST API.
 
     Writes (create, replace, update, delete) return realistic responses but change nothing on the server.
