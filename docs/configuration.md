@@ -18,7 +18,7 @@ api = ExampleAPI("https://api.example.com", user_agent="my-app/1.0", timeout=5.0
 - `raise_for_status` and `validate_arguments`: see [Raising errors for 4xx and 5xx responses](#raising-errors-for-4xx-and-5xx-responses) and [Validating arguments](#validating-arguments) below.
 - Any other `httpx2.Client` option, such as `timeout`, `headers`, `auth`, `params`, `transport`, or `follow_redirects`. ClientX passes them to the httpx2 client it creates.
 
-Settings can't be changed afterwards; to use different ones, create another client. Close a client when you're done with it, with a `with` block or `close()`.
+Settings can't be changed afterwards; to use different ones, create another client. Instances are independent: each has its own connections, settings, and credentials, so clients for production and staging, or one client per account, can be used side by side. Class arguments (below) are only defaults for new instances.
 
 A client class can ship its own base URL and `User-Agent` as class arguments, so callers can create it without arguments:
 
@@ -37,6 +37,15 @@ staging = ExampleAPI("https://staging.example.com", timeout=10.0)  # arguments g
 A subclass keeps its parent's class arguments unless it sets its own. Without a base URL in the class or in the call, creating the client raises `TypeError`.
 
 `base_url` and `user_agent` are the only class arguments. Pass every other option, such as `timeout=` or `transport=`, when creating the client. Python rejects any other keyword in the class statement, a misspelling included, with `TypeError: ExampleAPI.__init_subclass__() takes no keyword arguments`.
+
+## Closing a client
+
+Close a client when you're done with it, to release its connections:
+
+- For a script or one batch of calls, use a `with` block, as the README's quickstart does. It closes the client when the block ends, even if an exception is raised.
+- For a long-lived client, such as one in a web app or a worker, create it once, reuse it for every request so its connections are pooled, and call `close()` at shutdown. Don't create a client for each request.
+- A closed client can't be reused: a call raises `RuntimeError: Cannot send a request, as the client has been closed.` Create a new one.
+- `with` is optional. A client that's never closed still works; its connections stay open until the process exits or the client is garbage-collected.
 
 ## Raising errors for 4xx and 5xx responses
 

@@ -96,6 +96,7 @@ with ExampleAPI() as api:
 - Endpoint bodies never run. ClientX builds each request from the method's signature, sends it, and returns the decoder's result.
 - Type checkers see the real signatures: `api.users.retrieve(user_id: int) -> User`.
 - A 4xx or 5xx response raises `httpx2.HTTPStatusError`.
+- The `with` block closes the client's connections when it ends. It's optional: a long-lived client is created once and closed with `close()` at shutdown, as [Closing a client](https://github.com/slatecipher/ClientX/blob/mainline/docs/configuration.md#closing-a-client) explains.
 - Using mypy? Turn off its `empty-body` check for your client modules, as [Defining endpoints](https://github.com/slatecipher/ClientX/blob/mainline/docs/endpoints.md#empty-method-bodies-and-mypy) explains.
 
 ## Guide
@@ -104,7 +105,7 @@ with ExampleAPI() as api:
 - [Resources](https://github.com/slatecipher/ClientX/blob/mainline/docs/resources.md): grouping endpoints under a path prefix, nesting them, and plain methods for logic such as pagination.
 - [Return types and decoders](https://github.com/slatecipher/ClientX/blob/mainline/docs/decoders.md): `ModelDecoder`, `TypeAdapterDecoder`, `FromResponseDecoder`, the simple decoders, your own, and streaming.
 - [Building requests](https://github.com/slatecipher/ClientX/blob/mainline/docs/requests.md): how parameters become the path, query string, headers, form fields, JSON body, and files.
-- [Client configuration](https://github.com/slatecipher/ClientX/blob/mainline/docs/configuration.md): creating a client, class defaults for the base URL and `User-Agent`, errors for 4xx and 5xx responses, and argument validation.
+- [Client configuration](https://github.com/slatecipher/ClientX/blob/mainline/docs/configuration.md): creating and closing a client, class defaults for the base URL and `User-Agent`, errors for 4xx and 5xx responses, and argument validation.
 - [Logging](https://github.com/slatecipher/ClientX/blob/mainline/docs/logging.md): ClientX's debug records, and your own request logging.
 - [AI tools and MCP](https://github.com/slatecipher/ClientX/blob/mainline/docs/ai-tools.md): endpoints as AI tools, serving a client over MCP, and listing a client's endpoints.
 - [Testing](https://github.com/slatecipher/ClientX/blob/mainline/docs/testing.md): testing a client, its tools, and an MCP server without the network.
