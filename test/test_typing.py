@@ -108,6 +108,14 @@ class StatusClient(ClientX):
     def remove(self, user_id: str) -> None: ...
 
 
+class ValidatingClient(ClientX):
+    @get("/users/{user_id}", decoder=ModelDecoder(User), validate_arguments=True)
+    def lookup(self, user_id: str) -> User: ...
+
+    @delete("/users/{user_id}", validate_arguments=False, raise_for_status=False)
+    def remove(self, user_id: str) -> None: ...
+
+
 def _transport() -> httpx2.MockTransport:
     payloads: dict[str, object] = {
         "/users/1": {"name": "Ada"},
@@ -242,6 +250,15 @@ def test_raise_for_status_options_keep_endpoint_signatures() -> None:
     assert_type(client.remove("1"), None)
     StatusClient("https://example.test", raise_for_status="no")  # pyright: ignore[reportArgumentType]
     get("/users", raise_for_status="no")  # pyright: ignore[reportArgumentType]
+
+
+def test_validate_arguments_options_keep_endpoint_signatures() -> None:
+    client = ValidatingClient("https://example.test", validate_arguments=True, transport=_transport())
+
+    assert_type(client.lookup("1"), User)
+    assert_type(client.remove("1"), None)
+    ValidatingClient("https://example.test", validate_arguments="yes")  # pyright: ignore[reportArgumentType]
+    get("/users", validate_arguments="yes")  # pyright: ignore[reportArgumentType]
 
 
 def test_request_part_helpers_keep_endpoint_signatures() -> None:

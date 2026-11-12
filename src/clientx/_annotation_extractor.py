@@ -7,7 +7,7 @@ from inspect import Signature
 from types import MappingProxyType
 from typing import Annotated, Any, TypeAliasType, get_args, get_origin
 
-from pydantic import BaseModel, TypeAdapter, ValidationError
+from pydantic import BaseModel
 from pydantic.fields import ComputedFieldInfo, FieldInfo
 
 from clientx._annotations import Part
@@ -88,7 +88,7 @@ class AnnotationInfo:
     """Normalized view of a type annotation and any Annotated metadata.
 
     Args:
-        annotation: The underlying annotation to validate against.
+        annotation: The underlying annotation, without the ``Annotated`` metadata.
         metadata: Metadata items attached via typing.Annotated.
     """
 
@@ -99,17 +99,6 @@ class AnnotationInfo:
     def part(self) -> Part:
         """The first ``Part`` (or helper such as ``Query``) in the metadata, or an empty ``Part``."""
         return next((m for m in self.metadata if isinstance(m, Part)), Part())
-
-    def validate(self, value: Any) -> None:
-        """Validate a value against this annotation.
-
-        Args:
-            value: Value to validate.
-
-        Raises:
-            ValidationError: Raised by Pydantic when validation fails.
-        """
-        TypeAdapter(self.annotation).validate_python(value)
 
 
 @dataclass(frozen=True)
@@ -123,20 +112,6 @@ class NamedAnnotation:
 
     name: str
     info: AnnotationInfo
-
-    def validate(self, value: Any) -> None:
-        """Validate and raise an error that includes the field/parameter name.
-
-        Args:
-            value: Value to validate.
-
-        Raises:
-            ValueError: Raised when validation fails, wrapping the original ValidationError.
-        """
-        try:
-            self.info.validate(value)
-        except ValidationError as e:
-            raise ValueError(f"{self.name!r}: {e}") from e
 
     @property
     def part(self) -> Part:

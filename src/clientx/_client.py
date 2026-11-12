@@ -26,6 +26,7 @@ class ClientX:
     client: Client
     # Internal state uses a ``__clientx_*__`` name, so it can't clash with an endpoint name.
     __clientx_raise_for_status__: bool
+    __clientx_validate_arguments__: bool
 
     def __init__(
         self,
@@ -33,6 +34,7 @@ class ClientX:
         *,
         user_agent: str | None = None,
         raise_for_status: bool = True,
+        validate_arguments: bool = False,
         **client_kwargs: Unpack[HttpxClientKwargs],
     ):
         """Initialize a client with a base URL and optional ``httpx2.Client`` configuration.
@@ -42,11 +44,15 @@ class ClientX:
             user_agent: Optional user agent header value. When ``None``, uses the default ClientX user agent.
             raise_for_status: Raise ``httpx2.HTTPStatusError`` when an endpoint gets a 4xx or 5xx
                 response, before any decoder runs. An endpoint's own ``raise_for_status=`` overrides it.
+            validate_arguments: Check each argument against its parameter's annotation before
+                sending, and raise ``ArgumentValidationError`` if it doesn't match. Off by default.
+                An endpoint's own ``validate_arguments=`` overrides it.
             **client_kwargs: Additional keyword arguments passed directly to ``httpx2.Client``.
         """
         self.client = Client(base_url=URL(base_url), **client_kwargs)
         self.user_agent = user_agent
         self.__clientx_raise_for_status__ = raise_for_status
+        self.__clientx_validate_arguments__ = validate_arguments
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         """Reject endpoints and resources named like something ``ClientX`` already has."""

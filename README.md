@@ -96,6 +96,7 @@ Each decorator accepts:
 - `tags` (optional list of labels; `list_tools()` can filter by them)
 - `timeout` (optional per-endpoint `httpx2.Timeout` or seconds)
 - `raise_for_status` (optional `True` or `False`; overrides the client's setting, see [Raising errors for 4xx and 5xx responses](#raising-errors-for-4xx-and-5xx-responses))
+- `validate_arguments` (optional `True` or `False`; overrides the client's setting, see [Validating arguments](#validating-arguments))
 
 ```python
 from clientx import ClientX, Response
@@ -647,6 +648,40 @@ unchecked = FilesClient("https://api.example.com", raise_for_status=False)  # no
 
 With the check off, a decoder gets every response, so it can handle error statuses itself.
 
+### Validating arguments
+
+Type checkers catch wrong argument types in your own code, but not in values that arrive at run time, such as user input or data from another service. Turn on `validate_arguments` to check each argument against its parameter's annotation before the request is sent:
+
+```python
+from typing import Annotated
+
+from pydantic import Field
+
+from clientx import ClientX, Query, Response
+from clientx.exceptions import ArgumentValidationError
+from clientx.methods import get
+
+
+class SearchClient(ClientX):
+    @get("/search")
+    def search(self, page: Annotated[int, Query(), Field(ge=1)]) -> Response: ...
+
+
+client = SearchClient("https://api.example.com", validate_arguments=True)
+
+try:
+    client.search(0)
+except ArgumentValidationError as exc:
+    print(exc.parameter)  # page: no request was sent
+```
+
+- It's off by default. Turn it on for a whole client with `validate_arguments=True`, or set it per endpoint with the decorators' `validate_arguments=` option. An endpoint's setting wins over the client's.
+- The check is strict, like a type checker's: `"1"` doesn't match `int`, and a string doesn't match an `Enum`. Values are never converted, so a request is the same with validation on or off. Constraints in the annotation, such as `Field(ge=1)`, are checked too.
+- Only the arguments the caller passes are checked, not defaults.
+- A parameter whose type Pydantic can't validate, such as `BinaryIO`, isn't checked. Neither is a parameter without an annotation.
+- `ArgumentValidationError` has the `parameter` name and Pydantic's error as `validation_error`. It's a `ClientXError` and a `ValueError`.
+- `Tool.call()` already validates a model's arguments, and converts JSON values such as `"red"` to the parameter's type, so tool calls pass this check.
+
 ## Logging
 
 ClientX logs one record per endpoint call on the `clientx` logger, at `DEBUG` level, after the response arrives or the request fails:
@@ -820,6 +855,7 @@ At call time:
 
 - endpoint called on a resource that isn't mounted on a client -> `UnboundResourceError`
 - argument cannot map to request parts -> `UnconsumableArgumentError`
+- argument doesn't match its annotation, when `validate_arguments` is on -> `ArgumentValidationError`
 
 Annotations are evaluated when the class is defined, so endpoints work in modules with `from __future__ import annotations`. Like `pydantic`, ClientX evaluates them against the module's globals: a type defined inside a function can't be named in a string annotation.
 
