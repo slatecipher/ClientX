@@ -9,7 +9,12 @@ from clientx import Body, Header
 from clientx._client import ClientX
 from clientx._decorators import ApiMethod, method
 from clientx.decoders import StreamLinesDecoder
-from clientx.exceptions import EndpointNameConflictError, MissingPathArgumentsError, PathTemplateError
+from clientx.exceptions import (
+    EndpointNameConflictError,
+    MissingPathArgumentsError,
+    PathTemplateError,
+    PathValueError,
+)
 
 
 def test_api_method_registers_endpoint_and_returns_response(endpoint_of, mock_transport):
@@ -258,6 +263,20 @@ def test_path_values_cant_change_the_path(mock_transport):
         b"/v1/users/..%2Fadmin%3Fx%3D1/posts",
         b"/v1/repos/clientx/contents/docs/guide.md",
     ]
+
+
+@pytest.mark.parametrize("user_id", ["", None])
+def test_an_empty_or_none_path_value_raises_before_sending(mock_transport, user_id: str | None):
+    sent: list[Request] = []
+
+    class API(ClientX):
+        @method.delete("/users/{user_id}")
+        def remove(self, user_id: str | None) -> None: ...
+
+    # Sent as is, `""` would delete `/users/` and `None` would delete `/users/null`.
+    with pytest.raises(PathValueError, match=r"Can't fill \{user_id\} in '/users/\{user_id\}'"):
+        API("https://api.example.com", transport=mock_transport(sent)).remove(user_id)
+    assert sent == []
 
 
 def test_an_unknown_path_converter_raises_when_the_class_is_defined():

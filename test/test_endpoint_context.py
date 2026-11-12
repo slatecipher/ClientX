@@ -18,6 +18,7 @@ from clientx.exceptions import (
     MissingPathArgumentsError,
     MissingReturnTypeError,
     PathTemplateError,
+    PathValueError,
 )
 
 
@@ -332,6 +333,31 @@ def test_url_path_path_converter_keeps_slashes(value: str, rendered: str):
 
     assert path.parameters == ["file_path"]
     assert path.format({"file_path": value}) == rendered
+
+
+@pytest.mark.parametrize(
+    ("template", "value", "problem"),
+    [
+        ("/users/{user_id}", None, "None would be sent as 'null'"),
+        ("/users/{user_id}", "", "an empty value would remove the segment"),
+        ("/repos/contents/{user_id:path}", "", "an empty value would remove the segment"),
+        ("/repos/contents/{user_id:path}", "/etc/passwd", "a leading, trailing, or doubled slash"),
+        ("/repos/contents/{user_id:path}", "docs/", "a leading, trailing, or doubled slash"),
+        ("/repos/contents/{user_id:path}", "docs//guide.md", "a leading, trailing, or doubled slash"),
+    ],
+    ids=["None", "empty", "empty path", "leading slash", "trailing slash", "doubled slash"],
+)
+def test_url_path_rejects_a_value_that_would_change_the_path(template: str, value: object, problem: str):
+    with pytest.raises(PathValueError, match=re.escape(problem)) as info:
+        URLPath(template).format({"user_id": value})
+
+    assert (info.value.path, info.value.parameter, info.value.value) == (template, "user_id", value)
+    assert str(info.value).startswith(f"Can't fill {{user_id}} in {template!r} with {value!r}: ")
+
+
+@pytest.mark.parametrize(("value", "rendered"), [(0, "/users/0"), (False, "/users/false"), (" ", "/users/%20")])
+def test_url_path_accepts_falsy_values_that_render_to_text(value: object, rendered: str):
+    assert URLPath("/users/{user_id}").format({"user_id": value}) == rendered
 
 
 def test_url_path_doubled_braces_are_literal():
