@@ -19,6 +19,8 @@ import json
 from collections.abc import Iterable
 from typing import Any
 
+import httpx2
+
 try:
     import anyio
     from mcp import types
@@ -29,6 +31,9 @@ except ImportError as error:
 
 from clientx._client import ClientX
 from clientx.tools import Tool, list_tools
+
+# How much of an error response's body an error result includes: enough for the model to see what went wrong.
+_ERROR_BODY_LIMIT = 1000
 
 
 def create_mcp_server(
@@ -82,7 +87,7 @@ def create_mcp_server(
             # Endpoints are synchronous; run them off the event loop.
             result = await anyio.to_thread.run_sync(tool.call, params.arguments or {})
         except Exception as error:  # noqa: BLE001 - every failure must reach the MCP client as an error result
-            return _error_result(f"{type(error).__name__}: {error}")
+            return _error_result(_describe_error(error))
         return _success_result(tool, result)
 
     return Server(
@@ -164,6 +169,27 @@ def _success_result(tool: Tool, result: Any) -> types.CallToolResult:
         return types.CallToolResult(content=[text])
     structured = result if tool.output_schema.get("type") == "object" else {"result": result}
     return types.CallToolResult(content=[text], structured_content=structured)
+
+
+def _describe_error(error: Exception) -> str:
+    """Describe a failed tool call for the model.
+
+    httpx2's ``HTTPStatusError`` message contains the request's full URL, so a query
+    parameter such as an API key set with ``ClientX(params=...)`` would reach the model.
+    A status error is described from its parts instead: the status, the method and path
+    (no host or query string), and the start of the response body, which usually says what
+    was wrong. Other errors don't include the URL and are described by their message.
+    """
+    if not isinstance(error, httpx2.HTTPStatusError):
+        return f"{type(error).__name__}: {error}"
+    response = error.response
+    status = f"{response.status_code} {response.reason_phrase}".strip()
+    message = f"HTTPStatusError: {status} for {error.request.method} {error.request.url.path}"
+    # ClientX reads the body before raising, and tools never stream, so `text` is available.
+    if body := response.text.strip():
+        excerpt = body[:_ERROR_BODY_LIMIT] + ("…" if len(body) > _ERROR_BODY_LIMIT else "")
+        message += f"\nResponse body: {excerpt}"
+    return message
 
 
 def _error_result(message: str) -> types.CallToolResult:
