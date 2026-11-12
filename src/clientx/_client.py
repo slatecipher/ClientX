@@ -6,7 +6,7 @@ from collections.abc import Sequence
 from types import TracebackType
 from typing import Any, ClassVar, Self, Unpack
 
-from httpx2 import URL, Client, Response
+from httpx2 import URL, Client, Headers, Response
 
 from clientx._client_types import HttpxClientKwargs
 from clientx._registry import endpoint_for
@@ -41,7 +41,8 @@ class ClientX:
 
         Args:
             base_url: Base URL used for all relative request paths.
-            user_agent: Optional user agent header value. When ``None``, uses the default ClientX user agent.
+            user_agent: The ``User-Agent`` header to send. When ``None``, a ``User-Agent`` given in
+                ``headers=`` is kept, or else the default ``ClientX/<version>`` is used.
             raise_for_status: Raise ``httpx2.HTTPStatusError`` when an endpoint gets a 4xx or 5xx
                 response, before any decoder runs. An endpoint's own ``raise_for_status=`` overrides it.
             validate_arguments: Check each argument against its parameter's annotation before
@@ -50,7 +51,8 @@ class ClientX:
             **client_kwargs: Additional keyword arguments passed directly to ``httpx2.Client``.
         """
         self.client = Client(base_url=URL(base_url), **client_kwargs)
-        self.user_agent = user_agent
+        # A User-Agent passed in `headers=` is the caller's choice too; only `user_agent=` overrides it.
+        self.user_agent = user_agent or Headers(client_kwargs.get("headers")).get("User-Agent")
         self.__clientx_raise_for_status__ = raise_for_status
         self.__clientx_validate_arguments__ = validate_arguments
 
