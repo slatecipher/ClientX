@@ -1,11 +1,20 @@
-# ClientX
+<h1 align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/slatecipher/ClientX/mainline/docs/assets/logo-dark.svg">
+    <img alt="ClientX" src="https://raw.githubusercontent.com/slatecipher/ClientX/mainline/docs/assets/logo-light.svg" width="320">
+  </picture>
+</h1>
 
-[![PyPI](https://img.shields.io/pypi/v/clientx)](https://pypi.org/project/clientx/)
-[![Python versions](https://img.shields.io/pypi/pyversions/clientx)](https://pypi.org/project/clientx/)
-[![CI](https://github.com/slatecipher/ClientX/actions/workflows/ci.yml/badge.svg?branch=mainline)](https://github.com/slatecipher/ClientX/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](https://github.com/slatecipher/ClientX/blob/mainline/LICENSE)
+<p align="center">
+  <em>Typed, declarative HTTP API clients for Python 3.12+.</em>
+</p>
 
-Typed, declarative HTTP API clients for Python 3.12+.
+<p align="center">
+  <a href="https://pypi.org/project/clientx/"><img src="https://img.shields.io/pypi/v/clientx" alt="PyPI"></a>
+  <a href="https://pypi.org/project/clientx/"><img src="https://img.shields.io/pypi/pyversions/clientx" alt="Python versions"></a>
+  <a href="https://github.com/slatecipher/ClientX/actions/workflows/ci.yml"><img src="https://github.com/slatecipher/ClientX/actions/workflows/ci.yml/badge.svg?branch=mainline" alt="CI"></a>
+  <a href="https://github.com/slatecipher/ClientX/blob/mainline/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="License: MIT"></a>
+</p>
 
 ## Overview
 
