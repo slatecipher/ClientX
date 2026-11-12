@@ -24,6 +24,22 @@ def test_clientx_uses_custom_user_agent():
     assert client.client.headers["User-Agent"] == "MyApp/1.0"
 
 
+@pytest.mark.parametrize("name", ["User-Agent", "user-agent"])
+def test_clientx_keeps_a_user_agent_given_in_headers(name: str):
+    client = ClientX("https://example.test", headers={name: "MyApp/2.0", "X-Env": "dev"})
+
+    assert client.user_agent == "MyApp/2.0"
+    assert client.client.headers["User-Agent"] == "MyApp/2.0"
+    assert client.client.headers["X-Env"] == "dev"
+
+
+def test_clientx_user_agent_argument_wins_over_headers():
+    client = ClientX("https://example.test", user_agent="Explicit/1.0", headers={"User-Agent": "FromHeaders/1.0"})
+
+    assert client.user_agent == "Explicit/1.0"
+    assert client.client.headers["User-Agent"] == "Explicit/1.0"
+
+
 def test_clientx_user_agent_setter_updates_headers():
     client = ClientX("https://example.test")
 

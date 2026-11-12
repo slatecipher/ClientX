@@ -593,7 +593,7 @@ client = ClientX(
 )
 ```
 
-- `user_agent` defaults to `ClientX/<version>`.
+- `user_agent` sets the `User-Agent` header. Without it, a `User-Agent` in `headers=` is kept, or else `ClientX/<version>` is sent.
 - Additional kwargs are forwarded to `httpx2.Client(...)`.
 
 ### Raising errors for 4xx and 5xx responses
