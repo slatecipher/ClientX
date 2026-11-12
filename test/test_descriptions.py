@@ -129,3 +129,8 @@ def test_path_on_a_model_field_raises():
         class API(ClientX):  # pyright: ignore[reportUnusedClass]
             @post("/locate")
             def locate(self, body: Located) -> Response: ...
+
+
+def test_a_description_is_in_a_models_own_json_schema():
+    # Not only for tools: any JSON Schema Pydantic builds from the annotation includes it.
+    assert Filters.model_json_schema()["properties"]["status"]["description"] == "Only posts with this status"

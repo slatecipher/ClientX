@@ -434,7 +434,7 @@ Annotate a parameter with the helper for the request part it goes to:
 | `Body()` | The JSON body (`json`) | `Annotated[UserChanges, Body()]` |
 | `File()` | Multipart files (`files`) | `Annotated[dict[str, bytes], File()]` |
 
-Every helper also takes `description=`, which describes the parameter or model field for AI tools (see [Using a Client from AI Agents](#using-a-client-from-ai-agents)). `PathParam(description=...)` does the same for a path parameter.
+Every helper also takes `description=`, which describes the parameter or model field in its JSON Schema: it appears in any schema Pydantic builds from the annotation, such as a model's `model_json_schema()`, and in the argument schemas of [AI tools](#using-a-client-from-ai-agents). `PathParam(description=...)` does the same for a path parameter. A description never changes the request.
 
 ```python
 from enum import Enum
@@ -793,7 +793,7 @@ print(tool.input_schema)  # {"type": "object", "properties": {"user_id": {...}},
 result = tool.call({"user_id": 42})  # GET /users/42, returns {"id": 42, "name": "..."}
 ```
 
-Describe each parameter with its helper's `description=`, such as `Annotated[int | None, Query("userId", description="Only posts by this user")]`. A path parameter has no request-part helper, so use `PathParam(description=...)`: it only describes, and the parameter is still matched to its `{placeholder}` by name. A `PathParam()` parameter whose name isn't a placeholder in the path, including a resource prefix, raises `EndpointSignatureError` when the class is defined, and `PathParam` on a model field raises `MisplacedHelperError`. Descriptions only go into the tool and MCP schemas; they don't change requests. A `pydantic.Field(description=...)` on the same parameter still works, and wins if both are given.
+Describe each parameter with its helper's `description=`, such as `Annotated[int | None, Query("userId", description="Only posts by this user")]`. A path parameter has no request-part helper, so use `PathParam(description=...)`: it only describes, and the parameter is still matched to its `{placeholder}` by name. A `PathParam()` parameter whose name isn't a placeholder in the path, including a resource prefix, raises `EndpointSignatureError` when the class is defined, and `PathParam` on a model field raises `MisplacedHelperError`. A description goes into the parameter's JSON Schema, which is where tools get it; it doesn't change requests. A `pydantic.Field(description=...)` on the same parameter still works, and wins if both are given.
 
 To offer the tools to a model, pass each tool's `name`, `description`, and `input_schema` in the format your AI SDK expects, and call `tools[name].call(arguments)` when the model asks for a tool. With the Anthropic SDK, for example, that's `tools=[{"name": t.name, "description": t.description, "input_schema": t.input_schema} for t in tools.values()]`.
 

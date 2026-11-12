@@ -72,8 +72,10 @@ class Part:
             or form data.
         dump_config: Options for ``model_dump`` when the value is a Pydantic model,
             on top of ClientX's defaults (``mode="json"``, ``by_alias=True``).
-        description: Describes the parameter or field for AI tools: it becomes the
-            ``description`` in ``clientx.tools`` and MCP argument schemas. A
+        description: Describes the parameter or field in its JSON Schema: the
+            ``description`` in any schema Pydantic builds from the annotation, such as
+            a model's ``model_json_schema()`` or the argument schemas ``clientx.tools``
+            and the MCP server show to AI models. It never changes the request. A
             ``pydantic.Field(description=...)`` on the same parameter wins.
     """
 
@@ -104,7 +106,7 @@ class Query(Part):
     Attributes:
         key: The query parameter name. Defaults to the parameter or field name.
         dump_config: Options for ``model_dump`` when the value is a Pydantic model.
-        description: Describes the parameter or field for AI tools.
+        description: Describes the parameter or field in its JSON Schema.
     """
 
     request_part: ClassVar[RequestPartName | None] = "params"
@@ -123,7 +125,7 @@ class Header(Part):
         key: The header name, used as given. Defaults to the parameter or field name,
             with hyphens instead of underscores.
         dump_config: Options for ``model_dump`` when the value is a Pydantic model.
-        description: Describes the parameter or field for AI tools.
+        description: Describes the parameter or field in its JSON Schema.
     """
 
     request_part: ClassVar[RequestPartName | None] = "headers"
@@ -140,7 +142,7 @@ class Form(Part):
     Attributes:
         key: The form field name. Defaults to the parameter or field name.
         dump_config: Options for ``model_dump`` when the value is a Pydantic model.
-        description: Describes the parameter or field for AI tools.
+        description: Describes the parameter or field in its JSON Schema.
     """
 
     request_part: ClassVar[RequestPartName | None] = "data"
@@ -156,7 +158,7 @@ class Body(Part):
 
     Attributes:
         dump_config: Options for ``model_dump`` when the value is a Pydantic model.
-        description: Describes the parameter or field for AI tools.
+        description: Describes the parameter or field in its JSON Schema.
     """
 
     request_part: ClassVar[RequestPartName | None] = "json"
@@ -172,7 +174,7 @@ class File(Part):
 
     Attributes:
         dump_config: Options for ``model_dump`` when the value is a Pydantic model.
-        description: Describes the parameter or field for AI tools.
+        description: Describes the parameter or field in its JSON Schema.
     """
 
     request_part: ClassVar[RequestPartName | None] = "files"
@@ -181,10 +183,11 @@ class File(Part):
 
 @dataclass
 class PathParam(Part):
-    """Describe a path parameter for AI tools.
+    """Describe a path parameter in its JSON Schema.
 
     ``Annotated[int, PathParam(description="The user's ID")]`` puts the description in the
-    tool's argument schema. It only describes: the parameter is still matched to its
+    parameter's JSON Schema, which is where ``clientx.tools`` and the MCP server get the
+    argument descriptions they show to AI models. It only describes: the parameter is still matched to its
     ``{placeholder}`` by name. A parameter marked ``PathParam()`` must have a placeholder in
     the endpoint's path, including a ``Resource`` prefix, or ``EndpointSignatureError``
     is raised when the class is defined. It can't be used on a model field.
@@ -195,7 +198,7 @@ class PathParam(Part):
     would be lost.
 
     Attributes:
-        description: Describes the parameter for AI tools.
+        description: Describes the parameter in its JSON Schema.
     """
 
     request_part: ClassVar[RequestPartName | None] = None
