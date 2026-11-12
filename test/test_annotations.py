@@ -5,7 +5,13 @@ from typing import Annotated
 import pytest
 from pydantic import BaseModel, Field, computed_field
 
-from clientx._annotation_extractor import AnnotationExtractor, AnnotationInfo, NamedAnnotation, NamedAnnotationExtractor
+from clientx._annotation_extractor import (
+    AnnotationExtractor,
+    AnnotationInfo,
+    NamedAnnotation,
+    NamedAnnotationExtractor,
+    model_annotations,
+)
 from clientx._annotations import (
     Body,
     DumpConfig,
@@ -213,3 +219,15 @@ def test_body_and_file_take_no_key(helper: type[Body]):
     assert list(inspect.signature(helper).parameters) == ["dump_config"]
     with pytest.raises(TypeError):
         helper("key")  # pyright: ignore[reportCallIssue]
+
+
+def test_model_annotations_are_analysed_once_per_model_class():
+    class Cached(BaseModel):
+        q: Annotated[str, Query()]
+
+    first = model_annotations(Cached)
+
+    assert model_annotations(Cached) is first
+    assert first["q"].part == Query()
+    with pytest.raises(TypeError):
+        first["other"] = first["q"]  # pyright: ignore[reportIndexIssue]

@@ -11,7 +11,7 @@ from clientx._decorators import ApiMethod, method
 from clientx._endpoint_context import Endpoint
 from clientx._registry import endpoint_for
 from clientx.decoders import StreamLinesDecoder
-from clientx.exceptions import EndpointNameConflictError
+from clientx.exceptions import EndpointNameConflictError, MissingPathArgumentsError
 
 
 def endpoint_of(function: object) -> Endpoint:
@@ -345,3 +345,27 @@ def test_endpoint_cannot_use_a_name_clientx_already_uses(name: str):
 
     with pytest.raises(EndpointNameConflictError, match=f"'Dynamic.{name}' .* can't be named '{name}'"):
         type("Dynamic", (ClientX,), {name: method.get("/items")(endpoint)})
+
+
+def test_the_client_parameter_can_have_any_name():
+    sent: list[Request] = []
+
+    class API(ClientX):
+        @method.get("/items/{item_id}")
+        def item(this, item_id: int, params: dict[str, str]) -> Response: ...  # noqa: N805
+
+    api = API(
+        "https://api.example.com", transport=httpx2.MockTransport(lambda r: sent.append(r) or httpx2.Response(200))
+    )
+    api.item(3, params={"q": "x"})
+
+    [request] = sent
+    assert str(request.url) == "https://api.example.com/items/3?q=x"
+
+
+def test_a_placeholder_without_a_parameter_raises_when_the_class_is_defined():
+    with pytest.raises(MissingPathArgumentsError, match=r"'/users/\{user_id\}': user_id"):
+
+        class API(ClientX):  # pyright: ignore[reportUnusedClass]
+            @method.get("/users/{user_id}")
+            def user(self, uid: int) -> Response: ...

@@ -9,7 +9,7 @@ from clientx import ClientX, Resource, Response
 from clientx._endpoint_context import Endpoint
 from clientx._registry import endpoint_for
 from clientx.decoders import ModelDecoder, StreamLinesDecoder
-from clientx.exceptions import EndpointNameConflictError, UnboundResourceError
+from clientx.exceptions import EndpointNameConflictError, MissingPathArgumentsError, UnboundResourceError
 from clientx.methods import get, post
 
 
@@ -255,3 +255,11 @@ def test_resource_calls_are_logged_with_the_resource_endpoint_name(caplog):
     [record] = [record for record in caplog.records if record.name == "clientx"]
     assert record.__dict__["clientx_endpoint"] == "Users.retrieve"
     assert record.__dict__["clientx_path"] == "/users/42"
+
+
+def test_a_prefix_placeholder_without_a_parameter_raises_when_the_resource_is_defined():
+    with pytest.raises(MissingPathArgumentsError, match=r"'/repos/\{owner\}/items': owner"):
+
+        class Items(Resource, prefix="/repos/{owner}"):  # pyright: ignore[reportUnusedClass]
+            @get("/items")
+            def list_items(self) -> Response: ...

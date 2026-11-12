@@ -270,16 +270,6 @@ def test_positional_only_parameters_are_supported():
     assert sent[0].url.path == "/items/3"
 
 
-def test_variadic_parameters_are_left_out_of_the_schema():
-    class SearchAPI(ClientX):
-        @get("/search")
-        def search(self, params: dict[str, str], *args: Any, **kwargs: Any) -> Response: ...
-
-    [tool] = list_tools(SearchAPI("https://api.example.com"))
-
-    assert list(tool.input_schema["properties"]) == ["params"]
-
-
 def test_nested_resources_are_named_by_their_attribute_path():
     class Issues(Resource, prefix="/repos/{owner}/{repo}/issues"):
         @get("/{number}")

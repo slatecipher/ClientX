@@ -805,15 +805,21 @@ Then point your MCP client at the command `python server.py`. In Claude Desktop'
 
 ## Error Rules
 
-ClientX raises explicit errors for common contract violations:
+ClientX raises explicit errors for common contract violations. Most of them are raised when the class is defined, so a broken endpoint fails on import, not on its first call:
 
 - missing return annotation -> `MissingReturnTypeError`
 - typed return without decoder -> `MissingDecoderError`
 - endpoint or mounted resource named like something `ClientX` already has (`user_agent`, `client`, or a dunder method) -> `EndpointNameConflictError`
+- path placeholder, including one from a resource prefix, that names no parameter -> `MissingPathArgumentsError`
+- no positional first parameter for the client (usually `self`, but any name works), or a `*args` or `**kwargs` parameter -> `EndpointSignatureError`
+- request-part helper nested inside another type, or two helpers on one parameter or field -> `MisplacedHelperError` (for a model field, when the class is defined if a parameter is annotated with the model, or else when the model is sent)
+
+At call time:
+
 - endpoint called on a resource that isn't mounted on a client -> `UnboundResourceError`
-- path placeholders not provided -> `MissingPathArgumentsError`
 - argument cannot map to request parts -> `UnconsumableArgumentError`
-- request-part helper nested inside another type, or two helpers on one parameter or field -> `MisplacedHelperError`
+
+Annotations are evaluated when the class is defined, so endpoints work in modules with `from __future__ import annotations`. Like `pydantic`, ClientX evaluates them against the module's globals: a type defined inside a function can't be named in a string annotation.
 
 All of them derive from `ClientXError` (importable from `clientx`), so `except ClientXError` catches any of them. Each also keeps its built-in base (`TypeError` or `ValueError`).
 

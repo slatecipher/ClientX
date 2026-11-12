@@ -12,7 +12,7 @@ from typing import Any, cast, get_args
 from pydantic import BaseModel
 from pydantic_core import to_jsonable_python
 
-from clientx._annotation_extractor import NamedAnnotation, NamedAnnotationExtractor
+from clientx._annotation_extractor import NamedAnnotation, model_annotations
 from clientx._annotations import DumpConfig
 from clientx._client_types import RequestPartName
 from clientx._endpoint_context import Endpoint
@@ -129,24 +129,6 @@ class ArgumentCursor:
         self.consumed[name] = value
         return value
 
-    def consume_optional(self, name: str, default: Any = None) -> Any:
-        """Consume an optional argument if present.
-
-        Args:
-            name: Argument name to consume.
-            default: Value to return if the argument is missing.
-
-        Returns:
-            The argument value if present, otherwise the default.
-        """
-        if name in self.consumed:
-            return self.consumed[name]
-        if name not in self.bound_copy:
-            return default
-        value = self.bound_copy.pop(name)
-        self.consumed[name] = value
-        return value
-
     def is_consumed(self, name: str) -> bool:
         """Check whether an argument has been consumed.
 
@@ -197,8 +179,8 @@ class RequestFactory:
         """
         cursor = ArgumentCursor(arguments)
 
-        # 1) drop self from request materialization
-        cursor.consume_optional("self")
+        # The first parameter is the client or resource, whatever it's named.
+        cursor.consume(self.endpoint.client_parameter)
         rendered_path = self.render_path(cursor)
 
         request_parts = self.extract_request_parts(cursor)
@@ -253,11 +235,11 @@ class RequestFactory:
                 request part.
         """
         parts: list[dict[str, Any]] = []
-        annotation_map = NamedAnnotationExtractor.from_signature(self.endpoint.signature)
         model_extractor = ModelExtractor()
 
-        for field_name, annotation in annotation_map.items():
-            # already consumed (e.g., self or path parameters)
+        # Analysed once when the class was defined; the client parameter isn't in it.
+        for field_name, annotation in self.endpoint.parameters.items():
+            # Already consumed as a path parameter.
             if cursor.is_consumed(field_name):
                 continue
 
@@ -368,12 +350,12 @@ class ModelExtractor:
         Returns:
             dict[str, Any]: Request part mapping derived from the model.
         """
-        annotation_map = NamedAnnotationExtractor.from_base_model(model)
+        annotation_map = model_annotations(type(model))
         dump = dump_model(model, dump_config)
         return self.build_request_arguments(dump, annotation_map)
 
     def build_request_arguments(
-        self, dump: dict[str, Any], annotation_map: dict[str, NamedAnnotation]
+        self, dump: dict[str, Any], annotation_map: Mapping[str, NamedAnnotation]
     ) -> dict[str, dict[str, Any]]:
         """Build request parts based on a model dump and annotation mapping.
 

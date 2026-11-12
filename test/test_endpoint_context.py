@@ -1,11 +1,20 @@
 import inspect
+import re
+from collections.abc import Callable
+from typing import Annotated
 
 import pytest
 from httpx2 import Response
 
+from clientx import Query
 from clientx._endpoint_context import DeprecatedMessage, Endpoint, URLPath
 from clientx.decoders import StreamLinesDecoder, StreamResponseDecoder
-from clientx.exceptions import MissingDecoderError, MissingPathArgumentsError, MissingReturnTypeError
+from clientx.exceptions import (
+    EndpointSignatureError,
+    MissingDecoderError,
+    MissingPathArgumentsError,
+    MissingReturnTypeError,
+)
 
 
 def test_endpoint_context_wraps_path_and_extracts_parameters():
@@ -52,7 +61,7 @@ def test_url_path_str_returns_template():
 def test_endpoint_context_signature_is_set_with_func():
     endpoint = Endpoint("GET", "/v1/users/{user_id}")
 
-    def handler(user_id: str) -> None: ...
+    def handler(self: object, user_id: str) -> None: ...
 
     endpoint.func = handler
 
@@ -78,7 +87,7 @@ def test_deprecated_emits_deprecation_warning():
 def test_endpoint_repr_includes_method_path_function_and_return_type():
     endpoint = Endpoint("GET", "/v1/users/{user_id}", decoder=StreamResponseDecoder(), tags=["users"], timeout=30.0)
 
-    def handler(user_id: str) -> Response: ...
+    def handler(self: object, user_id: str) -> Response: ...
 
     endpoint.func = handler
 
@@ -182,3 +191,103 @@ def test_endpoint_func_requires_return_annotation():
 
     with pytest.raises(MissingReturnTypeError):
         endpoint.func = handler
+
+
+def test_endpoint_parameters_are_analysed_once_when_func_is_set():
+    endpoint = Endpoint("GET", "/v1/users/{user_id}")
+
+    def handler(client: object, user_id: str, page: Annotated[int, Query("p")]) -> None: ...
+
+    endpoint.func = handler
+
+    assert endpoint.client_parameter == "client"
+    assert list(endpoint.parameters) == ["user_id", "page"]
+    assert endpoint.parameters["page"].part == Query("p")
+
+
+@pytest.mark.parametrize("name", ["client_parameter", "parameters"])
+def test_endpoint_parameters_require_func(name: str):
+    endpoint = Endpoint("GET", "/v1/users")
+
+    with pytest.raises(RuntimeError, match=f"Endpoint.{name} is not set"):
+        getattr(endpoint, name)
+
+
+def test_endpoint_signature_has_evaluated_annotations():
+    endpoint = Endpoint("GET", "/v1/users")
+
+    def handler(self: object, page: "Annotated[int, Query('p')]") -> None: ...
+
+    endpoint.func = handler
+
+    assert endpoint.signature.parameters["page"].annotation == Annotated[int, Query("p")]
+
+
+def test_a_placeholder_without_a_parameter_raises_when_func_is_set():
+    endpoint = Endpoint("GET", "/v1/users/{user_id}/posts/{post_id}")
+
+    def handler(self: object, uid: int, post_id: int) -> None: ...
+
+    with pytest.raises(MissingPathArgumentsError) as info:
+        endpoint.func = handler
+
+    assert info.value.missing_args == ["user_id"]
+    assert "Missing path arguments for '/v1/users/{user_id}/posts/{post_id}': user_id." in str(info.value)
+    assert "needs a parameter for each placeholder in its path" in str(info.value)
+
+
+def test_a_placeholder_naming_the_client_parameter_raises():
+    endpoint = Endpoint("GET", "/v1/{self}")
+
+    def handler(self: object) -> None: ...
+
+    with pytest.raises(MissingPathArgumentsError, match="self"):
+        endpoint.func = handler
+
+
+def test_setting_a_path_after_func_checks_its_placeholders():
+    endpoint = Endpoint("GET", "/v1/users")
+
+    def handler(self: object, user_id: int) -> None: ...
+
+    endpoint.func = handler
+    endpoint.path = "/v1/users/{user_id}"
+
+    with pytest.raises(MissingPathArgumentsError, match="team_id"):
+        endpoint.path = "/v1/teams/{team_id}"
+
+
+def no_parameters() -> None: ...
+
+
+def keyword_only_client(*, self: object) -> None: ...
+
+
+def var_positional_client(*clients: object) -> None: ...
+
+
+def var_positional(self: object, *ids: int) -> None: ...
+
+
+def var_keyword(self: object, **filters: str) -> None: ...
+
+
+@pytest.mark.parametrize(
+    ("handler", "problem"),
+    [
+        (no_parameters, "first, positional parameter"),
+        (keyword_only_client, "first, positional parameter"),
+        (var_positional_client, "first, positional parameter"),
+        (var_positional, "can't take `*ids`"),
+        (var_keyword, "can't take `**filters`"),
+    ],
+    ids=["no parameters", "keyword-only client", "variadic client", "*args", "**kwargs"],
+)
+def test_a_signature_that_cant_describe_a_request_raises(handler: Callable[..., None], problem: str):
+    endpoint = Endpoint("GET", "/v1/users")
+
+    with pytest.raises(EndpointSignatureError, match=re.escape(problem)) as info:
+        endpoint.func = handler
+
+    assert info.value.func is handler
+    assert f"Endpoint function '{handler.__qualname__}' (defined in test_endpoint_context)" in str(info.value)

@@ -142,8 +142,6 @@ def test_argument_cursor_consumption_and_state():
     cursor = ArgumentCursor(bound)
 
     assert cursor.consume("a") == 1
-    assert cursor.consume_optional("a", default=99) == 1
-    assert cursor.consume_optional("missing", default=99) == 99
     assert cursor.is_consumed("a") is True
     assert cursor.is_consumed("b") is False
     assert cursor.consumed == {"a": 1}

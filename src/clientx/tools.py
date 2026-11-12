@@ -18,7 +18,7 @@ import re
 import warnings
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
-from typing import Any, get_type_hints
+from typing import Any
 
 import httpx2
 from pydantic import BaseModel, ConfigDict, Field, PydanticUserError, TypeAdapter, create_model
@@ -206,18 +206,17 @@ def _arguments_model(name: str, endpoint: Endpoint) -> tuple[type[BaseModel], tu
     Fields get internal names and the parameter name as their alias, so a
     parameter such as ``json`` can't clash with ``BaseModel``'s own attributes.
     """
-    hints = get_type_hints(endpoint.func, include_extras=True)
     fields: dict[str, Any] = {}
     positional: list[str] = []
     parameters = list(endpoint.signature.parameters.values())[1:]
 
     for index, parameter in enumerate(parameters):
-        if parameter.kind in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD):
-            continue
         if parameter.kind is inspect.Parameter.POSITIONAL_ONLY:
             positional.append(parameter.name)
         default = ... if parameter.default is inspect.Parameter.empty else parameter.default
-        fields[f"arg{index}"] = (hints.get(parameter.name, Any), Field(default, alias=parameter.name))
+        # The endpoint's signature already has its annotations resolved, Annotated metadata included.
+        annotation = Any if parameter.annotation is inspect.Parameter.empty else parameter.annotation
+        fields[f"arg{index}"] = (annotation, Field(default, alias=parameter.name))
 
     model = create_model(name, __config__=ConfigDict(extra="forbid"), **fields)
     return model, tuple(positional)
