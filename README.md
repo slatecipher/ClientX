@@ -211,7 +211,18 @@ A 4xx or 5xx response raises `httpx2.HTTPStatusError` before any decoder runs (s
 
 A decoder is a callable that receives the raw `httpx2.Response` and returns the value that matches your method's return annotation. ClientX executes the HTTP request first, then passes the response into the decoder, and returns the decoder output to the caller.
 
-Type checkers enforce the match: `decoder=ModelDecoder(User)` on a method annotated `-> str` is reported as an error, and so is a method annotated with anything other than `Response` or `None` that has no decoder.
+Type checkers enforce the match: a method annotated with anything other than `Response` or `None` that has no decoder is reported as an error, and so is `decoder=ModelDecoder(User)` on a method annotated `-> str`. Both errors point at the decorator:
+
+- No decoder, on `def get_user(self, user_id: int) -> User`:
+  - pyright: `Type "User" is not assignable to constrained type variable "ResponseOrNone"`
+  - mypy: `Value of type variable "ResponseOrNone" of "__call__" of "RawEndpointDecorator" cannot be "User"  [type-var]`
+
+  Add a decoder, such as `decoder=ModelDecoder(User)`, or return `Response` or `None`.
+- A decoder that doesn't match, `decoder=ModelDecoder(User)` on `-> str`:
+  - pyright: `Function return type "str" is incompatible with type "User"`
+  - mypy: `Argument 1 to "__call__" of "DecodedEndpointDecorator" has incompatible type "Callable[[UsersClient, int], str]"; expected "Callable[[UsersClient, int], User]"  [arg-type]`
+
+  Make the return annotation match the decoder's output. mypy also notes that the method "has named arguments" and suggests marking them positional-only; that's its generic hint for callable mismatches, and doesn't apply here.
 
 In practice, decoders are where you define response parsing and validation behavior:
 

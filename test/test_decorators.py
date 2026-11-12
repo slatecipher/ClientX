@@ -7,7 +7,7 @@ from httpx2 import HTTPStatusError, Request, Response
 import clientx._decorators as decorators_module
 from clientx import Body, Header
 from clientx._client import ClientX
-from clientx._decorators import ApiMethod, method
+from clientx._decorators import ApiMethod, DecodedEndpointDecorator, RawEndpointDecorator, method
 from clientx.decoders import StreamLinesDecoder
 from clientx.exceptions import (
     EndpointNameConflictError,
@@ -187,6 +187,17 @@ def test_the_path_defaults_to_the_base_url(endpoint_of, mock_transport):
 
     assert str(endpoint_of(API.root).path) == ""
     assert [str(request.url) for request in sent] == ["https://api.example.com/v1/"]
+
+
+def test_type_checker_messages_name_the_fix():
+    # The README and llms.txt quote checker messages that use these names, such as
+    # 'Type "User" is not assignable to constrained type variable "ResponseOrNone"'.
+    assert [param.__name__ for param in RawEndpointDecorator.__call__.__type_params__] == ["C", "Q", "ResponseOrNone"]
+    assert [param.__name__ for param in DecodedEndpointDecorator.__call__.__type_params__] == [
+        "C",
+        "Q",
+        "DecoderOutput",
+    ]
 
 
 def test_method_container_exposes_http_methods():
