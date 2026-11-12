@@ -3,7 +3,6 @@ from typing import Annotated
 
 import pytest
 from httpx2 import HTTPStatusError, Request, Response
-from support import endpoint_of, mock_transport
 
 import clientx._decorators as decorators_module
 from clientx import Body, Header
@@ -13,7 +12,7 @@ from clientx.decoders import StreamLinesDecoder
 from clientx.exceptions import EndpointNameConflictError, MissingPathArgumentsError, PathTemplateError
 
 
-def test_api_method_registers_endpoint_and_returns_response():
+def test_api_method_registers_endpoint_and_returns_response(endpoint_of, mock_transport):
     sent: list[Request] = []
 
     class API(ClientX):
@@ -31,7 +30,7 @@ def test_api_method_registers_endpoint_and_returns_response():
     assert str(endpoint.path) == "/v1/items/{item_id}"
 
 
-def test_api_method_returns_none_for_none_annotation():
+def test_api_method_returns_none_for_none_annotation(mock_transport):
     class API(ClientX):
         @ApiMethod("POST")("/v1/items")
         def create_item(self, json: dict[str, int]) -> None: ...
@@ -41,7 +40,7 @@ def test_api_method_returns_none_for_none_annotation():
     assert api.create_item({"id": 1}) is None
 
 
-def test_api_method_decodes_non_response_return():
+def test_api_method_decodes_non_response_return(mock_transport):
     def decode_count(response: Response) -> int:
         return int(response.json()["count"])
 
@@ -54,7 +53,7 @@ def test_api_method_decodes_non_response_return():
     assert api.get_count() == 7
 
 
-def test_api_method_runs_decoder_for_response_return():
+def test_api_method_runs_decoder_for_response_return(mock_transport):
     def checked(response: Response) -> Response:
         response.raise_for_status()
         return response
@@ -70,7 +69,7 @@ def test_api_method_runs_decoder_for_response_return():
         api.list_items()
 
 
-def test_api_method_runs_decoder_for_none_return():
+def test_api_method_runs_decoder_for_none_return(mock_transport):
     calls: list[int] = []
 
     def record(response: Response) -> None:
@@ -86,7 +85,7 @@ def test_api_method_runs_decoder_for_none_return():
     assert calls == [204]
 
 
-def test_api_method_streams_when_decoder_requests_it():
+def test_api_method_streams_when_decoder_requests_it(endpoint_of, mock_transport):
     class API(ClientX):
         @ApiMethod("GET")("/v1/stream", decoder=StreamLinesDecoder())
         def stream(self) -> Iterator[str]: ...
@@ -97,7 +96,7 @@ def test_api_method_streams_when_decoder_requests_it():
     assert list(api.stream()) == ["a", "b"]
 
 
-def test_api_method_applies_endpoint_timeout():
+def test_api_method_applies_endpoint_timeout(mock_transport):
     sent: list[Request] = []
 
     class API(ClientX):
@@ -115,7 +114,7 @@ def test_api_method_applies_endpoint_timeout():
     assert [request.extensions["timeout"]["read"] for request in sent] == [12.5, 3.0]
 
 
-def test_api_method_applies_timeout_to_streamed_requests():
+def test_api_method_applies_timeout_to_streamed_requests(mock_transport):
     sent: list[Request] = []
 
     class API(ClientX):
@@ -128,7 +127,7 @@ def test_api_method_applies_timeout_to_streamed_requests():
     assert sent[0].extensions["timeout"]["read"] == 15.0
 
 
-def test_api_method_calls_deprecation_handler():
+def test_api_method_calls_deprecation_handler(mock_transport):
     calls = {"count": 0}
 
     def deprecated() -> None:
@@ -143,7 +142,7 @@ def test_api_method_calls_deprecation_handler():
     assert calls["count"] == 1
 
 
-def test_api_method_registers_endpoint_tags():
+def test_api_method_registers_endpoint_tags(endpoint_of):
     class API(ClientX):
         @ApiMethod("GET")("/v1/items", tags=["catalog", "public"])
         def list_items(self) -> Response: ...
@@ -158,7 +157,7 @@ def test_api_method_registers_endpoint_tags():
     assert api is not None
 
 
-def test_api_method_raises_internal_error_when_type_checks_are_forced_false(monkeypatch):
+def test_api_method_raises_internal_error_when_type_checks_are_forced_false(monkeypatch, mock_transport):
     class API(ClientX):
         @ApiMethod("GET")("/v1/items/{item_id}")
         def get_item(self, item_id: str) -> Response: ...
@@ -182,7 +181,7 @@ def test_method_container_exposes_http_methods():
     assert method.put.method == "PUT"
 
 
-def test_endpoint_can_be_named_send():
+def test_endpoint_can_be_named_send(mock_transport):
     sent: list[Request] = []
 
     class MessagesClient(ClientX):
@@ -219,7 +218,7 @@ def test_endpoint_cannot_use_a_name_clientx_already_uses(name: str):
         type("Dynamic", (ClientX,), {name: method.get("/items")(endpoint)})
 
 
-def test_the_client_parameter_can_have_any_name():
+def test_the_client_parameter_can_have_any_name(mock_transport):
     sent: list[Request] = []
 
     class API(ClientX):
@@ -241,7 +240,7 @@ def test_a_placeholder_without_a_parameter_raises_when_the_class_is_defined():
             def user(self, uid: int) -> Response: ...
 
 
-def test_path_values_cant_change_the_path():
+def test_path_values_cant_change_the_path(mock_transport):
     sent: list[Request] = []
 
     class API(ClientX):
@@ -269,7 +268,7 @@ def test_an_unknown_path_converter_raises_when_the_class_is_defined():
             def user(self, user_id: int) -> Response: ...
 
 
-def test_arguments_for_the_same_part_merge_in_parameter_order():
+def test_arguments_for_the_same_part_merge_in_parameter_order(mock_transport):
     sent: list[Request] = []
 
     class API(ClientX):

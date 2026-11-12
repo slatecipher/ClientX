@@ -10,7 +10,6 @@ import httpx2
 import pytest
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
-from support import mock_transport
 
 from clientx import Body, File, Form, Header, Query, Response
 from clientx._annotations import Part
@@ -209,7 +208,7 @@ def test_model_extractor_rejects_body_and_file_fields_that_are_not_mappings(
     assert f"endpoint parameter marked {helper}" in message
 
 
-def test_body_model_field_that_is_not_a_mapping_raises_before_sending():
+def test_body_model_field_that_is_not_a_mapping_raises_before_sending(make_recording_client):
     class TagsClient(ClientX):
         @post("/tags")
         def tag(self, payload: ListBody) -> Response: ...
@@ -297,7 +296,7 @@ def test_request_factory_leaves_out_keyed_values_that_are_none(helper: type[Part
     assert factory(endpoint.bind(client=client, args=("",), kwargs={})).parts == {part: {"kind": ""}}
 
 
-def test_optional_keyed_values_are_only_sent_when_given():
+def test_optional_keyed_values_are_only_sent_when_given(mock_transport):
     sent: list[httpx2.Request] = []
 
     class PostsClient(ClientX):
@@ -332,7 +331,7 @@ def test_merge_request_parts_leaves_none_out_of_keyed_parts_but_not_json():
     assert merged == {"params": {"b": 1}, "headers": {"X-B": "b"}, "data": {"d": "d"}, "json": {"e": None}}
 
 
-def test_none_values_in_mappings_and_models_are_not_sent():
+def test_none_values_in_mappings_and_models_are_not_sent(mock_transport):
     sent: list[httpx2.Request] = []
 
     class PostFilters(BaseModel):
@@ -360,7 +359,7 @@ def test_none_values_in_mappings_and_models_are_not_sent():
     assert sent[1].content == b'{"title":null}'
 
 
-def test_merging_request_parts_never_changes_the_callers_dict():
+def test_merging_request_parts_never_changes_the_callers_dict(mock_transport):
     sent: list[httpx2.Request] = []
 
     class ItemsClient(ClientX):
@@ -403,8 +402,12 @@ class Upload(BaseModel):
     name: str
 
 
-def make_recording_client[C: ClientX](client_class: type[C], sent: list[httpx2.Request]) -> C:
-    return client_class("https://example.test", transport=mock_transport(sent))
+@pytest.fixture
+def make_recording_client(mock_transport):
+    def make[C: ClientX](client_class: type[C], sent: list[httpx2.Request]) -> C:
+        return client_class("https://example.test", transport=mock_transport(sent))
+
+    return make
 
 
 class EventsClient(ClientX):
@@ -433,7 +436,7 @@ class EventsClient(ClientX):
     ) -> Response: ...
 
 
-def test_models_are_sent_as_json_values_under_their_aliases():
+def test_models_are_sent_as_json_values_under_their_aliases(make_recording_client):
     sent: list[httpx2.Request] = []
     client = make_recording_client(EventsClient, sent)
 
@@ -446,7 +449,7 @@ def test_models_are_sent_as_json_values_under_their_aliases():
     assert str(sent[1].url) == "https://example.test/events?startsAfter=2026-01-01T09%3A30%3A00&venueId=7"
 
 
-def test_dump_config_overrides_the_json_and_alias_defaults():
+def test_dump_config_overrides_the_json_and_alias_defaults(make_recording_client):
     sent: list[httpx2.Request] = []
     client = make_recording_client(EventsClient, sent)
 
@@ -467,7 +470,7 @@ def test_dump_config_overrides_the_json_and_alias_defaults():
     assert RequestFactory(endpoint=endpoint)(arguments).parts["json"]["startsAt"] == STARTS_AT
 
 
-def test_model_fields_with_a_serialization_alias_are_routed_by_their_annotation():
+def test_model_fields_with_a_serialization_alias_are_routed_by_their_annotation(make_recording_client):
     sent: list[httpx2.Request] = []
     client = make_recording_client(EventsClient, sent)
 
@@ -477,7 +480,7 @@ def test_model_fields_with_a_serialization_alias_are_routed_by_their_annotation(
     assert sent[0].content == b'{"name":"report.pdf"}'
 
 
-def test_single_values_are_sent_as_json_values_and_headers_as_text():
+def test_single_values_are_sent_as_json_values_and_headers_as_text(make_recording_client):
     sent: list[httpx2.Request] = []
     client = make_recording_client(EventsClient, sent)
 
@@ -510,7 +513,7 @@ class SearchClient(ClientX):
     def upload(self, auth: Annotated[str, Header()]) -> Response: ...
 
 
-def test_single_values_without_a_key_are_sent_under_the_parameter_name():
+def test_single_values_without_a_key_are_sent_under_the_parameter_name(make_recording_client):
     sent: list[httpx2.Request] = []
     client = make_recording_client(SearchClient, sent)
 
@@ -524,7 +527,7 @@ def test_single_values_without_a_key_are_sent_under_the_parameter_name():
     assert sent[0].headers["request-id"] == "r-1"
 
 
-def test_single_form_fields_and_headers_without_a_key_are_sent_under_the_parameter_name():
+def test_single_form_fields_and_headers_without_a_key_are_sent_under_the_parameter_name(make_recording_client):
     sent: list[httpx2.Request] = []
     client = make_recording_client(SearchClient, sent)
 
@@ -535,7 +538,7 @@ def test_single_form_fields_and_headers_without_a_key_are_sent_under_the_paramet
     assert sent[1].headers["auth"] == "Bearer t-1"
 
 
-def test_parameters_named_after_a_part_are_still_the_whole_part():
+def test_parameters_named_after_a_part_are_still_the_whole_part(make_recording_client):
     sent: list[httpx2.Request] = []
     client = make_recording_client(SearchClient, sent)
 
@@ -556,7 +559,7 @@ class LookupClient(ClientX):
     def create(self, lookup: Lookup) -> Response: ...
 
 
-def test_single_model_fields_are_sent_under_their_key_or_dumped_name():
+def test_single_model_fields_are_sent_under_their_key_or_dumped_name(make_recording_client):
     sent: list[httpx2.Request] = []
     client = make_recording_client(LookupClient, sent)
 
@@ -582,7 +585,7 @@ class AliasClient(ClientX):
     def filter_posts(self, filters: AliasFilters) -> Response: ...
 
 
-def test_markers_in_type_aliases_route_parameters_and_model_fields():
+def test_markers_in_type_aliases_route_parameters_and_model_fields(make_recording_client):
     sent: list[httpx2.Request] = []
     client = make_recording_client(AliasClient, sent)
 
@@ -620,7 +623,7 @@ class HelpersClient(ClientX):
     def attach(self, attachment: Annotated[dict[str, bytes], File()]) -> Response: ...
 
 
-def test_query_and_header_helpers():
+def test_query_and_header_helpers(make_recording_client):
     sent: list[httpx2.Request] = []
     client = make_recording_client(HelpersClient, sent)
 
@@ -633,7 +636,7 @@ def test_query_and_header_helpers():
     assert "Authorization" not in sent[1].headers
 
 
-def test_form_body_and_file_helpers():
+def test_form_body_and_file_helpers(make_recording_client):
     sent: list[httpx2.Request] = []
     client = make_recording_client(HelpersClient, sent)
 

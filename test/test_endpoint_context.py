@@ -269,7 +269,7 @@ def test_a_signature_that_cant_describe_a_request_raises(handler: Callable[..., 
         endpoint.func = handler
 
     assert info.value.func is handler
-    assert f"Endpoint function '{handler.__qualname__}' (defined in test_endpoint_context)" in str(info.value)
+    assert f"Endpoint function '{handler.__qualname__}' (defined in {__name__})" in str(info.value)
 
 
 class Color(enum.Enum):

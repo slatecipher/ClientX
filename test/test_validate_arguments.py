@@ -2,12 +2,12 @@
 
 import enum
 import io
+from collections.abc import Callable
 from typing import Annotated, BinaryIO
 
 import httpx2
 import pytest
 from pydantic import BaseModel, Field
-from support import mock_transport
 
 from clientx import ClientX, File, Query, Resource, Response
 from clientx._registry import endpoint_for
@@ -56,15 +56,15 @@ class API(ClientX):
     def never(self, page: Annotated[int, Query()]) -> Response: ...
 
 
-def make_api(sent: list[httpx2.Request], *, validate_arguments: bool) -> API:
-    return API(
-        "https://api.example.com",
-        validate_arguments=validate_arguments,
-        transport=mock_transport(sent),
-    )
+@pytest.fixture
+def make_api(mock_transport) -> Callable[..., API]:
+    def make(sent: list[httpx2.Request], *, validate_arguments: bool) -> API:
+        return API("https://api.example.com", validate_arguments=validate_arguments, transport=mock_transport(sent))
+
+    return make
 
 
-def test_validation_is_off_by_default():
+def test_validation_is_off_by_default(mock_transport):
     sent: list[httpx2.Request] = []
     api = API("https://api.example.com", transport=mock_transport(sent))
 
@@ -74,7 +74,7 @@ def test_validation_is_off_by_default():
     assert request.url.params["page"] == "2"
 
 
-def test_an_argument_that_doesnt_match_raises_before_sending():
+def test_an_argument_that_doesnt_match_raises_before_sending(make_api):
     sent: list[httpx2.Request] = []
     api = make_api(sent, validate_arguments=True)
 
@@ -90,14 +90,14 @@ def test_an_argument_that_doesnt_match_raises_before_sending():
     assert isinstance(info.value, ValueError)
 
 
-def test_field_constraints_are_checked():
+def test_field_constraints_are_checked(make_api):
     api = make_api([], validate_arguments=True)
 
     with pytest.raises(ArgumentValidationError, match="greater than or equal to 1"):
         api.search(0)
 
 
-def test_valid_arguments_are_sent_unchanged():
+def test_valid_arguments_are_sent_unchanged(make_api):
     sent: list[httpx2.Request] = []
     api = make_api(sent, validate_arguments=True)
 
@@ -112,14 +112,14 @@ def test_valid_arguments_are_sent_unchanged():
     assert second.content == b'{"status":"open"}'
 
 
-def test_a_value_isnt_converted_to_match():
+def test_a_value_isnt_converted_to_match(make_api):
     api = make_api([], validate_arguments=True)
 
     with pytest.raises(ArgumentValidationError, match="color"):
         api.search(1, color="red")  # pyright: ignore[reportArgumentType]
 
 
-def test_defaults_arent_checked():
+def test_defaults_arent_checked(make_api):
     sent: list[httpx2.Request] = []
     api = make_api(sent, validate_arguments=True)
 
@@ -129,7 +129,7 @@ def test_defaults_arent_checked():
     assert "page" not in request.url.params
 
 
-def test_types_pydantic_cant_validate_are_skipped():
+def test_types_pydantic_cant_validate_are_skipped(make_api):
     sent: list[httpx2.Request] = []
     api = make_api(sent, validate_arguments=True)
 
@@ -139,7 +139,7 @@ def test_types_pydantic_cant_validate_are_skipped():
 
 
 @pytest.mark.parametrize("client_setting", [True, False])
-def test_an_endpoints_setting_wins_over_the_clients(client_setting: bool):
+def test_an_endpoints_setting_wins_over_the_clients(client_setting: bool, make_api):
     sent: list[httpx2.Request] = []
     api = make_api(sent, validate_arguments=client_setting)
 
@@ -150,7 +150,7 @@ def test_an_endpoints_setting_wins_over_the_clients(client_setting: bool):
     assert [request.url.path for request in sent] == ["/never"]
 
 
-def test_resource_endpoints_follow_the_root_clients_setting():
+def test_resource_endpoints_follow_the_root_clients_setting(make_api):
     sent: list[httpx2.Request] = []
     api = make_api(sent, validate_arguments=True)
 
@@ -184,7 +184,7 @@ def test_validators_are_built_once_per_parameter():
     assert set(endpoint._validators) == {"page", "ratio"}  # pyright: ignore[reportPrivateUsage]
 
 
-def test_tool_calls_pass_validation_after_converting_json_arguments():
+def test_tool_calls_pass_validation_after_converting_json_arguments(mock_transport):
     class Palette(ClientX):
         @get("/search")
         def search(self, color: Annotated[Color, Query()]) -> Response: ...
