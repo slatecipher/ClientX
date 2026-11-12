@@ -16,7 +16,7 @@ fails if the typing contract regresses for users of either checker:
   untyped decorator by falling back to the undecorated signature. mypy has no such
   fallback and would see every endpoint as ``Any``; its ``strict`` mode reports an
   untyped decorator too.
-- mypy's ``empty-body`` check is off, as the README tells mypy users to do, because
+- mypy's ``empty-body`` check is off, as docs/endpoints.md tells mypy users to do, because
   endpoint bodies are ``...``.
 
 The tests also run under pytest against a mock transport.
