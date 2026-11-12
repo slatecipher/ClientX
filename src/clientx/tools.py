@@ -112,8 +112,9 @@ def list_tools(
     """Describe a client's endpoints, including those on mounted resources, as tools.
 
     Streaming endpoints are left out: their results can't be returned as one value.
-    An endpoint whose parameter or return types have no JSON Schema (such as file
-    uploads) is left out with a warning.
+    An endpoint whose parameter or return types have no JSON Schema (such as an
+    upload typed as a file object, ``BinaryIO``) is left out with a warning. An
+    upload typed as ``bytes`` has a schema, so it's listed.
 
     Args:
         client: The client whose endpoints become tools. Tools call through it.
@@ -177,8 +178,10 @@ def _build_tool(name: str, endpoint: Endpoint, function: Callable[..., Any]) -> 
         input_schema = arguments.model_json_schema()
         output_schema, serialize = _output(endpoint)
     except PydanticUserError as error:
+        # Pydantic's first line names the type; the paragraphs after it are about writing custom types.
+        reason = str(error).partition("\n")[0]
         warnings.warn(
-            f"list_tools() left out endpoint {endpoint.func.__qualname__!r}: its types have no JSON Schema ({error})",
+            f"list_tools() left out endpoint {endpoint.func.__qualname__!r}: its types have no JSON Schema ({reason})",
             stacklevel=3,
         )
         return None
