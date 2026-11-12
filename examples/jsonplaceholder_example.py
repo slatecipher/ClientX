@@ -37,7 +37,7 @@ def main() -> None:
 
         # Argument validation is off by default, so post 1000 was sent above. A second client for the same
         # API, with it on, checks the bounds in the endpoint's annotations (post IDs are 1 to 100) first.
-        with JSONPlaceholder(api.client.base_url, validate_arguments=True) as checked:
+        with JSONPlaceholder(validate_arguments=True) as checked:
             try:
                 checked.posts.get(1000)
             except ArgumentValidationError as exc:

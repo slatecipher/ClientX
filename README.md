@@ -169,7 +169,7 @@ Type checkers see `api.users` as `Users`, and its endpoints keep their signature
 - `tags` are added before each endpoint's own tags.
 - Mount resources on other resources to nest them, for example `api.repos.issues.retrieve(...)`. Each keeps its own prefix.
 - A resource doesn't refer to the client class, so resources can live in their own modules.
-- Names that `ClientX` itself uses, such as `client` and `user_agent`, are free for endpoints on a resource.
+- Names that `ClientX` itself uses, such as `close`, are free for endpoints on a resource.
 - A subclass keeps its parent's prefix and tags unless it sets its own.
 - An endpoint's name hides any other meaning of that name for the rest of the class body:
   - If an endpoint is named like a decorator, such as `get`, later decorators refer to that method instead. Import the module (`from clientx import methods`) and write `@methods.get(...)`.
@@ -595,6 +595,8 @@ client = ClientX(
 
 - `user_agent` sets the `User-Agent` header. Without it, a `User-Agent` in `headers=` is kept, or else the class's default is sent (below), which is `ClientX/<version>` unless the class sets its own.
 - Additional kwargs are forwarded to `httpx2.Client(...)`.
+- Close the client's connections when you're done with it: use it in a `with` block, or call `close()`.
+- The `httpx2.Client` is internal, so its configuration, the `User-Agent` included, is set when the client is created. For a request the client doesn't model yet, declare an endpoint.
 
 A client class can ship its own base URL and `User-Agent` as class arguments, so callers can create it without arguments:
 
@@ -865,7 +867,7 @@ ClientX raises explicit errors for common contract violations. Most of them are 
 
 - missing return annotation -> `MissingReturnTypeError`
 - typed return without decoder -> `MissingDecoderError`
-- endpoint or mounted resource named like something `ClientX` already has (`user_agent`, `client`, or a dunder method) -> `EndpointNameConflictError`
+- endpoint or mounted resource named like something `ClientX` already has (`close`, or a dunder method) -> `EndpointNameConflictError`
 - path placeholder, including one from a resource prefix, that names no parameter -> `MissingPathArgumentsError`
 - path placeholder with a converter other than `{name:path}` -> `PathTemplateError`
 - no positional first parameter for the client (usually `self`, but any name works), a `*args` or `**kwargs` parameter, or a `PathParam()` parameter with no placeholder in the path (including a resource prefix) -> `EndpointSignatureError`

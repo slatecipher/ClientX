@@ -23,12 +23,12 @@ class Users(Resource, prefix="/users", tags=["users"]):
     @post()
     def create(self, json: dict[str, str]) -> Response: ...
 
-    # `send` and `client` would clash on a ClientX, but are free on a resource.
     @post("/{user_id}/messages")
     def send(self, user_id: int, json: dict[str, str]) -> Response: ...
 
-    @get("/{user_id}/client")
-    def client(self, user_id: int) -> Response: ...
+    # `close` would clash on a ClientX, but is free on a resource.
+    @post("/{user_id}/close")
+    def close(self, user_id: int) -> Response: ...
 
 
 class Issues(Resource, prefix="/repos/{owner}/{repo}/issues"):
@@ -88,9 +88,9 @@ def test_names_reserved_on_clientx_are_free_on_a_resource(make_api):
     api = make_api(sent)
 
     api.users.send(42, {"text": "hi"})
-    api.users.client(42)
+    api.users.close(42)
 
-    assert paths(sent) == ["POST /users/42/messages", "GET /users/42/client"]
+    assert paths(sent) == ["POST /users/42/messages", "POST /users/42/close"]
 
 
 def test_prefix_placeholders_are_filled_from_the_method_arguments(make_api):
@@ -220,10 +220,10 @@ def test_mounting_on_a_class_that_is_not_a_client_or_resource_raises():
 
 
 def test_resource_mounted_under_a_name_clientx_uses_raises():
-    with pytest.raises(EndpointNameConflictError, match=r"BrokenAPI\.client' .* ClientX already uses that name"):
+    with pytest.raises(EndpointNameConflictError, match=r"BrokenAPI\.close' .* ClientX already uses that name"):
 
         class BrokenAPI(ClientX):
-            client = Users()  # pyright: ignore[reportAssignmentType]
+            close = Users()  # pyright: ignore[reportAssignmentType]
 
 
 @pytest.mark.parametrize("name", ["__get__", "__clientx_parent__"])
