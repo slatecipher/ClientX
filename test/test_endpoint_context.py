@@ -1,5 +1,8 @@
+import datetime
+import enum
 import inspect
 import re
+import uuid
 from collections.abc import Callable
 from typing import Annotated
 
@@ -14,6 +17,7 @@ from clientx.exceptions import (
     MissingDecoderError,
     MissingPathArgumentsError,
     MissingReturnTypeError,
+    PathTemplateError,
 )
 
 
@@ -291,3 +295,80 @@ def test_a_signature_that_cant_describe_a_request_raises(handler: Callable[..., 
 
     assert info.value.func is handler
     assert f"Endpoint function '{handler.__qualname__}' (defined in test_endpoint_context)" in str(info.value)
+
+
+class Color(enum.Enum):
+    RED = "red"
+
+
+class Shown:
+    def __str__(self) -> str:
+        return "shown"
+
+
+@pytest.mark.parametrize(
+    ("value", "rendered"),
+    [
+        ("a/b", "/v1/users/a%2Fb/posts"),
+        ("x?y=1#z", "/v1/users/x%3Fy%3D1%23z/posts"),
+        ("..", "/v1/users/%2E%2E/posts"),
+        (".", "/v1/users/%2E/posts"),
+        ("a.b", "/v1/users/a.b/posts"),
+        ("café au lait", "/v1/users/caf%C3%A9%20au%20lait/posts"),
+        ("50%", "/v1/users/50%25/posts"),
+        (42, "/v1/users/42/posts"),
+        (True, "/v1/users/true/posts"),
+        (Color.RED, "/v1/users/red/posts"),
+        (uuid.UUID(int=1), "/v1/users/00000000-0000-0000-0000-000000000001/posts"),
+        (datetime.date(2026, 1, 2), "/v1/users/2026-01-02/posts"),
+        (Shown(), "/v1/users/shown/posts"),
+    ],
+    ids=[
+        "slash",
+        "query and fragment",
+        "dot-dot",
+        "dot",
+        "inner dot",
+        "unicode and space",
+        "percent",
+        "int",
+        "bool",
+        "enum",
+        "uuid",
+        "date",
+        "str fallback",
+    ],
+)
+def test_url_path_format_encodes_each_value_as_one_segment(value: object, rendered: str):
+    assert URLPath("/v1/users/{user_id}/posts").format({"user_id": value}) == rendered
+
+
+@pytest.mark.parametrize(
+    ("value", "rendered"),
+    [
+        ("docs/guide/intro.md", "/repos/contents/docs/guide/intro.md"),
+        ("docs/../secrets", "/repos/contents/docs/%2E%2E/secrets"),
+        ("a b/c?d", "/repos/contents/a%20b/c%3Fd"),
+    ],
+    ids=["segments", "dot-dot segment", "encoded segments"],
+)
+def test_url_path_path_converter_keeps_slashes(value: str, rendered: str):
+    path = URLPath("/repos/contents/{file_path:path}")
+
+    assert path.parameters == ["file_path"]
+    assert path.format({"file_path": value}) == rendered
+
+
+def test_url_path_doubled_braces_are_literal():
+    path = URLPath("/v1/{{literal}}/{user_id}")
+
+    assert path.parameters == ["user_id"]
+    assert path.format({"user_id": 1}) == "/v1/{literal}/1"
+
+
+@pytest.mark.parametrize("template", ["/v1/users/{user_id:int}", "/v1/users/{user_id:}"])
+def test_url_path_unknown_converter_raises(template: str):
+    with pytest.raises(PathTemplateError, match=re.escape(f"Invalid path template {template!r}")) as info:
+        URLPath(template)
+
+    assert info.value.path == template

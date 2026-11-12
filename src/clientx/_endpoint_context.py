@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+import json
 import re
 import warnings
 from collections.abc import Callable
@@ -8,9 +9,11 @@ from dataclasses import dataclass
 from inspect import BoundArguments
 from types import MappingProxyType
 from typing import Any, ClassVar, get_type_hints
+from urllib.parse import quote
 
 import httpx2
 from pydantic import BaseModel
+from pydantic_core import to_jsonable_python
 
 from clientx._annotation_extractor import NamedAnnotation, NamedAnnotationExtractor, model_annotations
 from clientx._client import ClientX, Resource
@@ -27,10 +30,17 @@ from clientx.exceptions import (
     MissingDecoderError,
     MissingPathArgumentsError,
     MissingReturnTypeError,
+    PathTemplateError,
 )
 
 _POSITIONAL = (inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD)
 _VARIADIC = (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)
+
+# `quote` leaves dots alone, but a whole segment of `.` or `..` would be resolved as a dot segment.
+_DOT_SEGMENTS = {".": "%2E", "..": "%2E%2E"}
+
+# Placeholder converters: none sends the value as one segment; `path` keeps its slashes.
+_CONVERTERS = frozenset({"path"})
 
 
 def _type_name(annotation: Any) -> str | None:
@@ -64,13 +74,44 @@ class DeprecatedMessage:
         warnings.warn(self.message, DeprecationWarning, stacklevel=self.stacklevel)
 
 
+def _encode_path_value(value: object, *, keep_slashes: bool) -> str:
+    """Return ``value`` as percent-encoded path text.
+
+    The value is converted like a query value: an ``Enum`` becomes its value, a
+    ``datetime`` ISO 8601, a ``UUID`` its string, and a number or boolean JSON text
+    (``2``, ``true``). Any other object uses ``str``. Every character that isn't
+    unreserved is then percent-encoded, slashes included unless ``keep_slashes``, so
+    a value can't add path segments, a query string, or a fragment. A ``.`` or ``..``
+    segment is encoded too, so it can't move up the path.
+    """
+    jsonable = to_jsonable_python(value, fallback=str)
+    text = jsonable if isinstance(jsonable, str) else json.dumps(jsonable)
+    segments = text.split("/") if keep_slashes else [text]
+    return "/".join(_DOT_SEGMENTS.get(segment) or quote(segment, safe="") for segment in segments)
+
+
 @dataclass(frozen=True)
 class URLPath:
-    """Hold a URL path template and the regex for extracting parameters."""
+    """Hold a URL path template and render it with encoded values.
 
-    pattern: ClassVar[re.Pattern[str]] = re.compile(r"{(\w+)}")
+    A placeholder is ``{name}``, sent as one path segment, or ``{name:path}``, which
+    keeps slashes in the value for multi-segment values such as file paths. ``{{``
+    and ``}}`` are literal braces.
+
+    Raises:
+        PathTemplateError: A placeholder has a converter other than ``path``.
+    """
+
+    pattern: ClassVar[re.Pattern[str]] = re.compile(r"\{\{|\}\}|\{(\w+)(?::(\w*))?\}")
 
     path: str
+
+    def __post_init__(self) -> None:
+        """Reject unknown converters, so a typo fails when the class is defined."""
+        for match in type(self).pattern.finditer(self.path):
+            name, converter = match.groups()
+            if converter is not None and converter not in _CONVERTERS:
+                raise PathTemplateError(self.path, f"placeholder {{{name}:{converter}}} has an unknown converter")
 
     @property
     def parameters(self) -> list[str]:
@@ -79,10 +120,10 @@ class URLPath:
         Returns:
             list[str]: Parameter names extracted from the template.
         """
-        return type(self).pattern.findall(self.path)
+        return [name for name, _ in type(self).pattern.findall(self.path) if name]
 
     def format(self, values: dict[str, Any]) -> str:
-        """Return a formatted path with template parameters populated from a mapping.
+        """Return the path with each placeholder replaced by its encoded value.
 
         Args:
             values: Mapping of template parameter names to replacement values.
@@ -91,10 +132,17 @@ class URLPath:
             str: The formatted path string.
 
         Raises:
-            KeyError: If the mapping does not contain all template parameters.
+            MissingPathArgumentsError: If the mapping does not contain all template parameters.
         """
         self.validate_parameters(values)
-        return self.path.format_map(values)
+
+        def render(match: re.Match[str]) -> str:
+            name, converter = match.groups()
+            if name is None:
+                return match.group()[0]
+            return _encode_path_value(values[name], keep_slashes=converter == "path")
+
+        return type(self).pattern.sub(render, self.path)
 
     def validate_parameters(self, values: dict[str, Any]) -> None:
         """Validate that a mapping includes all template parameters.

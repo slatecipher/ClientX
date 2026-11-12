@@ -171,6 +171,22 @@ class MisplacedHelperError(ClientXError, TypeError):
         super().__init__(message)
 
 
+class PathTemplateError(ClientXError, ValueError):
+    """Raised when the class is defined, if an endpoint's path template is invalid.
+
+    A placeholder is ``{name}``, or ``{name:path}`` to keep slashes in the value.
+    Any other converter, such as ``{user_id:int}``, raises this error.
+    """
+
+    def __init__(self, path: str, problem: str) -> None:
+        """Store the path template and describe the problem."""
+        self.path = path
+        super().__init__(
+            f"Invalid path template {path!r}: {problem}. "
+            "Use {name} for one path segment, or {name:path} to keep slashes in the value."
+        )
+
+
 __all__ = [
     "ClientXError",
     "EndpointNameConflictError",
@@ -179,6 +195,7 @@ __all__ = [
     "MissingDecoderError",
     "MissingPathArgumentsError",
     "MissingReturnTypeError",
+    "PathTemplateError",
     "UnboundResourceError",
     "UnconsumableArgumentError",
 ]

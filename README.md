@@ -401,7 +401,7 @@ finally:
 
 ClientX maps method arguments into request parts in this order:
 
-1. Path placeholders (e.g. `{user_id}`) are consumed from arguments.
+1. Path placeholders (e.g. `{user_id}`) are consumed from arguments. Each value is converted like a query value (an `Enum` becomes its value, a `datetime` ISO 8601) and percent-encoded, so a value such as `"a/b"` or `"../admin"` stays one path segment and can't add a query string. For a value that spans segments, such as a file path, use `{file_path:path}`: slashes are kept, and each segment is still encoded. Any other converter raises `PathTemplateError` when the class is defined.
 2. Each remaining argument goes to the first of these that matches:
    1. Its name is a request part: `json`, `params`, `data`, `files`, or `headers`. The name wins even over an annotation, so a parameter named `data` is always sent as form data.
    2. It's annotated with a request part: `Annotated[..., Query()]`, `Header()`, `Form()`, `Body()`, or `File()`.
@@ -811,6 +811,7 @@ ClientX raises explicit errors for common contract violations. Most of them are 
 - typed return without decoder -> `MissingDecoderError`
 - endpoint or mounted resource named like something `ClientX` already has (`user_agent`, `client`, or a dunder method) -> `EndpointNameConflictError`
 - path placeholder, including one from a resource prefix, that names no parameter -> `MissingPathArgumentsError`
+- path placeholder with a converter other than `{name:path}` -> `PathTemplateError`
 - no positional first parameter for the client (usually `self`, but any name works), or a `*args` or `**kwargs` parameter -> `EndpointSignatureError`
 - request-part helper nested inside another type, or two helpers on one parameter or field -> `MisplacedHelperError` (for a model field, when the class is defined if a parameter is annotated with the model, or else when the model is sent)
 
