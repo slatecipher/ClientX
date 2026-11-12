@@ -213,7 +213,7 @@ def test_endpoint_named_user_agent_is_rejected_when_the_class_is_defined():
     assert "can't be named 'user_agent'" in message
 
 
-@pytest.mark.parametrize("name", ["user_agent", "client", "_user_agent", "_default_user_agent", "__enter__"])
+@pytest.mark.parametrize("name", ["user_agent", "client", "_user_agent", "__clientx_user_agent__", "__enter__"])
 def test_endpoint_cannot_use_a_name_clientx_already_uses(name: str):
     def endpoint(self: ClientX) -> Response: ...
 

@@ -40,6 +40,54 @@ def test_clientx_user_agent_argument_wins_over_headers():
     assert client.client.headers["User-Agent"] == "Explicit/1.0"
 
 
+def test_a_client_class_can_set_its_own_user_agent():
+    class ExampleAPI(ClientX, user_agent="example-api/1.0"):
+        pass
+
+    class SubAPI(ExampleAPI):
+        pass
+
+    class OtherAPI(ExampleAPI, user_agent="other-api/2.0"):
+        pass
+
+    assert ExampleAPI("https://example.test").client.headers["User-Agent"] == "example-api/1.0"
+    assert SubAPI("https://example.test").user_agent == "example-api/1.0"
+    assert OtherAPI("https://example.test").user_agent == "other-api/2.0"
+    assert ClientX("https://example.test").user_agent == f"ClientX/{__version__}"
+
+
+def test_a_client_class_can_set_its_own_base_url():
+    class ExampleAPI(ClientX, base_url="https://api.example.com/v1/"):
+        pass
+
+    class SubAPI(ExampleAPI):
+        pass
+
+    assert str(ExampleAPI().client.base_url) == "https://api.example.com/v1/"
+    assert str(SubAPI().client.base_url) == "https://api.example.com/v1/"
+    assert str(ExampleAPI("https://staging.example.com/v1/").client.base_url) == "https://staging.example.com/v1/"
+
+
+def test_a_client_without_a_base_url_says_how_to_set_one():
+    class ExampleAPI(ClientX):
+        pass
+
+    with pytest.raises(TypeError, match=r"ExampleAPI needs a base URL: .* class ExampleAPI\(ClientX, base_url="):
+        ExampleAPI()
+
+
+def test_a_callers_user_agent_wins_over_the_class_default():
+    class ExampleAPI(ClientX, user_agent="example-api/1.0"):
+        pass
+
+    assert ExampleAPI("https://example.test", user_agent="caller/1.0").user_agent == "caller/1.0"
+    assert ExampleAPI("https://example.test", headers={"User-Agent": "header/1.0"}).user_agent == "header/1.0"
+
+    client = ExampleAPI("https://example.test", user_agent="caller/1.0")
+    client.user_agent = None
+    assert (client.user_agent, client.client.headers["User-Agent"]) == ("example-api/1.0", "example-api/1.0")
+
+
 def test_clientx_user_agent_setter_updates_headers():
     client = ClientX("https://example.test")
 

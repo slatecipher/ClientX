@@ -17,20 +17,29 @@ from clientx.exceptions import EndpointNameConflictError, UnboundResourceError
 class ClientX:
     """Base HTTP client wrapper for declarative ClientX API clients.
 
+    A subclass can ship its own base URL and ``User-Agent`` with class arguments, so
+    callers can create it without arguments::
+
+        class ExampleAPI(ClientX, base_url="https://api.example.com", user_agent="example-api/1.0"):
+            ...
+
+        api = ExampleAPI()  # arguments given here win over the class's
+
     Attributes:
         client: Underlying ``httpx2.Client`` instance used to build and send requests.
     """
 
-    _default_user_agent: ClassVar[str] = f"ClientX/{__version__}"
     _user_agent: str
     client: Client
     # Internal state uses a ``__clientx_*__`` name, so it can't clash with an endpoint name.
+    __clientx_base_url__: ClassVar[URL | str | None] = None
+    __clientx_user_agent__: ClassVar[str] = f"ClientX/{__version__}"
     __clientx_raise_for_status__: bool
     __clientx_validate_arguments__: bool
 
     def __init__(
         self,
-        base_url: URL | str,
+        base_url: URL | str | None = None,
         *,
         user_agent: str | None = None,
         raise_for_status: bool = True,
@@ -40,9 +49,11 @@ class ClientX:
         """Initialize a client with a base URL and optional ``httpx2.Client`` configuration.
 
         Args:
-            base_url: Base URL used for all relative request paths.
+            base_url: Base URL used for all relative request paths. Defaults to the class's
+                ``base_url=`` class argument; one of the two is required.
             user_agent: The ``User-Agent`` header to send. When ``None``, a ``User-Agent`` given in
-                ``headers=`` is kept, or else the default ``ClientX/<version>`` is used.
+                ``headers=`` is kept, or else the class's default: its ``user_agent=`` class
+                argument, or ``ClientX/<version>``.
             raise_for_status: Raise ``httpx2.HTTPStatusError`` when an endpoint gets a 4xx or 5xx
                 response, before any decoder runs. An endpoint's own ``raise_for_status=`` overrides it.
             validate_arguments: Check each argument against its parameter's annotation before
@@ -50,15 +61,36 @@ class ClientX:
                 An endpoint's own ``validate_arguments=`` overrides it.
             **client_kwargs: Additional keyword arguments passed directly to ``httpx2.Client``.
         """
+        base_url = type(self).__clientx_base_url__ if base_url is None else base_url
+        if base_url is None:
+            name = type(self).__name__
+            raise TypeError(
+                f'{name} needs a base URL: pass one, as in {name}("https://api.example.com"), or set it in '
+                f'the class statement, as in class {name}(ClientX, base_url="https://api.example.com").'
+            )
         self.client = Client(base_url=URL(base_url), **client_kwargs)
         # A User-Agent passed in `headers=` is the caller's choice too; only `user_agent=` overrides it.
         self.user_agent = user_agent or Headers(client_kwargs.get("headers")).get("User-Agent")
         self.__clientx_raise_for_status__ = raise_for_status
         self.__clientx_validate_arguments__ = validate_arguments
 
-    def __init_subclass__(cls, **kwargs: Any) -> None:
-        """Reject endpoints and resources named like something ``ClientX`` already has."""
+    def __init_subclass__(
+        cls, *, base_url: URL | str | None = None, user_agent: str | None = None, **kwargs: Any
+    ) -> None:
+        """Set the class's defaults, and reject members named like something ``ClientX`` already has.
+
+        Args:
+            base_url: The base URL this client uses unless the caller gives one. Defaults to
+                the parent class's; without one anywhere, the caller must pass it.
+            user_agent: The ``User-Agent`` this client sends unless the caller gives one.
+                Defaults to the parent class's, ``ClientX/<version>`` for a direct subclass.
+            **kwargs: Forwarded to ``object.__init_subclass__``.
+        """
         super().__init_subclass__(**kwargs)
+        if base_url is not None:
+            cls.__clientx_base_url__ = base_url
+        if user_agent is not None:
+            cls.__clientx_user_agent__ = user_agent
         _check_member_names(cls, _CLIENTX_RESERVED_NAMES, base="ClientX")
         _check_path_helpers(cls)
 
@@ -113,9 +145,10 @@ class ClientX:
         """Set the ``User-Agent`` header used by the underlying ``httpx2.Client``.
 
         Args:
-            value: User agent string to apply. When ``None``, uses the default ClientX user agent.
+            value: User agent string to apply. When ``None``, uses the class's default: its
+                ``user_agent=`` class argument, or ``ClientX/<version>``.
         """
-        self._user_agent = value or type(self)._default_user_agent
+        self._user_agent = value or type(self).__clientx_user_agent__
         self.client.headers.update({"User-Agent": self._user_agent})
 
 

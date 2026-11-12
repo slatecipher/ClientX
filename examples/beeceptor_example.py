@@ -11,9 +11,9 @@ def main() -> None:
     # Endpoint method bodies never run. ClientX builds each request from the method's
     # signature and decorator: it fills path placeholders and maps the arguments to
     # request parts. Endpoints are grouped into resources (`client.users`,
-    # `client.companies`) that share the client's connection. `user_agent` sets the
-    # User-Agent header for every request, and `with` closes the connections when the block ends.
-    with Beeceptor("https://fake-json-api.mock.beeceptor.com", user_agent="beeceptor-example/0.1") as client:
+    # `client.companies`) that share the client's connection. The client class ships its base URL and
+    # User-Agent as class arguments, so it needs no arguments here; `with` closes the connections at the end.
+    with Beeceptor() as client:
         # Returns typed models because the endpoint declares a return type and a decoder.
         # An endpoint annotated `-> Response` returns the raw response instead (see below).
         yahoo_users = [user for user in client.users.list_all() if user.email.endswith("yahoo.com")]

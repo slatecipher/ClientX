@@ -593,8 +593,24 @@ client = ClientX(
 )
 ```
 
-- `user_agent` sets the `User-Agent` header. Without it, a `User-Agent` in `headers=` is kept, or else `ClientX/<version>` is sent.
+- `user_agent` sets the `User-Agent` header. Without it, a `User-Agent` in `headers=` is kept, or else the class's default is sent (below), which is `ClientX/<version>` unless the class sets its own.
 - Additional kwargs are forwarded to `httpx2.Client(...)`.
+
+A client class can ship its own base URL and `User-Agent` as class arguments, so callers can create it without arguments:
+
+```python
+from clientx import ClientX
+
+
+class ExampleAPI(ClientX, base_url="https://api.example.com", user_agent="example-api/1.0"):
+    ...
+
+
+api = ExampleAPI()  # https://api.example.com, User-Agent: example-api/1.0
+staging = ExampleAPI("https://staging.example.com", timeout=10.0)  # arguments given here win
+```
+
+A subclass keeps its parent's class arguments unless it sets its own. Without a base URL in the class or in the call, creating the client raises `TypeError`.
 
 ### Raising errors for 4xx and 5xx responses
 

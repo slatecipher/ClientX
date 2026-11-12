@@ -13,7 +13,7 @@ from clientx.tools import list_tools
 
 
 def main() -> None:
-    with Beeceptor("https://fake-json-api.mock.beeceptor.com") as client:
+    with Beeceptor() as client:
         # One tool per endpoint, including the endpoints on the client's resources.
         # Deprecated endpoints are left out unless you ask for them.
         tools = {tool.name: tool for tool in list_tools(client, include_deprecated=True)}

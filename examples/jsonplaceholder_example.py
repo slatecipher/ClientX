@@ -4,13 +4,14 @@ Run with `uv run python examples/jsonplaceholder_example.py`. It needs network a
 """
 
 import httpx2
-from jsonplaceholder import JSONPLACEHOLDER_URL, JSONPlaceholder, NewPost, PostChanges
+from jsonplaceholder import JSONPlaceholder, NewPost, PostChanges
 
 from clientx.tools import list_tools
 
 
 def main() -> None:
-    with JSONPlaceholder(JSONPLACEHOLDER_URL, timeout=10.0) as api:
+    # The class ships its base URL and User-Agent, so only the timeout is set here.
+    with JSONPlaceholder(timeout=10.0) as api:
         posts = api.posts.list(user_id=1)  # GET /posts?userId=1
         print(f"User 1 wrote {len(posts)} posts. The first: {posts[0].title!r}")
 

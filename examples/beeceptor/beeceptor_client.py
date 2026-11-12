@@ -68,13 +68,14 @@ class CompaniesResource(Resource, prefix="/companies"):
         ...
 
 
-class Beeceptor(ClientX):
+class Beeceptor(ClientX, base_url="https://fake-json-api.mock.beeceptor.com", user_agent="beeceptor-example/0.1"):
     """Client for Beeceptor's hosted sample API to validate ClientX flows.
 
     Beeceptor provides mock servers you can configure with custom paths,
     methods, and responses, plus pre-built sample APIs for common scenarios.
-    Use the Beeceptor web UI to create an endpoint, define the response format,
-    and then plug the endpoint URL into this client for fast integration tests.
+    The class arguments set the sample API's URL and this example's User-Agent, so
+    `Beeceptor()` needs no arguments. To use your own mock server, create an endpoint
+    in the Beeceptor web UI and pass its URL: `Beeceptor("https://<name>.mock.beeceptor.com")`.
 
     The endpoints are grouped into resources, which share this client's
     connection: `client.users.retrieve(1)`, `client.companies.list_all()`.
