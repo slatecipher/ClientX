@@ -18,11 +18,12 @@ import re
 import warnings
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Annotated, Any
 
 import httpx2
 from pydantic import BaseModel, ConfigDict, Field, PydanticUserError, TypeAdapter, create_model
 
+from clientx._annotation_extractor import AnnotationExtractor
 from clientx._client import ClientX, Resource
 from clientx._client_types import is_none_type, is_response_type
 from clientx._endpoint_context import Endpoint
@@ -217,7 +218,7 @@ def _arguments_model(name: str, endpoint: Endpoint) -> tuple[type[BaseModel], tu
             positional.append(parameter.name)
         default = ... if parameter.default is inspect.Parameter.empty else parameter.default
         # The endpoint's signature already has its annotations resolved, Annotated metadata included.
-        annotation = Any if parameter.annotation is inspect.Parameter.empty else parameter.annotation
+        annotation = Any if parameter.annotation is inspect.Parameter.empty else _inline_aliases(parameter.annotation)
         fields[f"arg{index}"] = (annotation, Field(default, alias=parameter.name))
 
     model = create_model(name, __config__=ConfigDict(extra="forbid"), **fields)
@@ -231,11 +232,25 @@ def _output(endpoint: Endpoint) -> tuple[dict[str, Any] | None, Callable[[Any], 
         return None, _no_result
     if is_response_type(return_type):
         return _RESPONSE_SCHEMA, _response_result
-    adapter: TypeAdapter[Any] = TypeAdapter(return_type)
+    adapter: TypeAdapter[Any] = TypeAdapter(_inline_aliases(return_type))
     # JSON Schema uses field aliases by default, so dump with them too: results must match the schema.
     return adapter.json_schema(mode="serialization"), lambda value: adapter.dump_python(
         value, mode="json", by_alias=True
     )
+
+
+def _inline_aliases(annotation: Any) -> Any:
+    """Expand the ``type`` aliases around a type, as request building does, keeping ``Annotated`` metadata.
+
+    Pydantic gives each PEP 695 alias its own ``$defs`` entry, so a tool schema would
+    refer to a generated name, such as ``QueryParam_Union_str__NoneType__``, and lose the
+    parameter's title. Expanded, ``type UserId = Annotated[int, ...]`` gives the same
+    inline schema as ``UserId = Annotated[int, ...]``.
+    """
+    info = AnnotationExtractor.from_field_annotation(annotation)
+    if not info.metadata:
+        return info.annotation
+    return Annotated[(info.annotation, *info.metadata)]
 
 
 def _no_result(value: object) -> None:

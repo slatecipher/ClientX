@@ -7,7 +7,7 @@ import httpx2
 import pytest
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
 
-from clientx import ClientX, DeprecatedMessage, Query, Resource, Response, methods
+from clientx import ClientX, DeprecatedMessage, PathParam, Query, Resource, Response, methods
 from clientx.decoders import ModelDecoder, StreamLinesDecoder, TypeAdapterDecoder
 from clientx.methods import delete, get, post
 from clientx.tools import Tool, list_tools
@@ -25,6 +25,12 @@ class NewUser(BaseModel):
 class Sort(Enum):
     NEWEST = "newest"
     OLDEST = "oldest"
+
+
+type UserFilter = Annotated[int | None, Query("userId", description="Only this user's posts")]
+type QueryParam[T] = Annotated[T, Query()]
+type PositiveId = Annotated[int, Field(ge=1)]
+type UserList = list[User]
 
 
 class Users(Resource, prefix="/users", tags=["users"]):
@@ -149,6 +155,31 @@ def test_results_use_field_aliases_like_the_output_schema():
     assert tool.output_schema is not None
     assert list(tool.output_schema["properties"]) == ["employeeCount"]
     assert tool.call({"company_id": 1}) == {"employeeCount": 3187}
+
+
+def test_type_aliases_give_the_same_inline_schemas_as_plain_annotations():
+    class API(ClientX):
+        @get("/posts/{post_id}", decoder=TypeAdapterDecoder(TypeAdapter(list[User])))
+        def aliased(
+            self,
+            post_id: Annotated[PositiveId, PathParam(description="The post's ID")],
+            user_id: UserFilter = None,
+            q: QueryParam[str | None] = None,
+        ) -> UserList: ...
+
+        @get("/posts/{post_id}", decoder=TypeAdapterDecoder(TypeAdapter(list[User])))
+        def plain(
+            self,
+            post_id: Annotated[int, Field(ge=1), PathParam(description="The post's ID")],
+            user_id: Annotated[int | None, Query("userId", description="Only this user's posts")] = None,
+            q: Annotated[str | None, Query()] = None,
+        ) -> list[User]: ...
+
+    aliased, plain = list_tools(API("https://api.example.com"))
+
+    assert "$defs" not in aliased.input_schema
+    assert aliased.input_schema["properties"] == plain.input_schema["properties"]
+    assert aliased.output_schema == plain.output_schema
 
 
 def test_endpoint_returning_nothing_has_no_output_schema(make_api):
