@@ -261,7 +261,7 @@ ClientX enforces explicit return annotations:
 - `-> None`: sends request and returns `None`.
 - Any other type: requires `decoder=...`.
 
-A 4xx or 5xx response raises `httpx2.HTTPStatusError` before any decoder runs (see [Raising errors for 4xx and 5xx responses](#raising-errors-for-4xx-and-5xx-responses)). Otherwise, if you pass a decoder, it always runs and its output is returned, whatever the annotation. If the decoder raises, its exception reaches the caller unchanged: `ModelDecoder` raises `pydantic.ValidationError` when the body doesn't match the model, so catch that around a `ModelDecoder` endpoint. The request itself succeeded, so its [log record](#logging) shows the response's status and no error.
+A 4xx or 5xx response raises `httpx2.HTTPStatusError` before any decoder runs (see [Raising errors for 4xx and 5xx responses](#raising-errors-for-4xx-and-5xx-responses)). Otherwise, if you pass a decoder, it always runs and its output is returned, whatever the annotation. If the decoder raises, its exception reaches the caller unchanged. `ModelDecoder`, `TypeAdapterDecoder`, and `json_decoder` raise `ValueError` subclasses, so `except ValueError` catches all of them: `pydantic.ValidationError` when the body doesn't match the type, `json.JSONDecodeError` when it isn't JSON, and a plain `ValueError` when `TypeAdapterDecoder`'s `key` is missing. The request itself succeeded, so its [log record](#logging) shows the response's status and no error.
 
 A decoder is a callable that receives the raw `httpx2.Response` and returns the value that matches your method's return annotation. ClientX executes the HTTP request first, then passes the response into the decoder, and returns the decoder output to the caller.
 
@@ -320,6 +320,8 @@ class UsersClient(ClientX):
     def list_users(self) -> list[dict[str, str]]:
         ...
 ```
+
+`TypeAdapterDecoder` takes a `TypeAdapter`, not a bare type. For an API that wraps its data in an object, `key=` validates one member instead of the whole body: `TypeAdapterDecoder(TypeAdapter(list[User]), key="results")` decodes `{"count": 2, "results": [...]}` into a `list[User]`. A body that isn't a JSON object with that key raises `ValueError`, such as `TypeAdapterDecoder(key='results') expected a JSON object with a 'results' key, but the response body is an array.`
 
 ### `FromResponseDecoder`
 
