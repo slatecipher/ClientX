@@ -82,7 +82,10 @@ class UsersResource(Resource, prefix="/users"):
     @get("/{user_id}", decoder=ModelDecoder(User))
     def retrieve(self, user_id: str) -> User: ...
 
-    @post("")
+    @get(decoder=TypeAdapterDecoder(TypeAdapter(list[User])))
+    def list_all(self) -> list[User]: ...
+
+    @post()
     def create(self, json: dict[str, object]) -> Response: ...
 
 
@@ -157,6 +160,7 @@ def test_resources_are_typed_attributes_and_keep_endpoint_signatures() -> None:
     assert_type(client.groups.members, UsersResource)
     assert_type(client.users.retrieve("1"), User)
     assert_type(client.users.create({"name": "x"}), Response)
+    assert_type(client.users.list_all(), list[User])
     client.users.retrieve(1)  # type: ignore[arg-type]  # pyright: ignore[reportArgumentType]
     with pytest.raises(TypeError):
         client.users.create()  # type: ignore[call-arg]  # pyright: ignore[reportCallIssue]

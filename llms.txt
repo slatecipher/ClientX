@@ -35,12 +35,12 @@ class Users(Resource, prefix="/users", tags=["users"]):
         """Fetch one user by ID."""
         ...
 
-    @get("", decoder=TypeAdapterDecoder(TypeAdapter(list[User])))
+    @get(decoder=TypeAdapterDecoder(TypeAdapter(list[User])))
     def search(self, name: Annotated[str, Query("q")], limit: Annotated[int | None, Query()] = None) -> list[User]:
         """Search users by name."""
         ...
 
-    @post("", decoder=ModelDecoder(User))
+    @post(decoder=ModelDecoder(User))
     def create(self, payload: NewUser) -> User:
         """Create a user."""
         ...
@@ -77,7 +77,7 @@ with ExampleAPI("https://api.example.com", auth=("user", "secret"), timeout=10.0
 
 Rules for writing endpoints:
 
-- Endpoint bodies never run. Write `...` (or just a docstring). Decorators come from `clientx.methods`: `get`, `post`, `put`, `patch`, `delete`, `head`, `options`. Each takes `path`, and optionally `decoder`, `deprecated` (for example `DeprecatedMessage("...")`), `tags`, `timeout`, `raise_for_status`, and `validate_arguments` (each `True`/`False`, overriding the client's).
+- Endpoint bodies never run. Write `...` (or just a docstring). Decorators come from `clientx.methods`: `get`, `post`, `put`, `patch`, `delete`, `head`, `options`. Each takes `path` (default `""`: the base URL, or a resource's prefix itself, so `@get()` in a `prefix="/users"` resource is `GET /users`), and optionally `decoder`, `deprecated` (for example `DeprecatedMessage("...")`), `tags`, `timeout`, `raise_for_status`, and `validate_arguments` (each `True`/`False`, overriding the client's).
 - Every endpoint needs a return annotation. `-> Response` (`clientx.Response` is `httpx2.Response`) returns the raw response, `-> None` returns nothing, and any other type requires `decoder=`. Type checkers check that the decoder's output matches the annotation. A missing annotation or decoder raises when the class is defined.
 - Decoders, from `clientx.decoders`: `ModelDecoder(Model)`, `TypeAdapterDecoder(TypeAdapter(T))` (it takes a `TypeAdapter`, not a bare type), `FromResponseDecoder(Model)` (calls `Model.from_response(response)`), `json_decoder` (returns `Any`), `text_decoder`, `content_decoder`, or any callable `(httpx2.Response) -> T`. A 4xx or 5xx response raises `httpx2.HTTPStatusError` before the decoder runs; otherwise a decoder always runs when given.
 - `{placeholders}` in the path are filled from parameters with the same names, including placeholders in a resource prefix. Values are converted like query values (an `Enum` becomes its value) and percent-encoded as one segment, so `/` `?` `#` and `..` in a value can't change the path. Use `{name:path}` to keep slashes in a value such as a file path; any other converter raises `PathTemplateError`. A `None` or empty value, or a `{name:path}` value with a leading, trailing, or doubled slash, raises `PathValueError` before sending, since it would call a different path. Don't pre-encode values: `%` would be encoded again.

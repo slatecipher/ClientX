@@ -16,7 +16,7 @@ UserId = Annotated[int, Field(description="The user's ID (1 to 10).")]
 # The endpoints use `@methods.get(...)`, not `@get(...)`: a method named `get` would hide the decorator
 # for the rest of the class body. The same goes for `list`: no later annotation here uses `list[...]`.
 class Posts(Resource, prefix="/posts", tags=["posts"]):
-    @methods.get("", decoder=TypeAdapterDecoder(TypeAdapter(list[Post])))
+    @methods.get(decoder=TypeAdapterDecoder(TypeAdapter(list[Post])))
     def list(
         self,
         # Sent as `?userId=...`, and left out when it's None.
@@ -30,7 +30,7 @@ class Posts(Resource, prefix="/posts", tags=["posts"]):
         """Fetch one blog post by its ID."""
         ...
 
-    @methods.post("", decoder=ModelDecoder(Post))
+    @methods.post(decoder=ModelDecoder(Post))
     def create(self, post: NewPost) -> Post:
         """Create a blog post and return it with its new ID. JSONPlaceholder is fake: the post isn't saved."""
         ...
@@ -57,14 +57,14 @@ class Posts(Resource, prefix="/posts", tags=["posts"]):
 
 
 class Comments(Resource, prefix="/posts/{post_id}/comments", tags=["comments"]):
-    @methods.get("", decoder=TypeAdapterDecoder(TypeAdapter(list[Comment])))
+    @methods.get(decoder=TypeAdapterDecoder(TypeAdapter(list[Comment])))
     def list(self, post_id: PostId) -> list[Comment]:
         """List the comments left on one blog post."""
         ...
 
 
 class Users(Resource, prefix="/users", tags=["users"]):
-    @methods.get("", decoder=TypeAdapterDecoder(TypeAdapter(list[User])))
+    @methods.get(decoder=TypeAdapterDecoder(TypeAdapter(list[User])))
     def list(self) -> list[User]:
         """List all 10 users, with their contact details, address and company."""
         ...

@@ -20,7 +20,7 @@ class Users(Resource, prefix="/users", tags=["users"]):
     @get("/{user_id}", decoder=ModelDecoder(User))
     def retrieve(self, user_id: int) -> User: ...
 
-    @post("")
+    @post()
     def create(self, json: dict[str, str]) -> Response: ...
 
     # `send` and `client` would clash on a ClientX, but are free on a resource.

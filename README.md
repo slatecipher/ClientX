@@ -90,7 +90,7 @@ Use decorators from `clientx.methods`:
 
 Each decorator accepts:
 
-- `path` (required)
+- `path` (optional; defaults to `""`, the base URL, or on a resource the prefix itself: `@get()` in a resource with `prefix="/users"` is `GET /users`)
 - `decoder` (required when return type is not `Response` or `None`)
 - `deprecated` (optional callable, including `DeprecatedMessage`)
 - `tags` (optional list of labels; `list_tools()` can filter by them)
@@ -149,7 +149,7 @@ class Users(Resource, prefix="/users", tags=["users"]):
     def retrieve(self, user_id: int) -> User:
         ...
 
-    @post("")
+    @post()
     def create(self, json: dict[str, str]) -> Response:
         ...
 

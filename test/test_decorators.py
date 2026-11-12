@@ -176,6 +176,19 @@ def test_api_method_raises_internal_error_when_type_checks_are_forced_false(monk
         api.get_item("42")
 
 
+def test_the_path_defaults_to_the_base_url(endpoint_of, mock_transport):
+    sent: list[Request] = []
+
+    class API(ClientX):
+        @method.get()
+        def root(self) -> Response: ...
+
+    API("https://api.example.com/v1/", transport=mock_transport(sent)).root()
+
+    assert str(endpoint_of(API.root).path) == ""
+    assert [str(request.url) for request in sent] == ["https://api.example.com/v1/"]
+
+
 def test_method_container_exposes_http_methods():
     assert method.delete.method == "DELETE"
     assert method.get.method == "GET"

@@ -135,7 +135,7 @@ class ApiMethod:
     @overload
     def __call__[D](
         self,
-        path: str,
+        path: str = "",
         *,
         decoder: Callable[[httpx2.Response], D],
         deprecated: DeprecatedType | None = None,
@@ -148,7 +148,7 @@ class ApiMethod:
     @overload
     def __call__(
         self,
-        path: str,
+        path: str = "",
         *,
         decoder: None = None,
         deprecated: DeprecatedType | None = None,
@@ -160,7 +160,7 @@ class ApiMethod:
 
     def __call__(
         self,
-        path: str,
+        path: str = "",
         *,
         decoder: Decoder | None = None,
         deprecated: DeprecatedType | None = None,
@@ -173,6 +173,9 @@ class ApiMethod:
 
         Args:
             path: URL path template for the endpoint (e.g., ``/v1/users/{user_id}``).
+                Defaults to ``""``: the client's base URL, or on a ``Resource``, its
+                prefix itself, so ``@get()`` on a resource with ``prefix="/users"``
+                is ``GET /users``.
             decoder: Response decoder. Required when the endpoint's return type is
                 neither ``httpx2.Response`` nor ``None``. It also decides streaming:
                 ``StreamDecoder`` subclasses and ``StreamResponseDecoder`` send the
