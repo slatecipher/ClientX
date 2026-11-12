@@ -74,19 +74,20 @@ class ClientX:
         exc_type: type[BaseException] | None,
         exc: BaseException | None,
         tb: TracebackType | None,
-    ) -> bool:
+    ) -> None:
         """Exit the client context and close the underlying ``httpx2.Client``.
+
+        An exception raised in the ``with`` block always propagates. The ``None`` return
+        type tells type checkers so: with ``bool``, they would assume the block could
+        swallow an exception, and report a function that returns inside it as missing a
+        return statement.
 
         Args:
             exc_type: Exception type raised inside the context, if any.
             exc: Exception instance raised inside the context, if any.
             tb: Exception traceback, if any.
-
-        Returns:
-            bool: ``False`` to propagate exceptions from the context body.
         """
         self.client.__exit__(exc_type, exc, tb)
-        return False
 
     def __repr__(self) -> str:
         """Return a concise debug representation of the client instance.
@@ -106,7 +107,7 @@ class ClientX:
         return self._user_agent
 
     @user_agent.setter
-    def user_agent(self, value: str | None):
+    def user_agent(self, value: str | None) -> None:
         """Set the ``User-Agent`` header used by the underlying ``httpx2.Client``.
 
         Args:

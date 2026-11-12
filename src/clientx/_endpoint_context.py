@@ -159,7 +159,7 @@ class URLPath:
         if missing := set(self.parameters).difference(values):
             raise MissingPathArgumentsError(self.path, list(missing))
 
-    def __str__(self):
+    def __str__(self) -> str:
         """Return the raw path template string."""
         return self.path
 
@@ -236,7 +236,7 @@ class Endpoint:
             f"return_type={_type_name(self._return_type)!r})"
         )
 
-    def check_deprecation(self):
+    def check_deprecation(self) -> None:
         """Emit a deprecation warning when a deprecation handler is configured.
 
         Calls ``self.deprecated`` when it is callable, allowing either a plain
@@ -351,7 +351,7 @@ class Endpoint:
         return self._path
 
     @path.setter
-    def path(self, value: str):
+    def path(self, value: str) -> None:
         """Set the URL path template, wrapping it in ``URLPath``.
 
         Once ``func`` is set, the new path's placeholders are checked against its
@@ -397,7 +397,7 @@ class Endpoint:
         """
         return not (is_response_type(self.return_type) or is_none_type(self.return_type))
 
-    def _check_decoder(self):
+    def _check_decoder(self) -> None:
         """Validate decoder configuration against the resolved return type.
 
         Raises:
