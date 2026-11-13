@@ -7,8 +7,18 @@ import httpx2
 import pytest
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
 
-from clientx import ClientX, DeprecatedMessage, PathParam, Query, Resource, Response, methods
-from clientx.decoders import ModelDecoder, StreamLinesDecoder, TypeAdapterDecoder
+from clientx import (
+    AsyncClientX,
+    AsyncResource,
+    ClientX,
+    DeprecatedMessage,
+    PathParam,
+    Query,
+    Resource,
+    Response,
+    methods,
+)
+from clientx.decoders import ModelDecoder, StreamLinesDecoder, StreamResponseDecoder, TypeAdapterDecoder
 from clientx.methods import delete, get, post
 from clientx.tools import Tool, list_tools
 
@@ -90,7 +100,7 @@ def make_api(mock_transport) -> Callable[[list[httpx2.Request]], ExampleAPI]:
     return make
 
 
-def tools_by_name(api: ClientX, **filters: Any) -> dict[str, Tool]:
+def tools_by_name(api: ClientX | AsyncClientX, **filters: Any) -> dict[str, Tool]:
     return {tool.name: tool for tool in list_tools(api, **filters)}
 
 
@@ -374,3 +384,73 @@ def test_tool_repr_shows_the_description_not_internals(make_api):
 
     assert text.startswith("Tool(name='health', description='GET /health'")
     assert "_function" not in text
+
+
+class AsyncUsers(AsyncResource, prefix="/users"):
+    @get("/{user_id}", decoder=ModelDecoder(User))
+    async def retrieve(self, user_id: int) -> User:
+        """Fetch one user by ID."""
+        ...
+
+    @delete("/{user_id}")
+    async def remove(self, user_id: int) -> None: ...
+
+
+class AsyncExampleAPI(AsyncClientX):
+    users = AsyncUsers()
+
+    @get("/health")
+    async def health(self) -> Response: ...
+
+    @get("/export", decoder=StreamResponseDecoder())
+    async def export(self) -> Response: ...
+
+
+@pytest.fixture
+def make_async_api(mock_transport) -> Callable[[list[httpx2.Request]], AsyncExampleAPI]:
+    def answer(request: httpx2.Request) -> httpx2.Response:
+        # A fresh copy: a response a sync client already sent has a sync body that an async client can't read.
+        template = RESPONSES.get((request.method, request.url.path), httpx2.Response(200, json={}))
+        return httpx2.Response(template.status_code, headers=template.headers, content=template.content)
+
+    def make(sent: list[httpx2.Request]) -> AsyncExampleAPI:
+        return AsyncExampleAPI("https://api.example.com", transport=mock_transport(sent, answer))
+
+    return make
+
+
+def test_an_async_clients_endpoints_become_async_tools(make_api, make_async_api):
+    async_tools = list_tools(make_async_api([]))
+
+    assert [tool.name for tool in async_tools] == ["users_retrieve", "users_remove", "health"]  # export streams
+    assert all(tool.is_async for tool in async_tools)
+    assert async_tools[0].description == "Fetch one user by ID."
+    assert not any(tool.is_async for tool in list_tools(make_api([])))
+
+
+@pytest.mark.anyio
+async def test_acall_validates_arguments_and_returns_json_friendly_results(make_async_api):
+    sent: list[httpx2.Request] = []
+    tools = tools_by_name(make_async_api(sent))
+
+    assert await tools["users_retrieve"].acall({"user_id": 42}) == {"id": 42, "name": "Ada"}
+    assert await tools["health"].acall() == {"status_code": 200, "body": "ok"}
+    assert await tools["users_remove"].acall({"user_id": 7}) is None
+    with pytest.raises(ValidationError):
+        await tools["users_retrieve"].acall({"user_id": "not a number"})
+    assert [f"{request.method} {request.url.path}" for request in sent] == [
+        "GET /users/42",
+        "GET /health",
+        "DELETE /users/7",
+    ]
+
+
+@pytest.mark.anyio
+async def test_call_and_acall_refuse_the_other_kind_of_tool(make_api, make_async_api):
+    sync_tool = tools_by_name(make_api([]))["health"]
+    async_tool = tools_by_name(make_async_api([]))["health"]
+
+    with pytest.raises(TypeError, match=r"calls a `def` endpoint: use `tool.call\(...\)`"):
+        await sync_tool.acall()
+    with pytest.raises(TypeError, match=r"calls an `async def` endpoint: use `await tool.acall\(...\)`"):
+        async_tool.call()

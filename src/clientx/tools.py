@@ -5,7 +5,8 @@ endpoints of mounted resources. Each tool has what AI tool-calling APIs and
 protocols need: a name, a description, JSON Schemas for its arguments and result,
 and hints derived from the HTTP method. ``Tool.call`` validates a model's arguments
 against the schema and calls the endpoint through the client, so the client's
-auth, decoders, and logging all apply.
+auth, decoders, and logging all apply. For an ``AsyncClientX``, whose endpoints are
+``async def`` methods, use ``await Tool.acall(...)`` instead.
 
 This module has no dependencies beyond ClientX's own. ``clientx.mcp`` serves the
 same tools over the Model Context Protocol.
@@ -24,7 +25,7 @@ import httpx2
 from pydantic import BaseModel, ConfigDict, Field, PydanticUserError, TypeAdapter, create_model
 
 from clientx._annotation_extractor import AnnotationExtractor
-from clientx._client import ClientX, Resource
+from clientx._client import AsyncClientX, AsyncResource, ClientX, Resource
 from clientx._client_types import is_none_type, is_response_type
 from clientx._endpoint_context import Endpoint
 from clientx._registry import endpoint_for
@@ -64,6 +65,8 @@ class Tool:
         destructive: The method may change or delete existing data (PUT, PATCH, DELETE).
         idempotent: Repeating the call has no further effect (GET, HEAD, OPTIONS, PUT, DELETE).
         deprecated: The endpoint is deprecated.
+        is_async: The endpoint is an ``async def`` method, on an ``AsyncClientX``: call
+            the tool with ``await acall(...)``. Otherwise, call it with ``call(...)``.
     """
 
     name: str
@@ -77,6 +80,7 @@ class Tool:
     destructive: bool
     idempotent: bool
     deprecated: bool
+    is_async: bool
     _function: Callable[..., Any] = field(repr=False, compare=False)
     _arguments: type[BaseModel] = field(repr=False, compare=False)
     _positional: tuple[str, ...] = field(repr=False, compare=False)
@@ -95,15 +99,43 @@ class Tool:
 
         Raises:
             pydantic.ValidationError: If the arguments don't match ``input_schema``.
+            TypeError: If the endpoint is ``async def`` (``is_async``); use ``acall``.
         """
+        if self.is_async:
+            raise TypeError(f"Tool {self.name!r} calls an `async def` endpoint: use `await tool.acall(...)`.")
+        args, kwargs = self._bind(arguments)
+        return self._serialize(self._function(*args, **kwargs))
+
+    async def acall(self, arguments: Mapping[str, Any] | None = None) -> Any:
+        """Validate ``arguments`` against ``input_schema``, and call and await the ``async def`` endpoint.
+
+        The ``async`` counterpart of ``call``, for the tools of an ``AsyncClientX``.
+
+        Args:
+            arguments: The arguments a model chose, keyed by parameter name.
+
+        Returns:
+            A JSON-friendly result matching ``output_schema``, as for ``call``.
+
+        Raises:
+            pydantic.ValidationError: If the arguments don't match ``input_schema``.
+            TypeError: If the endpoint is a plain ``def`` (``is_async`` is false); use ``call``.
+        """
+        if not self.is_async:
+            raise TypeError(f"Tool {self.name!r} calls a `def` endpoint: use `tool.call(...)`.")
+        args, kwargs = self._bind(arguments)
+        return self._serialize(await self._function(*args, **kwargs))
+
+    def _bind(self, arguments: Mapping[str, Any] | None) -> tuple[list[Any], dict[str, Any]]:
+        """Validate ``arguments`` and split them into the endpoint's positional and keyword arguments."""
         validated = self._arguments.model_validate(dict(arguments or {}))
         values = {info.alias or name: getattr(validated, name) for name, info in type(validated).model_fields.items()}
         args = [values.pop(name) for name in self._positional]
-        return self._serialize(self._function(*args, **values))
+        return args, values
 
 
 def list_tools(
-    client: ClientX,
+    client: ClientX | AsyncClientX,
     *,
     read_only: bool = False,
     include_tags: Iterable[str] | None = None,
@@ -158,7 +190,9 @@ def list_tools(
     return list(tools.values())
 
 
-def _endpoints(owner: ClientX | Resource, prefix: str) -> Iterator[tuple[str, Endpoint, Callable[..., Any]]]:
+def _endpoints(
+    owner: ClientX | AsyncClientX | Resource | AsyncResource, prefix: str
+) -> Iterator[tuple[str, Endpoint, Callable[..., Any]]]:
     """Yield ``(tool name, endpoint, bound function)`` for each endpoint on ``owner``, recursing into resources."""
     members: dict[str, object] = {}
     for cls in reversed(type(owner).__mro__):
@@ -168,7 +202,7 @@ def _endpoints(owner: ClientX | Resource, prefix: str) -> Iterator[tuple[str, En
         endpoint = endpoint_for(value)
         if endpoint is not None:
             yield prefix + name, endpoint, getattr(owner, name)
-        elif isinstance(value, Resource):
+        elif isinstance(value, Resource | AsyncResource):
             yield from _endpoints(getattr(owner, name), f"{prefix}{name}_")
 
 
@@ -199,6 +233,7 @@ def _build_tool(name: str, endpoint: Endpoint, function: Callable[..., Any]) -> 
         destructive=endpoint.method in _DESTRUCTIVE_METHODS,
         idempotent=endpoint.method in _IDEMPOTENT_METHODS,
         deprecated=endpoint.deprecated is not None,
+        is_async=endpoint.is_async,
         _function=function,
         _arguments=arguments,
         _positional=positional,

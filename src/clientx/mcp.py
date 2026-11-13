@@ -12,6 +12,10 @@ instead of stopping the server::
     from clientx.mcp import run_mcp_server
 
     run_mcp_server(ExampleAPI("https://api.example.com"))
+
+The client can be a ``ClientX`` or an ``AsyncClientX``. An async client's tools are
+awaited on the server's event loop; a sync client's run in a worker thread, so they
+don't block it.
 """
 
 from __future__ import annotations
@@ -30,7 +34,7 @@ try:
 except ImportError as error:
     raise ImportError('clientx.mcp requires the "mcp" extra: pip install "clientx[mcp]"') from error
 
-from clientx._client import ClientX
+from clientx._client import AsyncClientX, ClientX
 from clientx.tools import Tool, list_tools
 
 # How much of an error response's body an error result includes: enough for the model to see what went wrong.
@@ -38,7 +42,7 @@ _ERROR_BODY_LIMIT = 1000
 
 
 def create_mcp_server(
-    client: ClientX,
+    client: ClientX | AsyncClientX,
     *,
     name: str | None = None,
     instructions: str | None = None,
@@ -87,8 +91,11 @@ def create_mcp_server(
         if tool is None:
             return _error_result(f"Unknown tool: {params.name}")
         try:
-            # Endpoints are synchronous; run them off the event loop.
-            result = await anyio.to_thread.run_sync(tool.call, params.arguments or {})
+            arguments = params.arguments or {}
+            if tool.is_async:
+                result = await tool.acall(arguments)
+            else:  # A `def` endpoint blocks, so it runs off the event loop.
+                result = await anyio.to_thread.run_sync(tool.call, arguments)
         except Exception as error:  # noqa: BLE001 - every failure must reach the MCP client as an error result
             return _error_result(_describe_error(error))
         return _success_result(tool, result)
@@ -102,7 +109,7 @@ def create_mcp_server(
 
 
 def run_mcp_server(
-    client: ClientX,
+    client: ClientX | AsyncClientX,
     *,
     name: str | None = None,
     instructions: str | None = None,
