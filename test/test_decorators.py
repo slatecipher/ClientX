@@ -5,9 +5,9 @@ import pytest
 from httpx2 import HTTPStatusError, Request, Response
 
 import clientx._decorators as decorators_module
-from clientx import Body, Header
+from clientx import Body, Header, method
 from clientx._client import ClientX
-from clientx._decorators import ApiMethod, DecodedEndpointDecorator, RawEndpointDecorator, method
+from clientx._decorators import ApiMethod, DecodedEndpointDecorator, RawEndpointDecorator
 from clientx.decoders import StreamLinesDecoder
 from clientx.exceptions import (
     EndpointNameConflictError,
@@ -204,16 +204,6 @@ def test_type_checker_messages_name_the_fix():
 
     assert raw == [["C", "Q", "ResponseOrNone"]] * 3
     assert decoded == [["C", "Q", "DecoderOutput"]] * 3
-
-
-def test_method_container_exposes_http_methods():
-    assert method.delete.method == "DELETE"
-    assert method.get.method == "GET"
-    assert method.head.method == "HEAD"
-    assert method.options.method == "OPTIONS"
-    assert method.patch.method == "PATCH"
-    assert method.post.method == "POST"
-    assert method.put.method == "PUT"
 
 
 def test_endpoint_can_be_named_send(mock_transport):

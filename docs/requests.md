@@ -12,12 +12,11 @@ ClientX maps method arguments into request parts in this order:
 ## By parameter name
 
 ```python
-from clientx import ClientX, Response
-from clientx.methods import get
+from clientx import ClientX, Response, method
 
 
 class SearchClient(ClientX):
-    @get("/search")
+    @method.get("/search")
     def search(self, params: dict[str, object], headers: dict[str, str]) -> Response:
         ...
 ```
@@ -40,8 +39,7 @@ Every helper also takes `description=`, which describes the parameter or model f
 from enum import Enum
 from typing import Annotated
 
-from clientx import Body, ClientX, Header, Query, Response
-from clientx.methods import get, post
+from clientx import Body, ClientX, Header, Query, Response, method
 
 
 class Sort(Enum):
@@ -50,7 +48,7 @@ class Sort(Enum):
 
 
 class ItemsClient(ClientX):
-    @get("/items")
+    @method.get("/items")
     def list_items(
         self,
         item_type: Annotated[str, Query("type")],
@@ -59,7 +57,7 @@ class ItemsClient(ClientX):
     ) -> Response:
         ...
 
-    @post("/items")
+    @method.post("/items")
     def create_item(
         self,
         token: Annotated[str, Header("Authorization")],
@@ -89,13 +87,12 @@ Only ClientX's helpers must be outermost. Pydantic metadata, such as `Field` con
 ```python
 from typing import Annotated
 
-from clientx import ClientX, PathParam, Response
-from clientx.methods import get
+from clientx import ClientX, PathParam, Response, method
 from pydantic import Field
 
 
 class UsersClient(ClientX):
-    @get("/users/{id_or_login}")
+    @method.get("/users/{id_or_login}")
     def retrieve(
         self,
         id_or_login: Annotated[
@@ -116,8 +113,7 @@ The helpers are named like FastAPI's, but they do the opposite job: FastAPI's re
 ```python
 from typing import Annotated
 
-from clientx import ClientX, Header, Query, Response
-from clientx.methods import post
+from clientx import ClientX, Header, Query, Response, method
 from pydantic import BaseModel
 
 
@@ -129,7 +125,7 @@ class CreateUserPayload(BaseModel):
 
 
 class UsersClient(ClientX):
-    @post("/users")
+    @method.post("/users")
     def create_user(self, payload: CreateUserPayload) -> Response:
         ...
 ```
@@ -159,8 +155,7 @@ ClientX dumps models with `mode="json"` and `by_alias=True`. Dates, UUIDs, and d
 ```python
 from typing import Annotated
 
-from clientx import Body, ClientX, DumpConfig, Response
-from clientx.methods import patch
+from clientx import Body, ClientX, DumpConfig, Response, method
 from pydantic import BaseModel
 
 
@@ -170,7 +165,7 @@ class UserChanges(BaseModel):
 
 
 class UsersClient(ClientX):
-    @patch("/users/{user_id}")
+    @method.patch("/users/{user_id}")
     def update_user(
         self,
         user_id: str,

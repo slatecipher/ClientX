@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 from clientx import ClientX, File, Query, Resource, Response
 from clientx._registry import endpoint_for
 from clientx.exceptions import ArgumentValidationError, ClientXError
-from clientx.methods import get, post
+from clientx.method import get, post
 from clientx.tools import list_tools
 
 

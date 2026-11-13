@@ -6,7 +6,7 @@ classes mounted on an `AsyncClientX`, and shares that module's models and annota
 
 from typing import Annotated
 
-from clientx import AsyncClientX, AsyncResource, Query, methods
+from clientx import AsyncClientX, AsyncResource, Query, method
 from clientx.decoders import ModelDecoder, TypeAdapterDecoder
 from pydantic import TypeAdapter
 
@@ -14,10 +14,10 @@ from .jsonplaceholder_client import JSONPLACEHOLDER_URL, PostId, UserId
 from .jsonplaceholder_models import Comment, Post, User
 
 
-# As in jsonplaceholder_client.py, `@methods.get(...)`, because endpoints named `get` and `list` would hide
-# the decorator and the built-in for the rest of the class body.
+# As in jsonplaceholder_client.py, the endpoint named `list` hides the built-in `list` for the rest of the class
+# body, so no later annotation uses `list[...]`.
 class AsyncPosts(AsyncResource, prefix="/posts", tags=["posts"]):
-    @methods.get(decoder=TypeAdapterDecoder(TypeAdapter(list[Post])))
+    @method.get(decoder=TypeAdapterDecoder(TypeAdapter(list[Post])))
     async def list(
         self,
         user_id: Annotated[int | None, Query("userId", description="Only list posts by this user.")] = None,
@@ -25,21 +25,21 @@ class AsyncPosts(AsyncResource, prefix="/posts", tags=["posts"]):
         """List blog posts. Without user_id, returns all 100 posts."""
         ...
 
-    @methods.get("/{post_id}", decoder=ModelDecoder(Post))
+    @method.get("/{post_id}", decoder=ModelDecoder(Post))
     async def get(self, post_id: PostId) -> Post:
         """Fetch one blog post by its ID."""
         ...
 
 
 class AsyncComments(AsyncResource, prefix="/posts/{post_id}/comments", tags=["comments"]):
-    @methods.get(decoder=TypeAdapterDecoder(TypeAdapter(list[Comment])))
+    @method.get(decoder=TypeAdapterDecoder(TypeAdapter(list[Comment])))
     async def list(self, post_id: PostId) -> list[Comment]:
         """List the comments left on one blog post."""
         ...
 
 
 class AsyncUsers(AsyncResource, prefix="/users", tags=["users"]):
-    @methods.get("/{user_id}", decoder=ModelDecoder(User))
+    @method.get("/{user_id}", decoder=ModelDecoder(User))
     async def get(self, user_id: UserId) -> User:
         """Fetch one user by ID, with their contact details, address and company."""
         ...

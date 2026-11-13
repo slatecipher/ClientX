@@ -13,7 +13,7 @@ from pydantic import BaseModel
 
 from clientx import ClientX, Response
 from clientx.decoders import ModelDecoder, StreamDecoder, StreamLinesDecoder, StreamResponseDecoder
-from clientx.methods import get
+from clientx.method import get
 
 
 class TrackedStream(httpx2.SyncByteStream):

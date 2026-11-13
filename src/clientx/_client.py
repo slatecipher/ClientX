@@ -142,7 +142,7 @@ class AsyncClientX(_BaseClientX[AsyncClient]):
     requests through an internal ``httpx2.AsyncClient``, and its endpoints are awaited::
 
         class ExampleAPI(AsyncClientX, base_url="https://api.example.com"):
-            @get("/users/{user_id}", decoder=ModelDecoder(User))
+            @method.get("/users/{user_id}", decoder=ModelDecoder(User))
             async def retrieve(self, user_id: int) -> User: ...
 
         async with ExampleAPI() as api:
@@ -266,7 +266,7 @@ class Resource(_BaseResource):
     nest them). Its endpoints then send through that client's connection::
 
         class Users(Resource, prefix="/users", tags=["users"]):
-            @get("/{user_id}", decoder=ModelDecoder(User))
+            @method.get("/{user_id}", decoder=ModelDecoder(User))
             def retrieve(self, user_id: int) -> User: ...
 
         class ExampleAPI(ClientX):
@@ -305,7 +305,7 @@ class AsyncResource(_BaseResource):
     It works like ``Resource``, for an ``AsyncClientX`` (or another ``AsyncResource``)::
 
         class Users(AsyncResource, prefix="/users", tags=["users"]):
-            @get("/{user_id}", decoder=ModelDecoder(User))
+            @method.get("/{user_id}", decoder=ModelDecoder(User))
             async def retrieve(self, user_id: int) -> User: ...
 
         class ExampleAPI(AsyncClientX):

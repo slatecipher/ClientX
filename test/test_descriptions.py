@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 
 from clientx import Body, ClientX, Header, PathParam, Query, Resource, Response
 from clientx.exceptions import EndpointSignatureError, MisplacedHelperError
-from clientx.methods import get, post
+from clientx.method import get, post
 from clientx.tools import list_tools
 
 

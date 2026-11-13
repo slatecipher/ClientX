@@ -8,7 +8,7 @@ import pytest
 
 from clientx import ClientX, Header, Query, Response
 from clientx.decoders import StreamLinesDecoder
-from clientx.methods import get, post
+from clientx.method import get, post
 
 FIELDS = (
     "clientx_endpoint",

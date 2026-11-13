@@ -34,9 +34,8 @@ In practice, decoders are where you define response parsing and validation behav
 ## `ModelDecoder`
 
 ```python
-from clientx import ClientX
+from clientx import ClientX, method
 from clientx.decoders import ModelDecoder
-from clientx.methods import get
 from pydantic import BaseModel
 
 
@@ -46,7 +45,7 @@ class User(BaseModel):
 
 
 class UsersClient(ClientX):
-    @get("/users/{user_id}", decoder=ModelDecoder(User))
+    @method.get("/users/{user_id}", decoder=ModelDecoder(User))
     def get_user(self, user_id: str) -> User:
         ...
 ```
@@ -54,16 +53,15 @@ class UsersClient(ClientX):
 ## `TypeAdapterDecoder`
 
 ```python
-from clientx import ClientX
+from clientx import ClientX, method
 from clientx.decoders import TypeAdapterDecoder
-from clientx.methods import get
 from pydantic import TypeAdapter
 
 UserList = TypeAdapter(list[dict[str, str]])
 
 
 class UsersClient(ClientX):
-    @get("/users", decoder=TypeAdapterDecoder(UserList))
+    @method.get("/users", decoder=TypeAdapterDecoder(UserList))
     def list_users(self) -> list[dict[str, str]]:
         ...
 ```
@@ -73,9 +71,8 @@ class UsersClient(ClientX):
 ## `FromResponseDecoder`
 
 ```python
-from clientx import ClientX
+from clientx import ClientX, method
 from clientx.decoders import FromResponseDecoder
-from clientx.methods import get
 from httpx2 import Response
 from pydantic import BaseModel
 
@@ -90,7 +87,7 @@ class SessionPayload(BaseModel):
 
 
 class SessionClient(ClientX):
-    @get("/session", decoder=FromResponseDecoder(SessionPayload))
+    @method.get("/session", decoder=FromResponseDecoder(SessionPayload))
     def get_session(self) -> SessionPayload:
         ...
 ```
@@ -106,19 +103,18 @@ For lightweight cases, ClientX also ships simple function decoders:
 ```python
 from typing import Any
 
-from clientx import ClientX
+from clientx import ClientX, method
 from clientx.decoders import json_decoder, text_decoder
-from clientx.methods import get
 
 
 class HealthClient(ClientX):
-    @get("/health", decoder=text_decoder)
+    @method.get("/health", decoder=text_decoder)
     def health(self) -> str:
         ...
 
 
 class MetadataClient(ClientX):
-    @get("/metadata", decoder=json_decoder)
+    @method.get("/metadata", decoder=json_decoder)
     def metadata(self) -> Any:
         ...
 ```
@@ -132,8 +128,7 @@ You can pass any callable with signature `(response: httpx2.Response) -> T` as `
 Use BYOD when you need behavior that is specific to your API contract, such as envelope unwrapping, fallback parsing, or custom validation rules.
 
 ```python
-from clientx import ClientX
-from clientx.methods import get
+from clientx import ClientX, method
 from httpx2 import Response
 from pydantic import BaseModel, TypeAdapter
 
@@ -153,7 +148,7 @@ def items_decoder(response: Response) -> list[Item]:
 
 
 class ItemsClient(ClientX):
-    @get("/items", decoder=items_decoder)
+    @method.get("/items", decoder=items_decoder)
     def list_items(self) -> list[Item]:
         ...
 ```
@@ -167,13 +162,12 @@ Stream decoders read the body incrementally instead of loading it into memory. T
 ```python
 from collections.abc import Iterator
 
-from clientx import ClientX
+from clientx import ClientX, method
 from clientx.decoders import StreamLinesDecoder
-from clientx.methods import get
 
 
 class EventsClient(ClientX):
-    @get("/events", decoder=StreamLinesDecoder())
+    @method.get("/events", decoder=StreamLinesDecoder())
     def events(self) -> Iterator[str]:
         ...
 
@@ -187,13 +181,12 @@ for line in EventsClient("https://api.example.com").events():
 - To get the open streamed response itself, use `StreamResponseDecoder` with `-> Response`. You own that response: read it, iterate it to the end, or call `response.close()`.
 
 ```python
-from clientx import ClientX, Response
+from clientx import ClientX, Response, method
 from clientx.decoders import StreamResponseDecoder
-from clientx.methods import get
 
 
 class FilesClient(ClientX):
-    @get("/files/{file_id}", decoder=StreamResponseDecoder())
+    @method.get("/files/{file_id}", decoder=StreamResponseDecoder())
     def download(self, file_id: str) -> Response:
         ...
 

@@ -73,9 +73,8 @@ Using an AI coding assistant? Point it at [llms.txt](https://github.com/slatecip
 ```python
 from typing import Annotated
 
-from clientx import ClientX, Query, Resource
+from clientx import ClientX, Query, Resource, method
 from clientx.decoders import ModelDecoder, TypeAdapterDecoder
-from clientx.methods import get
 from pydantic import BaseModel, TypeAdapter
 
 
@@ -85,12 +84,12 @@ class User(BaseModel):
 
 
 class Users(Resource, prefix="/users"):
-    @get("/{user_id}", decoder=ModelDecoder(User))
+    @method.get("/{user_id}", decoder=ModelDecoder(User))
     def retrieve(self, user_id: int) -> User:
         """Fetch one user by ID."""
         ...
 
-    @get(decoder=TypeAdapterDecoder(TypeAdapter(list[User])))
+    @method.get(decoder=TypeAdapterDecoder(TypeAdapter(list[User])))
     def search(self, name: Annotated[str | None, Query()] = None) -> list[User]:
         """List users, or only those with this name."""
         ...
