@@ -55,7 +55,7 @@ Each `Tool` has:
 `list_tools` takes filters: `read_only=True`, `include_tags=[...]`, `exclude_tags=[...]`, and `include_deprecated=True` (deprecated endpoints are left out by default). Streaming endpoints are always left out, and so is any endpoint whose types have no JSON Schema, such as an upload typed as a file object (`BinaryIO`), with a warning. An upload typed as `bytes`, such as `dict[str, bytes]`, has a schema (a string with `"format": "binary"`), so it's listed.
 
 - **Expose only what an agent needs.** Tools can call `POST`, `PUT`, `PATCH`, and `DELETE` endpoints. `list_tools(client, read_only=True)` keeps only the read-only ones, which is what the MCP server serves by default. The hints come from the HTTP method, so an API that changes data on `GET` isn't flagged.
-- **Keep credentials in the client's configuration** (`auth=`, `headers=`), never in endpoint parameters: parameters become arguments the model sees and fills in.
+- **Keep credentials in the client's `auth=`** (see [Authentication](configuration.md#authentication)), never in endpoint parameters: parameters become arguments the model sees and fills in.
 - `call` validates the arguments before sending anything and raises `pydantic.ValidationError` if they don't match. Request and decoder errors propagate. Most agent loops send the error text back to the model, but an `HTTPStatusError`'s message includes the full URL, query string included: if your client sends credentials as query parameters (`params=`), describe the error from `error.response.status_code` and `error.request.url.path` instead of sending `str(error)`. The MCP server does this for you.
 
 ## Serving a client over MCP

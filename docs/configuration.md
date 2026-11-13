@@ -40,23 +40,9 @@ A subclass keeps its parent's class arguments unless it sets its own. Without a 
 
 ## Authentication
 
-Give a client its credentials when you create it, with `auth=` or `headers=`. The client sends them with every request, so endpoints don't need parameters for them. Keep credentials out of endpoint parameters: every caller would have to pass them, and when endpoints are [AI tools](ai-tools.md), parameters are what the model sees and fills in.
+Give a client its credentials with `auth=` when you create it. `auth=` is httpx2's authentication option: ClientX passes it to the httpx2 client, which applies it to every request. For what it accepts and how to write your own scheme, see httpx2's [Authentication](https://pydantic.dev/docs/httpx2/advanced/authentication/) documentation.
 
-For a fixed API key or token, a header is enough:
-
-```python
-import os
-
-api = ExampleAPI("https://api.example.com", headers={"Authorization": f"Bearer {os.environ['API_TOKEN']}"})
-```
-
-`auth=` is httpx2's authentication option. ClientX passes it to the httpx2 client, which applies it to each request just before sending it. It accepts:
-
-- A `(username, password)` tuple, for HTTP Basic authentication. `httpx2.BasicAuth`, `httpx2.DigestAuth`, and `httpx2.NetRCAuth` work too.
-- A function that takes a `Request`, changes it (for example, adds a header), and returns it.
-- An instance of an `Auth` subclass, for schemes that send requests of their own, such as getting a token first. `clientx` re-exports `Auth`, `Request`, and `Response` from httpx2.
-
-`auth=` runs once for each call, before any redirect is followed. If a redirect leads to another host, httpx2 drops the `Authorization` header, whether it came from `auth=` or `headers=`, so your credentials aren't sent there.
+Keep credentials out of endpoint parameters: every caller would have to pass them, and when endpoints are [AI tools](ai-tools.md), parameters are what the model sees and fills in.
 
 ### Getting a token with a client ID and secret
 
@@ -129,10 +115,7 @@ api = ExampleAPI("https://api.example.com", auth=auth)
 
 Don't add credentials in a request [event hook](logging.md#your-own-request-logging). httpx2 documents hooks for logging, monitoring, and tracing. A request hook also runs again for every redirect, so it would put back an `Authorization` header that httpx2 dropped for another host. And it can't send a token request through the client's flow or send a request again after a 401.
 
-For other schemes and more complex flows, see httpx2's documentation:
-
-- [Authentication](https://pydantic.dev/docs/httpx2/advanced/authentication/): Basic, Digest, and `.netrc` authentication, custom `Auth` classes, refreshing tokens, signing requests with their body, and locks or other I/O in a flow.
-- [Third Party Packages](https://pydantic.dev/docs/httpx2/community/third_party_packages/): libraries that support httpx2, such as Authlib for OAuth and OpenID Connect, and httpx2_kerberos for Kerberos. ClientX creates its own httpx2 client, so use a library's `Auth` class as `auth=`, not its client class.
+For other schemes, httpx2's [Third Party Packages](https://pydantic.dev/docs/httpx2/community/third_party_packages/) page lists libraries that support it. ClientX creates its own httpx2 client, so use a library's `Auth` class as `auth=`, not its client class.
 
 ## Closing a client
 
