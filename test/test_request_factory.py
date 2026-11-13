@@ -18,7 +18,7 @@ from clientx._client_types import DumpConfig
 from clientx._endpoint_context import Endpoint
 from clientx._request_factory import ArgumentCursor, ModelExtractor, RequestFactory
 from clientx.exceptions import UnconsumableArgumentError
-from clientx.methods import get, patch, post
+from clientx.method import get, patch, post
 
 
 class Payload(BaseModel):

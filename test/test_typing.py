@@ -45,7 +45,7 @@ from clientx.decoders import (
     text_decoder,
 )
 from clientx.exceptions import EndpointSignatureError, MissingDecoderError
-from clientx.methods import delete, get, post
+from clientx.method import delete, get, post
 
 
 class User(BaseModel):

@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from clientx import ClientX, Resource, Response
 from clientx.decoders import ModelDecoder, StreamLinesDecoder
 from clientx.exceptions import EndpointNameConflictError, MissingPathArgumentsError, UnboundResourceError
-from clientx.methods import get, post
+from clientx.method import get, post
 
 
 class User(BaseModel):

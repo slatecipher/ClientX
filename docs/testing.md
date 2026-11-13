@@ -7,9 +7,8 @@ from typing import Annotated
 
 import httpx2
 import pytest
-from clientx import ClientX, Query
+from clientx import ClientX, Query, method
 from clientx.decoders import ModelDecoder
-from clientx.methods import get
 from pydantic import BaseModel
 
 
@@ -19,7 +18,7 @@ class User(BaseModel):
 
 
 class UsersClient(ClientX, base_url="https://api.example.com", user_agent="users-client/1.0"):
-    @get("/users/{user_id}", decoder=ModelDecoder(User))
+    @method.get("/users/{user_id}", decoder=ModelDecoder(User))
     def get_user(self, user_id: int, fields: Annotated[str | None, Query()] = None) -> User:
         """Fetch one user by ID."""
         ...

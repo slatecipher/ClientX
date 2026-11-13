@@ -12,7 +12,7 @@ from clientx.exceptions import (
     UnboundResourceError,
     UnconsumableArgumentError,
 )
-from clientx.methods import get
+from clientx.method import get
 
 
 @pytest.mark.parametrize(

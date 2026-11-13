@@ -15,7 +15,7 @@ import pytest
 from pydantic import BaseModel
 
 from clientx import ClientX, Header, Query, Response
-from clientx.methods import get, post
+from clientx.method import get, post
 from clientx.tools import list_tools
 
 type Page = Annotated[int | None, Query("p")]

@@ -32,7 +32,7 @@ uv run pytest -k "deprecat" --no-cov                        # by keyword, skip c
 
 ## Architecture
 
-The public API is `clientx/__init__.py`, which also re-exports `httpx2.Response` and related types, plus the `clientx.methods`, `clientx.decoders` and `clientx.exceptions` modules. Modules whose names start with `_` are internal.
+The public API is `clientx/__init__.py`, which also re-exports `httpx2.Response` and related types, plus the `clientx.method`, `clientx.decoders` and `clientx.exceptions` modules. Modules whose names start with `_` are internal.
 
 **Decoration time** (`_decorators.py`, `ApiMethod.__call__`): each verb decorator does the following:
 1. Builds an `Endpoint` (`_endpoint_context.py`) that holds the method, a `URLPath` template, the decoder, the deprecation hook, tags and the timeout. `Endpoint.stream` is derived from the decoder: `StreamDecoder` and `AsyncStreamDecoder` subclasses and `StreamResponseDecoder` stream; there is no `stream=` option.

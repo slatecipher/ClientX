@@ -321,7 +321,7 @@ class ApiMethod:
         Args:
             path: URL path template for the endpoint (e.g., ``/v1/users/{user_id}``).
                 Defaults to ``""``: the client's base URL, or on a ``Resource``, its
-                prefix itself, so ``@get()`` on a resource with ``prefix="/users"``
+                prefix itself, so ``@method.get()`` on a resource with ``prefix="/users"``
                 is ``GET /users``.
             decoder: Response decoder. Required when the endpoint's return type is
                 neither ``httpx2.Response`` nor ``None``. It also decides streaming:
@@ -430,38 +430,3 @@ class ApiMethod:
             return endpoint_function
 
         return decorator
-
-
-@dataclass(frozen=True)
-class MethodContainer:
-    """Container for HTTP verb decorators.
-
-    Attributes:
-        delete: DELETE request decorator.
-        get: GET request decorator.
-        head: HEAD request decorator.
-        options: OPTIONS request decorator.
-        patch: PATCH request decorator.
-        post: POST request decorator.
-        put: PUT request decorator.
-    """
-
-    delete: ApiMethod
-    get: ApiMethod
-    head: ApiMethod
-    options: ApiMethod
-    patch: ApiMethod
-    post: ApiMethod
-    put: ApiMethod
-
-
-# Preconfigured HTTP verb decorators for client usage.
-method = MethodContainer(
-    delete=ApiMethod("DELETE"),
-    get=ApiMethod("GET"),
-    head=ApiMethod("HEAD"),
-    options=ApiMethod("OPTIONS"),
-    patch=ApiMethod("PATCH"),
-    post=ApiMethod("POST"),
-    put=ApiMethod("PUT"),
-)

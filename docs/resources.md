@@ -3,9 +3,8 @@
 For larger APIs, group related endpoints into `Resource` classes, much like FastAPI's `APIRouter`. Mount an instance on your client, and its endpoints send through the client's connection and configuration, so there's no second client to create or pass around. For `async def` endpoints, subclass `AsyncResource` and mount it on an `AsyncClientX` (see [Async clients](async.md)):
 
 ```python
-from clientx import ClientX, Resource, Response
+from clientx import ClientX, Resource, Response, method
 from clientx.decoders import ModelDecoder
-from clientx.methods import get, post
 from pydantic import BaseModel
 
 
@@ -15,11 +14,11 @@ class User(BaseModel):
 
 
 class Users(Resource, prefix="/users", tags=["users"]):
-    @get("/{user_id}", decoder=ModelDecoder(User))
+    @method.get("/{user_id}", decoder=ModelDecoder(User))
     def retrieve(self, user_id: int) -> User:
         ...
 
-    @post()
+    @method.post()
     def create(self, json: dict[str, str]) -> Response:
         ...
 
@@ -42,7 +41,7 @@ Type checkers see `api.users` as `Users`, and its endpoints keep their signature
 - Names that `ClientX` itself uses, such as `close`, are free for endpoints on a resource.
 - A subclass keeps its parent's prefix and tags unless it sets its own.
 - An endpoint's name hides any other meaning of that name for the rest of the class body:
-  - If an endpoint is named like a decorator, such as `get`, later decorators refer to that method instead. Import the module (`from clientx import methods`) and write `@methods.get(...)`.
+  - If you import the decorators themselves (`from clientx.method import get`), an endpoint named like one, such as `get`, replaces it, so a later `@get(...)` fails when the class is defined. Decorating with `@method.get(...)`, as these docs do, avoids that.
   - If an endpoint is named `list` (or `dict`, `type`, ...), a later `list[Post]` in an annotation or a decorator argument fails when the class is defined: `TypeError: 'function' object is not subscriptable`. Pyright reports it too. Define that endpoint last in the class, or write `builtins.list[Post]` after it.
 - Mount an instance (`users = Users()`), not the class. Calling an endpoint on a resource that isn't mounted on a client, such as `Users().retrieve(42)`, raises `UnboundResourceError`.
 
@@ -54,9 +53,8 @@ A client or resource can also have ordinary, undecorated methods. They aren't en
 from typing import Annotated
 
 import httpx2
-from clientx import ClientX, Query, Resource, Response
+from clientx import ClientX, Query, Resource, Response, method
 from clientx.decoders import ModelDecoder
-from clientx.methods import get
 from pydantic import BaseModel
 
 
@@ -72,12 +70,12 @@ class Page(BaseModel):
 
 
 class Pokemon(Resource, prefix="/pokemon"):
-    @get(decoder=ModelDecoder(Page))
+    @method.get(decoder=ModelDecoder(Page))
     def page(self, limit: Annotated[int, Query()] = 20, offset: Annotated[int, Query()] = 0) -> Page:
         """List Pokémon, one page at a time."""
         ...
 
-    @get("/{name}")
+    @method.get("/{name}")
     def retrieve(self, name: str) -> Response:
         """Fetch one Pokémon by its lowercase name."""
         ...

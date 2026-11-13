@@ -9,9 +9,8 @@ A complete client:
 ```python
 from typing import Annotated
 
-from clientx import Body, ClientX, DumpConfig, PathParam, Query, Resource, Response
+from clientx import Body, ClientX, DumpConfig, PathParam, Query, Resource, Response, method
 from clientx.decoders import ModelDecoder, TypeAdapterDecoder
-from clientx.methods import delete, get, patch, post
 from pydantic import BaseModel, TypeAdapter
 
 
@@ -29,29 +28,29 @@ class UserChanges(BaseModel):
 
 
 class Users(Resource, prefix="/users", tags=["users"]):
-    @get("/{user_id}", decoder=ModelDecoder(User))
+    @method.get("/{user_id}", decoder=ModelDecoder(User))
     def retrieve(self, user_id: Annotated[int, PathParam(description="The user's ID")]) -> User:
         """Fetch one user by ID."""
         ...
 
-    @get(decoder=TypeAdapterDecoder(TypeAdapter(list[User])))
+    @method.get(decoder=TypeAdapterDecoder(TypeAdapter(list[User])))
     def search(self, name: Annotated[str, Query("q")], limit: Annotated[int | None, Query()] = None) -> list[User]:
         """Search users by name."""
         ...
 
-    @post(decoder=ModelDecoder(User))
+    @method.post(decoder=ModelDecoder(User))
     def create(self, payload: NewUser) -> User:
         """Create a user."""
         ...
 
-    @patch("/{user_id}", decoder=ModelDecoder(User))
+    @method.patch("/{user_id}", decoder=ModelDecoder(User))
     def update(
         self, user_id: int, changes: Annotated[UserChanges, Body(dump_config=DumpConfig(exclude_unset=True))]
     ) -> User:
         """Change some of a user's fields."""
         ...
 
-    @delete("/{user_id}")
+    @method.delete("/{user_id}")
     def remove(self, user_id: int) -> None:
         """Delete a user."""
         ...
@@ -60,7 +59,7 @@ class Users(Resource, prefix="/users", tags=["users"]):
 class ExampleAPI(ClientX):
     users = Users()
 
-    @get("/health")
+    @method.get("/health")
     def health(self) -> Response:
         """Check the service."""
         ...
@@ -76,7 +75,7 @@ with ExampleAPI("https://api.example.com", auth=("user", "secret"), timeout=10.0
 
 Rules for writing endpoints:
 
-- Endpoint bodies never run. Write `...`, after the docstring if there is one: pyright rejects a body that's only a docstring when the return type isn't `None`. Decorators come from `clientx.methods`: `get`, `post`, `put`, `patch`, `delete`, `head`, `options`. Each takes `path` (default `""`: the base URL, or a resource's prefix itself, so `@get()` in a `prefix="/users"` resource is `GET /users`), and optionally `decoder`, `deprecated` (for example `DeprecatedMessage("...")`), `tags`, `timeout`, `raise_for_status`, and `validate_arguments` (each `True`/`False`, overriding the client's).
+- Endpoint bodies never run. Write `...`, after the docstring if there is one: pyright rejects a body that's only a docstring when the return type isn't `None`. Decorate endpoints with `@method.get(...)`, after `from clientx import method`; the module `clientx.method` has `get`, `post`, `put`, `patch`, `delete`, `head` and `options`. Each takes `path` (default `""`: the base URL, or a resource's prefix itself, so `@method.get()` in a `prefix="/users"` resource is `GET /users`), and optionally `decoder`, `deprecated` (for example `DeprecatedMessage("...")`), `tags`, `timeout`, `raise_for_status`, and `validate_arguments` (each `True`/`False`, overriding the client's).
 - The parameters build the request, and the return type describes the response: a model in the return type is decoded from the response and is never sent. Every endpoint needs a return annotation. `-> Response` (`clientx.Response` is `httpx2.Response`; `clientx` also re-exports `Auth`, `Request` and `Timeout`) returns the raw response, `-> None` returns nothing, and any other type requires `decoder=`. Type checkers check that the decoder's output matches the annotation: a typed return without a decoder is reported as not assignable to the type variable `ResponseOrNone`, and a mismatched decoder as an incompatible callable (ignore mypy's note about positional-only arguments). A missing annotation or decoder raises when the class is defined.
 - Decoders, from `clientx.decoders`: `ModelDecoder(Model)`, `TypeAdapterDecoder(TypeAdapter(T))` (it takes a `TypeAdapter`, not a bare type; `key="results"` validates that member of a JSON object instead of the whole body), `FromResponseDecoder(Model)` (calls `Model.from_response(response)`), `json_decoder` (returns `Any`), `text_decoder`, `content_decoder`, or any callable `(httpx2.Response) -> T`. A 4xx or 5xx response raises `httpx2.HTTPStatusError` before the decoder runs; otherwise a decoder always runs when given. A decoder's exception reaches the caller unchanged: `ModelDecoder`, `TypeAdapterDecoder` and `json_decoder` raise `ValueError` subclasses (`pydantic.ValidationError`, `json.JSONDecodeError`, or `ValueError` for a missing `key`), and the DEBUG log record, written before decoding, shows the response's status and no error.
 - `{placeholders}` in the path are filled from parameters with the same names, including placeholders in a resource prefix. Values are converted like query values (an `Enum` becomes its value) and percent-encoded as one segment, so `/` `?` `#` and `..` in a value can't change the path. Use `{name:path}` to keep slashes in a value such as a file path; any other converter raises `PathTemplateError`. A `None` or empty value, or a `{name:path}` value with a leading, trailing, or doubled slash, raises `PathValueError` before sending, since it would call a different path. Don't pre-encode values: `%` would be encoded again.
@@ -89,7 +88,7 @@ Rules for writing endpoints:
 - Streaming: `StreamLinesDecoder()` and `StreamChunksDecoder(chunk_size=...)` with `-> Iterator[str]` / `-> Iterator[bytes]` stream the body and release the connection when iteration ends. `StreamResponseDecoder()` with `-> Response` returns the open response, which the caller must read or close. For `async def` endpoints, use `AsyncStreamLinesDecoder()`, `AsyncStreamChunksDecoder(chunk_size=...)`, or an `AsyncStreamDecoder` subclass (an `async def __call__` that yields), with `-> AsyncIterator[str]` / `-> AsyncIterator[bytes]`, and iterate with `async for line in await api.events()`: awaiting raises for a 4xx or 5xx before iteration, and the connection is released when iteration ends, fails, or the iterator is closed (or garbage-collected, if you stop early). A stream decoder for the other kind of endpoint raises `EndpointSignatureError` when the class is defined.
 - Resources group endpoints: `class Users(Resource, prefix="/users", tags=[...])`, mounted as an instance (`users = Users()`) on a `ClientX` subclass or on another resource. Prefixes are absolute (they're not combined when nesting); put an API-wide prefix such as `/v1` in the base URL. Resource tags come before each endpoint's tags. Calling a resource that isn't mounted raises `UnboundResourceError`.
 - Clients and resources can have plain, undecorated methods: they aren't endpoints or tools, and they call endpoints through `self`. Use them to normalize arguments (endpoint bodies never run, and validation never converts) and for pagination: a `next` URL can't be passed back as a path value, which is percent-encoded, so read its query parameters with `httpx2.URL(next).params` and call the list endpoint.
-- An endpoint's name hides any other meaning of that name for the rest of the class body. A method called `get` makes later `@get(...)` decorators refer to it: use `from clientx import methods` and `@methods.get(...)` instead. A method called `list` (or `dict`, `type`, ...) makes a later `list[Post]`, in an annotation or a decorator argument, fail when the class is defined with `TypeError: 'function' object is not subscriptable` (pyright reports it too). Define that method last in the class, or write `builtins.list[Post]` after it (`import builtins`).
+- An endpoint's name hides any other meaning of that name for the rest of the class body. With bare imports (`from clientx.method import get`), a method called `get` replaces the decorator, so a later `@get(...)` fails when the class is defined; `@method.get(...)` can't be hidden that way. A method called `list` (or `dict`, `type`, ...) makes a later `list[Post]`, in an annotation or a decorator argument, fail when the class is defined with `TypeError: 'function' object is not subscriptable` (pyright reports it too). Define that method last in the class, or write `builtins.list[Post]` after it (`import builtins`).
 - Names `ClientX` itself uses can't be endpoint or resource names on a `ClientX` subclass: `close` and dunder methods raise `EndpointNameConflictError`. They're free on a `Resource`. `send` is free on both. On an `AsyncClientX`, `aclose` is reserved too, and `close` is free.
 - mypy reports `empty-body` for `...` bodies with a non-`None` return type. Turn that code off for client modules (`# mypy: disable-error-code="empty-body"`); pyright accepts `...`.
 
@@ -98,8 +97,8 @@ Using clients:
 - `ClientX(base_url=None, user_agent=None, raise_for_status=True, validate_arguments=False, **kwargs)` forwards every other keyword to `httpx2.Client`. A client class can ship defaults as class arguments, `class ExampleAPI(ClientX, base_url="https://api.example.com", user_agent="example-api/1.0")`, so `ExampleAPI()` needs no arguments; arguments given when creating the client win, and a subclass keeps its parent's. `base_url` and `user_agent` are the only class arguments: any other keyword in the class statement raises `TypeError: ...__init_subclass__() takes no keyword arguments`, so pass other options when creating the client. Without a base URL in either place, creating the client raises `TypeError`. The `User-Agent` is the `user_agent` argument, else one in `headers=`, else the class's, else `ClientX/<version>`. The keywords include `auth`, `headers`, `params`, `cookies`, `timeout`, `verify`, `cert`, `proxy`, `transport`, `mounts`, `event_hooks`, `follow_redirects`, and so on. Close a client with `with` or `close()`. `with` is optional: a long-lived client (web app, worker, MCP server) is created once, reused for every request, and closed with `close()` at shutdown; a closed client can't be reused (`RuntimeError`). Settings can't be changed after the client is created; to use different ones, create another client. Instances are independent, each with its own connections, settings and credentials; class arguments are only defaults. There's no method for sending a raw request: to call a URL the client has no method for, add an endpoint.
 - Async: subclass `AsyncClientX` (on `httpx2.AsyncClient`, with the same arguments, class arguments and options) and write endpoints as `async def` methods with the same decorators. `await api.users.retrieve(42)` returns the decoded value, and `asyncio.gather(api.users.retrieve(1), api.users.retrieve(2))` sends requests concurrently over the client's connections. Group async endpoints with `AsyncResource`, which mounts only on an `AsyncClientX` or another `AsyncResource`. An `async def` endpoint on a `ClientX` or `Resource`, a `def` endpoint on an `AsyncClientX` or `AsyncResource`, a resource mounted on the other kind, or a class that subclasses both kinds raises when the class is defined, and type checkers report it at the decorator. Close with `async with` or `await client.aclose()`. `transport=` and `mounts=` take async transports (`httpx2.MockTransport` serves both kinds), and event hooks must be `async` functions. Test with anyio's pytest plugin, which comes with httpx2: `@pytest.mark.anyio async def test_...`.
 - Authentication: pass credentials with `auth=` when creating the client, never as endpoint parameters. `auth=` is httpx2's authentication option; for what it accepts and how to write an `Auth` subclass (such as OAuth 2 client credentials), see https://pydantic.dev/docs/httpx2/advanced/authentication/. Don't add credentials in a request event hook: hooks are for logging, and a request hook runs again for each redirect, putting back the `Authorization` header httpx2 drops for another host. Use a third-party library's `Auth` class, not its `httpx2.Client` subclass: ClientX creates its own client.
-- Status codes: a 4xx or 5xx response raises `httpx2.HTTPStatusError` from every endpoint, with the body already read (`exc.response.json()` works) and before any decoder runs. Redirects aren't errors: with `follow_redirects=True` only the final response is checked, and without it a 3xx is returned. A streamed error response is read and closed before raising. Turn it off for a client with `ClientX(..., raise_for_status=False)`, or per endpoint with `@get(..., raise_for_status=False)` (the endpoint's setting wins), for example to return a 404 as a `Response` or to let a decoder handle error statuses. Don't add a `raise_for_status` decoder or event hook.
-- Argument validation is opt-in: `ClientX(..., validate_arguments=True)`, or `@get(..., validate_arguments=...)` per endpoint (the endpoint's setting wins). It checks each argument the caller passes against its full annotation (including `Field` constraints) in Pydantic's strict mode, before sending, and raises `ArgumentValidationError` (`.parameter`, `.validation_error`). Values are never converted (`"1"` doesn't match `int`), defaults aren't checked, and types Pydantic can't validate (such as `BinaryIO`) are skipped.
+- Status codes: a 4xx or 5xx response raises `httpx2.HTTPStatusError` from every endpoint, with the body already read (`exc.response.json()` works) and before any decoder runs. Redirects aren't errors: with `follow_redirects=True` only the final response is checked, and without it a 3xx is returned. A streamed error response is read and closed before raising. Turn it off for a client with `ClientX(..., raise_for_status=False)`, or per endpoint with `@method.get(..., raise_for_status=False)` (the endpoint's setting wins), for example to return a 404 as a `Response` or to let a decoder handle error statuses. Don't add a `raise_for_status` decoder or event hook.
+- Argument validation is opt-in: `ClientX(..., validate_arguments=True)`, or `@method.get(..., validate_arguments=...)` per endpoint (the endpoint's setting wins). It checks each argument the caller passes against its full annotation (including `Field` constraints) in Pydantic's strict mode, before sending, and raises `ArgumentValidationError` (`.parameter`, `.validation_error`). Values are never converted (`"1"` doesn't match `int`), defaults aren't checked, and types Pydantic can't validate (such as `BinaryIO`) are skipped.
 - Test clients without the network: `ExampleAPI(transport=httpx2.MockTransport(handler))`, where `handler(request: httpx2.Request) -> httpx2.Response` records each request (assert on `request.method`, `request.url.path`, `request.url.params`, `request.headers`, `request.content`) and returns the response to decode, or a 4xx to test `HTTPStatusError`. Test an MCP server in memory with `async with mcp.Client(create_mcp_server(client)) as session: await session.call_tool(name, arguments)`.
 - Errors all derive from `clientx.ClientXError`. When the class is defined: `MissingReturnTypeError`, `MissingDecoderError`, `EndpointNameConflictError`, `MissingPathArgumentsError` (a path or resource-prefix placeholder that names no parameter), `PathTemplateError` (a converter other than `{name:path}`), `EndpointSignatureError` (no positional first parameter for the client, a `*args`/`**kwargs` parameter, an endpoint of the wrong kind for its class, or a stream decoder for the other kind of endpoint), and `MisplacedHelperError` (for a model field, when the class is defined if a parameter is annotated with the model, or else when it's sent). At call time: `UnconsumableArgumentError`, `PathValueError`, `UnboundResourceError`, and `ArgumentValidationError` when validation is on. Annotations are evaluated when the class is defined, so `from __future__ import annotations` works; types they name must be module-level. HTTP errors come from httpx2: connection errors, timeouts, and `HTTPStatusError` for 4xx and 5xx responses.
 - Logging: one DEBUG record per endpoint call on the `clientx` logger, such as `ClientX request: GET /users/42 -> 200 in 12.3 ms (Users.retrieve)` (or `-> 404 HTTPStatusError`), with attributes `clientx_endpoint`, `clientx_method`, `clientx_path`, `clientx_parts`, `clientx_stream`, `clientx_status`, `clientx_elapsed_ms`, and `clientx_error`. It never contains header values, bodies, or query strings; the path does include path parameter values, so keep secrets out of them. httpx2 separately logs each request at INFO on the `httpx2` logger. For custom request logging, pass httpx2 `event_hooks`.

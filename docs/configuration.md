@@ -68,9 +68,8 @@ A 4xx or 5xx response raises `httpx2.HTTPStatusError`, from every endpoint, befo
 
 ```python
 import httpx2
-from clientx import ClientX
+from clientx import ClientX, method
 from clientx.decoders import ModelDecoder
-from clientx.methods import get
 from pydantic import BaseModel
 
 
@@ -79,7 +78,7 @@ class User(BaseModel):
 
 
 class UsersClient(ClientX):
-    @get("/users/{user_id}", decoder=ModelDecoder(User))
+    @method.get("/users/{user_id}", decoder=ModelDecoder(User))
     def get_user(self, user_id: int) -> User:
         ...
 
@@ -98,12 +97,11 @@ with UsersClient("https://api.example.com") as client:
 Turn it off for a whole client with `raise_for_status=False`, or set it per endpoint. An endpoint's setting wins over the client's:
 
 ```python
-from clientx import ClientX, Response
-from clientx.methods import get
+from clientx import ClientX, Response, method
 
 
 class FilesClient(ClientX):
-    @get("/files/{name}", raise_for_status=False)
+    @method.get("/files/{name}", raise_for_status=False)
     def get_file(self, name: str) -> Response:
         """Return a 404 as a response instead of raising it, so the caller can check `status_code`."""
         ...
@@ -122,14 +120,13 @@ Type checkers catch wrong argument types in your own code, but not in values tha
 ```python
 from typing import Annotated
 
-from clientx import ClientX, Query, Response
+from clientx import ClientX, Query, Response, method
 from clientx.exceptions import ArgumentValidationError
-from clientx.methods import get
 from pydantic import Field
 
 
 class SearchClient(ClientX):
-    @get("/search")
+    @method.get("/search")
     def search(self, page: Annotated[int, Query(), Field(ge=1)]) -> Response: ...
 
 

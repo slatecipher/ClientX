@@ -9,7 +9,7 @@ from pydantic import BaseModel
 
 from clientx import ClientX, Resource, Response
 from clientx.decoders import ModelDecoder, StreamLinesDecoder, StreamResponseDecoder
-from clientx.methods import delete, get
+from clientx.method import delete, get
 from clientx.tools import list_tools
 
 

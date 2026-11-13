@@ -1,6 +1,5 @@
-from clientx import ClientX
+from clientx import ClientX, method
 from clientx.decoders import TypeAdapterDecoder
-from clientx.methods import get
 from pydantic import BaseModel, TypeAdapter
 
 DEMO_URL = "https://demo.duendesoftware.com"
@@ -21,7 +20,7 @@ class DemoAPI(ClientX, base_url=DEMO_URL, user_agent="oauth2-example/0.1"):
     `auth=ClientCredentials(TOKEN_URL, ...)` when creating the client.
     """
 
-    @get("/api/test", decoder=TypeAdapterDecoder(TypeAdapter(list[Claim])))
+    @method.get("/api/test", decoder=TypeAdapterDecoder(TypeAdapter(list[Claim])))
     def claims(self) -> list[Claim]:
         """Return the claims of the access token the API received."""
         ...

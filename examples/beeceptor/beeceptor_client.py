@@ -2,9 +2,8 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from clientx import ClientX, DeprecatedMessage, PathParam, Resource, Response
+from clientx import ClientX, DeprecatedMessage, PathParam, Resource, Response, method
 from clientx.decoders import ModelDecoder, TypeAdapterDecoder
-from clientx.methods import get
 
 from .beeceptor_models import Companies, Company, User, Users
 
@@ -12,7 +11,7 @@ from .beeceptor_models import Companies, Company, User, Users
 class UsersResource(Resource, prefix="/users"):
     """Beeceptor's sample users, under ``/users``."""
 
-    @get(decoder=TypeAdapterDecoder(Users))
+    @method.get(decoder=TypeAdapterDecoder(Users))
     def list_all(self) -> list[User]:
         """Return Beeceptor sample users as `User` models.
 
@@ -23,7 +22,7 @@ class UsersResource(Resource, prefix="/users"):
         """
         ...
 
-    @get("/{user_id}", decoder=ModelDecoder(User))
+    @method.get("/{user_id}", decoder=ModelDecoder(User))
     def retrieve(self, user_id: Annotated[int, PathParam(description="The user's ID.")]) -> User:
         """Return one Beeceptor sample user as a `User` model.
 
@@ -36,7 +35,7 @@ class UsersResource(Resource, prefix="/users"):
 class CompaniesResource(Resource, prefix="/companies"):
     """Beeceptor's sample companies, under ``/companies``."""
 
-    @get(decoder=TypeAdapterDecoder(Companies))
+    @method.get(decoder=TypeAdapterDecoder(Companies))
     def list_all(self) -> list[Company]:
         """Return Beeceptor sample companies as `Company` models.
 
@@ -47,7 +46,7 @@ class CompaniesResource(Resource, prefix="/companies"):
         """
         ...
 
-    @get()
+    @method.get()
     def list_raw(self) -> Response:
         """Return the raw Beeceptor companies response.
 
@@ -56,7 +55,7 @@ class CompaniesResource(Resource, prefix="/companies"):
         """
         ...
 
-    @get(
+    @method.get(
         "",
         deprecated=DeprecatedMessage(
             "Deprecated: use companies.list_raw(); this endpoint will be removed in a future release."

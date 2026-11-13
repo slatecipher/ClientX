@@ -16,7 +16,7 @@ from clientx import (
     Query,
     Resource,
     Response,
-    methods,
+    method,
 )
 from clientx.decoders import (
     AsyncStreamLinesDecoder,
@@ -25,7 +25,7 @@ from clientx.decoders import (
     StreamResponseDecoder,
     TypeAdapterDecoder,
 )
-from clientx.methods import delete, get, post
+from clientx.method import delete, get, post
 from clientx.tools import Tool, list_tools
 
 
@@ -217,7 +217,7 @@ def test_endpoint_returning_nothing_has_no_output_schema(make_api):
 def test_hints_follow_the_http_method(verb: str, read_only: bool, destructive: bool, idempotent: bool):
     def call(self: ClientX) -> Response: ...
 
-    api_class = type("VerbAPI", (ClientX,), {"call": getattr(methods, verb)("/thing")(call)})
+    api_class = type("VerbAPI", (ClientX,), {"call": getattr(method, verb)("/thing")(call)})
     [tool] = list_tools(api_class("https://api.example.com"))
 
     assert (tool.read_only, tool.destructive, tool.idempotent) == (read_only, destructive, idempotent)

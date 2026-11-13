@@ -6,13 +6,13 @@ An endpoint is a method whose signature describes one API call, in two halves:
 - **The return type describes the response.** The decorator's `decoder` turns the response into a value of that type.
 
 ```python
-@get("/users/{user_id}", decoder=ModelDecoder(User))
+@method.get("/users/{user_id}", decoder=ModelDecoder(User))
 def retrieve(self, user_id: int) -> User: ...
 ```
 
 `retrieve(42)` sends `GET /users/42`, because `user_id` matches `{user_id}`, and returns the JSON response as a `User`. The two halves are independent: `User`'s fields come from the API's response, not from the arguments.
 
-Use decorators from `clientx.methods`. They decorate `def` methods of a `ClientX` or `Resource`, and `async def` methods of an `AsyncClientX` or `AsyncResource` (see [Async clients](async.md)):
+Import the decorators' module, `from clientx import method`, and decorate each endpoint with `@method.get(...)`, `@method.post(...)`, and so on. They decorate `def` methods of a `ClientX` or `Resource`, and `async def` methods of an `AsyncClientX` or `AsyncResource` (see [Async clients](async.md)). The decorators are:
 
 - `get`
 - `post`
@@ -24,7 +24,7 @@ Use decorators from `clientx.methods`. They decorate `def` methods of a `ClientX
 
 Each decorator accepts:
 
-- `path` (optional; defaults to `""`, the base URL, or on a resource the prefix itself: `@get()` in a resource with `prefix="/users"` is `GET /users`)
+- `path` (optional; defaults to `""`, the base URL, or on a resource the prefix itself: `@method.get()` in a resource with `prefix="/users"` is `GET /users`)
 - `decoder` (required when return type is not `Response` or `None`)
 - `deprecated` (optional callable, including `DeprecatedMessage`)
 - `tags` (optional list of labels; `list_tools()` can filter by them)
@@ -33,12 +33,11 @@ Each decorator accepts:
 - `validate_arguments` (optional `True` or `False`; overrides the client's setting, see [Validating arguments](configuration.md#validating-arguments))
 
 ```python
-from clientx import ClientX, Response
-from clientx.methods import post
+from clientx import ClientX, Response, method
 
 
 class ItemsClient(ClientX):
-    @post("/items")
+    @method.post("/items")
     def create_item(self, json: dict[str, object]) -> Response:
         ...
 ```
@@ -68,12 +67,11 @@ Mypy still checks everything else in those modules, including the return types o
 Use `DeprecatedMessage` for warning-based deprecation:
 
 ```python
-from clientx import ClientX, DeprecatedMessage, Response
-from clientx.methods import get
+from clientx import ClientX, DeprecatedMessage, Response, method
 
 
 class LegacyClient(ClientX):
-    @get(
+    @method.get(
         "/v1/legacy",
         deprecated=DeprecatedMessage("Deprecated: use /v2/new-endpoint instead."),
     )

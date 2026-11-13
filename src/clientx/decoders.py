@@ -231,7 +231,7 @@ class TypeAdapterDecoder[T]:
     for an endpoint annotated ``-> list[User]``. With ``key``, it validates one member of a
     JSON object instead of the whole body, for APIs that wrap their data in an object::
 
-        @get("/users", decoder=TypeAdapterDecoder(TypeAdapter(list[User]), key="results"))
+        @method.get("/users", decoder=TypeAdapterDecoder(TypeAdapter(list[User]), key="results"))
         def list_users(self) -> list[User]: ...  # {"count": 2, "results": [...]} -> list[User]
 
     Attributes:

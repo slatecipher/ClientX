@@ -5,9 +5,8 @@
 ```python
 from typing import Annotated
 
-from clientx import ClientX, PathParam, Resource
+from clientx import ClientX, PathParam, Resource, method
 from clientx.decoders import ModelDecoder
-from clientx.methods import get
 from clientx.tools import list_tools
 from pydantic import BaseModel
 
@@ -18,7 +17,7 @@ class User(BaseModel):
 
 
 class Users(Resource, prefix="/users"):
-    @get("/{user_id}", decoder=ModelDecoder(User))
+    @method.get("/{user_id}", decoder=ModelDecoder(User))
     def retrieve(self, user_id: Annotated[int, PathParam(description="The user's ID")]) -> User:
         """Fetch one user by ID."""
         ...
@@ -95,13 +94,12 @@ Then point your MCP client at the command `python server.py`. In Claude Desktop'
 To build documentation, metadata files, or other tooling from a client, list its endpoints with `clientx.tools.list_tools()`. It includes endpoints on resources, and gives each one's name, HTTP method, full path, tags, docstring, deprecation status, and JSON Schemas for its arguments and result:
 
 ```python
-from clientx import ClientX, Response
-from clientx.methods import get
+from clientx import ClientX, Response, method
 from clientx.tools import list_tools
 
 
 class UsersClient(ClientX):
-    @get("/users", tags=["public", "users"])
+    @method.get("/users", tags=["public", "users"])
     def list_users(self) -> Response:
         """List all users."""
         ...

@@ -32,7 +32,7 @@ from clientx.exceptions import (
     EndpointSignatureError,
     UnboundResourceError,
 )
-from clientx.methods import get, post
+from clientx.method import get, post
 
 pytestmark = pytest.mark.anyio
 

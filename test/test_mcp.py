@@ -17,7 +17,7 @@ import clientx.mcp
 from clientx import AsyncClientX, AsyncResource, ClientX, Resource, Response
 from clientx.decoders import ModelDecoder, TypeAdapterDecoder
 from clientx.mcp import create_mcp_server, run_mcp_server
-from clientx.methods import delete, get
+from clientx.method import delete, get
 
 
 class User(BaseModel):

@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 
 from clientx import Body, ClientX, Header, Query, Response
 from clientx.exceptions import MisplacedHelperError
-from clientx.methods import get, post
+from clientx.method import get, post
 
 type QueryParam[T] = Annotated[T, Query()]
 type UserId = Annotated[int | None, Query("userId")]

@@ -5,7 +5,7 @@ name should be a deliberate, changelogged decision, so it must fail a test first
 """
 
 import clientx
-from clientx import decoders, exceptions, mcp, methods, tools
+from clientx import decoders, exceptions, mcp, method, tools
 
 
 def test_top_level_exports():
@@ -36,7 +36,7 @@ def test_top_level_exports():
 
 
 def test_submodule_exports():
-    assert methods.__all__ == ["delete", "get", "head", "options", "patch", "post", "put"]
+    assert method.__all__ == ["delete", "get", "head", "options", "patch", "post", "put"]
     assert sorted(decoders.__all__) == [
         "AsyncStreamChunksDecoder",
         "AsyncStreamDecoder",
@@ -68,6 +68,6 @@ def test_submodule_exports():
     ]
     assert sorted(tools.__all__) == ["Tool", "list_tools"]
     assert sorted(mcp.__all__) == ["create_mcp_server", "run_mcp_server"]
-    for module in (methods, decoders, exceptions, tools, mcp):
+    for module in (method, decoders, exceptions, tools, mcp):
         for name in module.__all__:
             assert hasattr(module, name), f"{module.__name__}.{name}"
