@@ -38,6 +38,9 @@ def test_top_level_exports():
 def test_submodule_exports():
     assert methods.__all__ == ["delete", "get", "head", "options", "patch", "post", "put"]
     assert sorted(decoders.__all__) == [
+        "AsyncStreamChunksDecoder",
+        "AsyncStreamDecoder",
+        "AsyncStreamLinesDecoder",
         "FromResponseDecoder",
         "ModelDecoder",
         "StreamChunksDecoder",

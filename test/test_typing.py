@@ -26,7 +26,7 @@ fails if the typing contract regresses for users of either checker:
 The tests also run under pytest against a mock transport.
 """
 
-from collections.abc import Iterator
+from collections.abc import AsyncIterator, Iterator
 from typing import Annotated, Any, assert_type
 
 import httpx2
@@ -35,6 +35,8 @@ from pydantic import BaseModel, TypeAdapter
 
 from clientx import AsyncClientX, AsyncResource, Body, ClientX, Header, PathParam, Query, Resource, Response
 from clientx.decoders import (
+    AsyncStreamChunksDecoder,
+    AsyncStreamLinesDecoder,
     ModelDecoder,
     StreamLinesDecoder,
     StreamResponseDecoder,
@@ -302,6 +304,12 @@ class AsyncItemsClient(AsyncClientX):
     @get("/export", decoder=StreamResponseDecoder())
     async def export(self) -> Response: ...
 
+    @get("/events", decoder=AsyncStreamLinesDecoder())
+    async def events(self) -> AsyncIterator[str]: ...
+
+    @get("/download", decoder=AsyncStreamChunksDecoder())
+    async def download(self) -> AsyncIterator[bytes]: ...
+
     # The decoder produces a User, so declaring a str return is rejected, as for a `def` method.
     @get("/users/{user_id}/name", decoder=ModelDecoder(User))  # type: ignore[type-var, arg-type]  # pyright: ignore[reportArgumentType, reportCallIssue, reportUntypedFunctionDecorator]
     async def get_user_name(self, user_id: str) -> str: ...
@@ -322,6 +330,12 @@ async def test_async_methods_return_their_declared_types_when_awaited() -> None:
         response = await client.export()
         assert_type(response, Response)
         await response.aclose()
+        events = await client.events()
+        assert_type(events, AsyncIterator[str])
+        assert [line async for line in events] == ['{"ok":true}']
+        chunks = await client.download()
+        assert_type(chunks, AsyncIterator[bytes])
+        assert b"".join([chunk async for chunk in chunks]) == b'{"ok":true}'
 
 
 @pytest.mark.anyio

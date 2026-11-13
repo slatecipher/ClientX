@@ -8,14 +8,16 @@ annotation, and type checkers check that. Any callable that takes an
 - ``FromResponseDecoder`` builds a model with the model's own ``from_response`` classmethod.
 - ``json_decoder``, ``text_decoder``, and ``content_decoder`` return the body without validating it.
 - ``StreamLinesDecoder``, ``StreamChunksDecoder``, and other ``StreamDecoder`` subclasses
-  stream the body. ``StreamResponseDecoder`` returns the open streamed response.
+  stream the body. For ``async def`` endpoints, use ``AsyncStreamLinesDecoder``,
+  ``AsyncStreamChunksDecoder``, and other ``AsyncStreamDecoder`` subclasses.
+  ``StreamResponseDecoder`` returns the open streamed response, for either kind.
 
 A 4xx or 5xx response raises ``httpx2.HTTPStatusError`` before the decoder runs. An
 exception a decoder raises reaches the caller unchanged.
 """
 
 from abc import ABC, abstractmethod
-from collections.abc import Iterator
+from collections.abc import AsyncIterator, Iterator
 from dataclasses import dataclass, field
 from typing import Any, Protocol, cast
 
@@ -111,6 +113,69 @@ class StreamChunksDecoder(StreamDecoder[bytes]):
         yield from response.iter_bytes(chunk_size=self.chunk_size)
 
 
+class AsyncStreamDecoder[T](ABC):
+    """Base class for decoders that stream the response body of an ``async def`` endpoint.
+
+    The ``async`` counterpart of ``StreamDecoder``. The endpoint sends its request in
+    streaming mode, and awaiting it returns the decoder's async iterator: annotate it
+    ``-> AsyncIterator[T]`` and iterate with ``async for item in await api.events()``.
+    Awaiting raises for a 4xx or 5xx response, before iteration starts. ClientX closes
+    the response when iteration finishes or fails, or when the iterator is closed with
+    ``aclose()``.
+
+    A subclass yields items as the body arrives, from an ``async def __call__``, and must
+    not read the whole body first. For example, a decoder for JSON Lines::
+
+        class JSONLinesDecoder(AsyncStreamDecoder[dict[str, Any]]):
+            async def __call__(self, response: Response) -> AsyncIterator[dict[str, Any]]:
+                async for line in response.aiter_lines():
+                    if line:
+                        yield json.loads(line)
+    """
+
+    @abstractmethod
+    def __call__(self, response: Response) -> AsyncIterator[T]:
+        """Yield items decoded from the streamed body.
+
+        Args:
+            response: The open, streamed HTTP response.
+
+        Yields:
+            Decoded items, as the body arrives.
+        """
+        ...
+
+
+@dataclass
+class AsyncStreamLinesDecoder(AsyncStreamDecoder[str]):
+    """Yield the streamed body as lines of text, for an ``async def`` endpoint annotated ``-> AsyncIterator[str]``.
+
+    The ``async`` counterpart of ``StreamLinesDecoder``, with the same lines.
+    """
+
+    async def __call__(self, response: Response) -> AsyncIterator[str]:
+        async for line in response.aiter_lines():
+            yield line
+
+
+@dataclass
+class AsyncStreamChunksDecoder(AsyncStreamDecoder[bytes]):
+    """Yield the streamed body as chunks of bytes, for an ``async def`` endpoint annotated ``-> AsyncIterator[bytes]``.
+
+    The ``async`` counterpart of ``StreamChunksDecoder``, with the same chunks.
+
+    Attributes:
+        chunk_size: The size of each chunk in bytes (the last one can be smaller), or
+            ``None`` to yield chunks as they arrive from the network.
+    """
+
+    chunk_size: int | None = field(default=None, kw_only=True)
+
+    async def __call__(self, response: Response) -> AsyncIterator[bytes]:
+        async for chunk in response.aiter_bytes(chunk_size=self.chunk_size):
+            yield chunk
+
+
 @dataclass(frozen=True)
 class StreamResponseDecoder:
     """Return the open streamed response itself, for endpoints annotated ``-> Response``.
@@ -118,7 +183,9 @@ class StreamResponseDecoder:
     The request is sent in streaming mode and the caller owns the response: read
     it, iterate it to the end, or call ``response.close()`` to release the
     connection. Use it to hand the body to code that reads it itself, such as
-    writing a download to a file with ``response.iter_bytes()``.
+    writing a download to a file with ``response.iter_bytes()``. It works for
+    ``async def`` endpoints too: read the response with ``aiter_bytes()`` or
+    ``aread()``, and close it with ``aclose()``.
     """
 
     def __call__(self, response: Response) -> Response:
@@ -279,6 +346,9 @@ class FromResponseDecoder[T: BaseModel]:
 
 
 __all__ = [
+    "AsyncStreamChunksDecoder",
+    "AsyncStreamDecoder",
+    "AsyncStreamLinesDecoder",
     "FromResponseDecoder",
     "ModelDecoder",
     "StreamChunksDecoder",
