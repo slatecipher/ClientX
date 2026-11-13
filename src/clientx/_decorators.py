@@ -1,6 +1,7 @@
 import inspect
 import time
 from collections.abc import AsyncGenerator, AsyncIterable, AsyncIterator, Callable, Coroutine, Iterable, Iterator
+from contextlib import AsyncExitStack
 from dataclasses import dataclass
 from functools import wraps
 from typing import Any, Concatenate, ParamSpec, Protocol, TypeVar, cast, overload
@@ -257,20 +258,18 @@ async def _astream(decoder: AsyncStreamDecoder[object], response: httpx2.Respons
 async def _aclose_when_done[T](items: AsyncIterable[T], response: httpx2.Response) -> AsyncIterator[T]:
     """Yield from ``items``, then close them and ``response`` however iteration ends.
 
-    The finally block runs on exhaustion, on an exception, and when the iterator is closed
-    with ``aclose()``. If the caller stops iterating without closing it, the event loop
-    closes it when it's garbage-collected (the async generator finalizer hook).
+    The exit stack closes them on exhaustion, on an exception, and when the iterator is closed
+    with ``aclose()``. If the caller stops iterating without closing it, the event loop closes
+    it when it's garbage-collected (the async generator finalizer hook).
     """
-    try:
+    async with AsyncExitStack() as stack:
+        stack.push_async_callback(response.aclose)
+        # What `yield from` does for the sync version: close the decoder's own generator too.
+        # Callbacks run last in, first out: the generator, then the response.
+        if isinstance(items, AsyncGenerator):
+            stack.push_async_callback(items.aclose)
         async for item in items:
             yield item
-    finally:
-        try:
-            # What `yield from` does for the sync version: close the decoder's own generator too.
-            if isinstance(items, AsyncGenerator):
-                await items.aclose()
-        finally:
-            await response.aclose()
 
 
 @dataclass(frozen=True)
