@@ -26,7 +26,7 @@ from clientx._client_types import (
     is_none_type,
     is_response_type,
 )
-from clientx.decoders import StreamDecoder, StreamResponseDecoder
+from clientx.decoders import AsyncStreamDecoder, StreamDecoder, StreamResponseDecoder
 from clientx.exceptions import (
     ArgumentValidationError,
     EndpointSignatureError,
@@ -36,6 +36,9 @@ from clientx.exceptions import (
     PathTemplateError,
     PathValueError,
 )
+
+# The sync stream decoders ClientX ships, each with an async counterpart named "Async" + its name.
+_BUILT_IN_STREAM_DECODERS = frozenset({"StreamLinesDecoder", "StreamChunksDecoder"})
 
 _POSITIONAL = (inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD)
 _VARIADIC = (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)
@@ -267,14 +270,14 @@ class Endpoint:
     def stream(self) -> bool:
         """Return whether requests to this endpoint are sent in streaming mode.
 
-        The decoder decides: ``StreamDecoder`` subclasses (such as
-        ``StreamLinesDecoder``) and ``StreamResponseDecoder`` stream; any other
+        The decoder decides: ``StreamDecoder`` and ``AsyncStreamDecoder`` subclasses
+        (such as ``StreamLinesDecoder``) and ``StreamResponseDecoder`` stream; any other
         decoder, or no decoder, does not.
 
         Returns:
             bool: True when the endpoint's decoder needs a streamed response.
         """
-        return isinstance(self.decoder, StreamDecoder | StreamResponseDecoder)
+        return isinstance(self.decoder, StreamDecoder | AsyncStreamDecoder | StreamResponseDecoder)
 
     @property
     def is_async(self) -> bool:
@@ -428,18 +431,27 @@ class Endpoint:
         Raises:
             MissingDecoderError: When the endpoint return type is not a
                 response type and no decoder has been provided.
-            EndpointSignatureError: When an ``async def`` endpoint's decoder
-                streams synchronously.
+            EndpointSignatureError: When a stream decoder is for the other kind
+                of endpoint: a ``StreamDecoder`` on an ``async def`` endpoint, or an
+                ``AsyncStreamDecoder`` on a ``def`` endpoint.
         """
 
         if self.decoder is None and self._decoder_required:
             raise MissingDecoderError(self.func)
-        streams_synchronously = isinstance(self.decoder, StreamDecoder)
-        if self.is_async and streams_synchronously:
+        name = type(self.decoder).__name__
+        if self.is_async and isinstance(self.decoder, StreamDecoder):
+            fix = f"Async{name}" if name in _BUILT_IN_STREAM_DECODERS else "an AsyncStreamDecoder subclass"
             raise EndpointSignatureError(
                 self.func,
-                f"is `async def`, but its decoder, {type(self.decoder).__name__}, streams synchronously, "
-                "for `def` endpoints",
+                f"is `async def`, but its decoder, {name}, streams synchronously, for `def` endpoints. Use {fix}",
+            )
+        if not self.is_async and isinstance(self.decoder, AsyncStreamDecoder):
+            sync_name = name.removeprefix("Async")
+            fix = sync_name if sync_name in _BUILT_IN_STREAM_DECODERS else "a StreamDecoder subclass"
+            raise EndpointSignatureError(
+                self.func,
+                f"is a plain `def`, but its decoder, {name}, streams asynchronously, for `async def` endpoints. "
+                f"Use {fix}",
             )
 
     def _resolve_return_type(self) -> Any:

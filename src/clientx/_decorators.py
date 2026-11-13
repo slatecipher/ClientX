@@ -1,6 +1,7 @@
 import inspect
 import time
-from collections.abc import Callable, Coroutine, Iterable, Iterator
+from collections.abc import AsyncGenerator, AsyncIterable, AsyncIterator, Callable, Coroutine, Iterable, Iterator
+from contextlib import AsyncExitStack
 from dataclasses import dataclass
 from functools import wraps
 from typing import Any, Concatenate, ParamSpec, Protocol, TypeVar, cast, overload
@@ -28,7 +29,7 @@ from clientx._endpoint_context import Endpoint
 from clientx._logging import EndpointCall, log_endpoint_call
 from clientx._registry import register_endpoint_function
 from clientx._request_factory import RequestFactory, RequestSpec
-from clientx.decoders import StreamDecoder
+from clientx.decoders import AsyncStreamDecoder, StreamDecoder
 
 P = ParamSpec("P")
 T = TypeVar("T", bound=ClientX | AsyncClientX | Resource | AsyncResource)
@@ -233,6 +234,44 @@ def _close_when_done[T](items: Iterable[T], response: httpx2.Response) -> Iterat
         response.close()
 
 
+async def _aresult(endpoint: Endpoint, decoder: Decoder | None, response: httpx2.Response) -> object:
+    """The ``async`` counterpart of ``_result``: an ``AsyncStreamDecoder``'s output is an async iterator."""
+    if isinstance(decoder, AsyncStreamDecoder):
+        return await _astream(cast(AsyncStreamDecoder[object], decoder), response)
+    return _result(endpoint, decoder, response)
+
+
+async def _astream(decoder: AsyncStreamDecoder[object], response: httpx2.Response) -> AsyncIterator[object]:
+    """Run an ``AsyncStreamDecoder`` on a streamed ``response``, making sure the response gets closed.
+
+    The ``async`` counterpart of ``_decode`` for stream decoders: close the response if the
+    decoder raises, and wrap its iterator so the response closes when iteration ends.
+    """
+    try:
+        items = decoder(response)
+    except BaseException:
+        await response.aclose()
+        raise
+    return _aclose_when_done(items, response)
+
+
+async def _aclose_when_done[T](items: AsyncIterable[T], response: httpx2.Response) -> AsyncIterator[T]:
+    """Yield from ``items``, then close them and ``response`` however iteration ends.
+
+    The exit stack closes them on exhaustion, on an exception, and when the iterator is closed
+    with ``aclose()``. If the caller stops iterating without closing it, the event loop closes
+    it when it's garbage-collected (the async generator finalizer hook).
+    """
+    async with AsyncExitStack() as stack:
+        stack.push_async_callback(response.aclose)
+        # What `yield from` does for the sync version: close the decoder's own generator too.
+        # Callbacks run last in, first out: the generator, then the response.
+        if isinstance(items, AsyncGenerator):
+            stack.push_async_callback(items.aclose)
+        async for item in items:
+            yield item
+
+
 @dataclass(frozen=True)
 class ApiMethod:
     method: MethodType
@@ -380,7 +419,7 @@ class ApiMethod:
                         log_endpoint_call(call, started=started, status=response.status_code, error=error)
                         raise
                 log_endpoint_call(call, started=started, status=response.status_code)
-                return _result(endpoint, decoder, response)
+                return await _aresult(endpoint, decoder, response)
 
             # Either way, the endpoint function has the decorated method's type, `Callable[Concatenate[T, P], R]`.
             endpoint_function = (

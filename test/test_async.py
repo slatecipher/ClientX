@@ -1,10 +1,12 @@
 """AsyncClientX and AsyncResource: `async def` endpoints sent through an `httpx2.AsyncClient`."""
 
+import gc
 import inspect
+import json
 import logging
 import re
-from collections.abc import AsyncIterator, Callable
-from typing import Annotated, Any
+from collections.abc import AsyncGenerator, AsyncIterator, Callable, Iterator
+from typing import Annotated, Any, cast
 
 import anyio
 import httpx2
@@ -14,7 +16,16 @@ from pydantic import BaseModel, Field
 from clientx import AsyncClientX, AsyncResource, ClientX, DeprecatedMessage, Query, Resource, Response
 from clientx._client_types import AsyncHttpxClientKwargs
 from clientx._version import __version__
-from clientx.decoders import ModelDecoder, StreamLinesDecoder, StreamResponseDecoder, json_decoder
+from clientx.decoders import (
+    AsyncStreamChunksDecoder,
+    AsyncStreamDecoder,
+    AsyncStreamLinesDecoder,
+    ModelDecoder,
+    StreamDecoder,
+    StreamLinesDecoder,
+    StreamResponseDecoder,
+    json_decoder,
+)
 from clientx.exceptions import (
     ArgumentValidationError,
     EndpointNameConflictError,
@@ -397,14 +408,162 @@ def test_a_class_cant_be_both_sync_and_async():
             pass
 
 
-def test_an_async_endpoint_cant_use_a_sync_stream_decoder():
+class JSONLinesDecoder(AsyncStreamDecoder[dict[str, Any]]):
+    async def __call__(self, response: httpx2.Response) -> AsyncIterator[dict[str, Any]]:
+        async for line in response.aiter_lines():
+            if line:
+                yield json.loads(line)
+
+
+class FailsMidway(AsyncStreamDecoder[str]):
+    async def __call__(self, response: httpx2.Response) -> AsyncIterator[str]:
+        yield "first"
+        raise ValueError("bad line")
+
+
+class FailsAtOnce(AsyncStreamDecoder[str]):
+    def __call__(self, response: httpx2.Response) -> AsyncIterator[str]:
+        raise ValueError("can't decode")
+
+
+class SyncHeaderDecoder(StreamDecoder[str]):
+    def __call__(self, response: httpx2.Response) -> Iterator[str]:
+        yield response.headers["x-id"]
+
+
+class Events(AsyncClientX):
+    @get("/events", decoder=AsyncStreamLinesDecoder())
+    async def events(self) -> AsyncIterator[str]: ...
+
+    @get("/download", decoder=AsyncStreamChunksDecoder(chunk_size=4))
+    async def download(self) -> AsyncIterator[bytes]: ...
+
+    @get("/records", decoder=JSONLinesDecoder())
+    async def records(self) -> AsyncIterator[dict[str, Any]]: ...
+
+    @get("/midway", decoder=FailsMidway())
+    async def midway(self) -> AsyncIterator[str]: ...
+
+    @get("/at-once", decoder=FailsAtOnce())
+    async def at_once(self) -> AsyncIterator[str]: ...
+
+
+def streaming(body: bytes, status: int = 200) -> tuple[TrackedAsyncStream, Callable[[httpx2.Request], httpx2.Response]]:
+    stream = TrackedAsyncStream(body)
+    return stream, lambda request: httpx2.Response(status, stream=stream)
+
+
+async def test_async_stream_decoders_yield_as_the_body_arrives_and_close_at_the_end(mock_transport):
+    stream, handler = streaming(b"line 1\nline 2\n")
+    async with Events("https://api.example.com", transport=mock_transport(handler=handler)) as api:
+        lines = await api.events()
+        assert not stream.closed
+        assert [line async for line in lines] == ["line 1", "line 2"]
+        assert stream.closed
+
+    stream, handler = streaming(b"abcdefghij")
+    async with Events("https://api.example.com", transport=mock_transport(handler=handler)) as api:
+        assert [chunk async for chunk in await api.download()] == [b"abcd", b"efgh", b"ij"]
+        assert stream.closed
+
+    stream, handler = streaming(b'{"id": 1}\n\n{"id": 2}\n')
+    async with Events("https://api.example.com", transport=mock_transport(handler=handler)) as api:
+        assert [record async for record in await api.records()] == [{"id": 1}, {"id": 2}]
+        assert stream.closed
+
+
+async def test_stopping_early_closes_the_response_when_the_iterator_is_closed_or_collected(mock_transport):
+    stream, handler = streaming(b"line 1\nline 2\nline 3\n")
+    async with Events("https://api.example.com", transport=mock_transport(handler=handler)) as api:
+        lines = await api.events()
+        assert await anext(lines) == "line 1"
+        # The iterator is an async generator, though its declared type is AsyncIterator[str].
+        await cast(AsyncGenerator[str, None], lines).aclose()
+        assert stream.closed
+
+    stream, handler = streaming(b"line 1\nline 2\nline 3\n")
+    async with Events("https://api.example.com", transport=mock_transport(handler=handler)) as api:
+        async for line in await api.events():
+            assert line == "line 1"
+            break
+        # The loop dropped the iterator: the event loop closes it once it's garbage-collected.
+        gc.collect()
+        for _ in range(3):
+            await anyio.sleep(0)
+        assert stream.closed
+
+
+async def test_a_decoder_that_fails_closes_the_response(mock_transport):
+    stream, handler = streaming(b"anything\n")
+    async with Events("https://api.example.com", transport=mock_transport(handler=handler)) as api:
+        items = await api.midway()
+        with pytest.raises(ValueError, match="bad line"):
+            assert [item async for item in items] == ["first"]
+        assert stream.closed
+
+    stream, handler = streaming(b"anything\n")
+    async with Events("https://api.example.com", transport=mock_transport(handler=handler)) as api:
+        with pytest.raises(ValueError, match="can't decode"):
+            await api.at_once()
+        assert stream.closed
+
+
+async def test_an_error_status_raises_before_streaming(mock_transport):
+    stream, handler = streaming(b"server error", status=500)
+    async with Events("https://api.example.com", transport=mock_transport(handler=handler)) as api:
+        with pytest.raises(httpx2.HTTPStatusError) as caught:
+            await api.events()
+
+    assert stream.closed
+    assert caught.value.response.text == "server error"
+
+
+async def test_a_streamed_call_is_logged_as_streamed(caplog, mock_transport):
+    caplog.set_level(logging.DEBUG, logger="clientx")
+    _, handler = streaming(b"line\n")
+    async with Events("https://api.example.com", transport=mock_transport(handler=handler)) as api:
+        assert [line async for line in await api.events()] == ["line"]
+
+    [record] = clientx_records(caplog)
+    assert record.__dict__["clientx_stream"] is True
+
+
+def test_a_stream_decoder_must_match_the_endpoint_kind():
     with pytest.raises(
-        EndpointSignatureError, match="is `async def`, but its decoder, StreamLinesDecoder, streams synchronously"
+        EndpointSignatureError,
+        match="StreamLinesDecoder, streams synchronously, for `def` endpoints. Use AsyncStreamLinesDecoder",
     ):
 
-        class Events(AsyncClientX):
+        class SyncLines(AsyncClientX):
             @get("/events", decoder=StreamLinesDecoder())
-            async def events(self) -> Any: ...
+            async def events(self) -> Iterator[str]: ...
+
+    with pytest.raises(
+        EndpointSignatureError,
+        match="SyncHeaderDecoder, streams synchronously, for `def` endpoints. Use an AsyncStreamDecoder subclass",
+    ):
+
+        class SyncCustom(AsyncClientX):
+            @get("/events", decoder=SyncHeaderDecoder())
+            async def events(self) -> Iterator[str]: ...
+
+    with pytest.raises(
+        EndpointSignatureError,
+        match="AsyncStreamChunksDecoder, streams asynchronously, for `async def` endpoints. Use StreamChunksDecoder",
+    ):
+
+        class AsyncChunks(ClientX):
+            @get("/download", decoder=AsyncStreamChunksDecoder())
+            def download(self) -> AsyncIterator[bytes]: ...
+
+    with pytest.raises(
+        EndpointSignatureError,
+        match="JSONLinesDecoder, streams asynchronously, for `async def` endpoints. Use a StreamDecoder subclass",
+    ):
+
+        class AsyncCustom(ClientX):
+            @get("/records", decoder=JSONLinesDecoder())
+            def records(self) -> AsyncIterator[dict[str, Any]]: ...
 
 
 @pytest.mark.parametrize("name", ["aclose", "__aenter__", "__aexit__", "__clientx_client__"])
