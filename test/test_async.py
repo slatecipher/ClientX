@@ -1,12 +1,12 @@
 """AsyncClientX and AsyncResource: `async def` endpoints sent through an `httpx2.AsyncClient`."""
 
+import gc
 import inspect
 import json
 import logging
 import re
 from collections.abc import AsyncGenerator, AsyncIterator, Callable, Iterator
-from contextlib import aclosing
-from typing import Annotated, Any
+from typing import Annotated, Any, cast
 
 import anyio
 import httpx2
@@ -435,10 +435,6 @@ class Events(AsyncClientX):
     @get("/events", decoder=AsyncStreamLinesDecoder())
     async def events(self) -> AsyncIterator[str]: ...
 
-    # Narrower than the decoder's AsyncIterator[str], so callers can use aclose() and contextlib.aclosing.
-    @get("/events", decoder=AsyncStreamLinesDecoder())
-    async def event_generator(self) -> AsyncGenerator[str, None]: ...
-
     @get("/download", decoder=AsyncStreamChunksDecoder(chunk_size=4))
     async def download(self) -> AsyncIterator[bytes]: ...
 
@@ -476,13 +472,24 @@ async def test_async_stream_decoders_yield_as_the_body_arrives_and_close_at_the_
         assert stream.closed
 
 
-async def test_stopping_early_with_aclosing_closes_the_response(mock_transport):
+async def test_stopping_early_closes_the_response_when_the_iterator_is_closed_or_collected(mock_transport):
     stream, handler = streaming(b"line 1\nline 2\nline 3\n")
     async with Events("https://api.example.com", transport=mock_transport(handler=handler)) as api:
-        async with aclosing(await api.event_generator()) as lines:
-            async for line in lines:
-                assert line == "line 1"
-                break
+        lines = await api.events()
+        assert await anext(lines) == "line 1"
+        # The iterator is an async generator, though its declared type is AsyncIterator[str].
+        await cast(AsyncGenerator[str, None], lines).aclose()
+        assert stream.closed
+
+    stream, handler = streaming(b"line 1\nline 2\nline 3\n")
+    async with Events("https://api.example.com", transport=mock_transport(handler=handler)) as api:
+        async for line in await api.events():
+            assert line == "line 1"
+            break
+        # The loop dropped the iterator: the event loop closes it once it's garbage-collected.
+        gc.collect()
+        for _ in range(3):
+            await anyio.sleep(0)
         assert stream.closed
 
 

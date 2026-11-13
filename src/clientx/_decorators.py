@@ -259,7 +259,7 @@ async def _aclose_when_done[T](items: AsyncIterable[T], response: httpx2.Respons
 
     The finally block runs on exhaustion, on an exception, and when the iterator is closed
     with ``aclose()``. If the caller stops iterating without closing it, the event loop
-    closes it when it's garbage-collected; ``contextlib.aclosing`` closes it right away.
+    closes it when it's garbage-collected (the async generator finalizer hook).
     """
     try:
         async for item in items:
