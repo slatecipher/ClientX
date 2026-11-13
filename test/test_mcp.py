@@ -1,6 +1,7 @@
 import importlib
 import json
 import sys
+import threading
 from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from typing import Any
@@ -13,7 +14,7 @@ from mcp.server.lowlevel import Server
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
 import clientx.mcp
-from clientx import ClientX, Resource, Response
+from clientx import AsyncClientX, AsyncResource, ClientX, Resource, Response
 from clientx.decoders import ModelDecoder, TypeAdapterDecoder
 from clientx.mcp import create_mcp_server, run_mcp_server
 from clientx.methods import delete, get
@@ -285,3 +286,65 @@ def test_importing_without_the_mcp_extra_explains_how_to_install_it(monkeypatch:
 
     with pytest.raises(ImportError, match=r'requires the "mcp" extra: pip install "clientx\[mcp\]"'):
         importlib.import_module("clientx.mcp")
+
+
+class AsyncUsers(AsyncResource, prefix="/users"):
+    @get("/{user_id}", decoder=ModelDecoder(User))
+    async def retrieve(self, user_id: int) -> User:
+        """Fetch one user by ID."""
+        ...
+
+
+class AsyncExampleAPI(AsyncClientX):
+    users = AsyncUsers()
+
+
+def call_recording_threads(
+    client: ClientX | AsyncClientX, name: str, arguments: dict[str, Any]
+) -> tuple[types.CallToolResult, int]:
+    """Call a tool over MCP, and return the result and the event loop's thread ID."""
+
+    async def main() -> tuple[types.CallToolResult, int]:
+        async with Client(create_mcp_server(client)) as mcp_client:
+            return await mcp_client.call_tool(name, arguments), threading.get_ident()
+
+    return anyio.run(main)
+
+
+def recording_transport(threads: list[int], status: int = 200) -> httpx2.MockTransport:
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        threads.append(threading.get_ident())
+        return httpx2.Response(status, json={"id": 42, "name": "Ada"})
+
+    return httpx2.MockTransport(handler)
+
+
+def test_an_async_clients_tools_are_awaited_on_the_event_loop():
+    threads: list[int] = []
+    api = AsyncExampleAPI("https://api.example.com", transport=recording_transport(threads))
+
+    result, loop_thread = call_recording_threads(api, "users_retrieve", {"user_id": 42})
+
+    assert result.is_error is False
+    assert result.structured_content == {"id": 42, "name": "Ada"}
+    assert threads == [loop_thread]
+
+
+def test_a_sync_clients_tools_run_in_a_worker_thread():
+    threads: list[int] = []
+    api = ExampleAPI("https://api.example.com", transport=recording_transport(threads))
+
+    result, loop_thread = call_recording_threads(api, "users_retrieve", {"user_id": 42})
+
+    assert result.is_error is False
+    assert len(threads) == 1
+    assert threads[0] != loop_thread
+
+
+def test_an_async_tools_error_status_comes_back_as_an_error_result():
+    api = AsyncExampleAPI("https://api.example.com", transport=recording_transport([], status=404))
+
+    result, _ = call_recording_threads(api, "users_retrieve", {"user_id": 42})
+
+    assert result.is_error is True
+    assert text_of(result).startswith("HTTPStatusError: 404 Not Found for GET /users/42")
