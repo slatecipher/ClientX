@@ -23,6 +23,8 @@ Type checkers enforce the match: a method annotated with anything other than `Re
 
   Make the return annotation match the decoder's output. mypy also notes that the method "has named arguments" and suggests marking them positional-only; that's its generic hint for callable mismatches, and doesn't apply here.
 
+The decorators take `def` and `async def` methods, so pyright also reports `No overloads for "__call__" match the provided arguments` at the decorator. For an `async def` method, the messages name its coroutine type instead: `Coroutine[Any, Any, User]` in mypy, and `CoroutineType[Any, Any, User]` in pyright.
+
 In practice, decoders are where you define response parsing and validation behavior:
 
 - Parse JSON/text/bytes from the response body.
@@ -180,7 +182,7 @@ for line in EventsClient("https://api.example.com").events():
     print(line)
 ```
 
-- `StreamLinesDecoder` yields text lines, and `StreamChunksDecoder(chunk_size=...)` yields byte chunks. To write your own, subclass `StreamDecoder`.
+- `StreamLinesDecoder` yields text lines, and `StreamChunksDecoder(chunk_size=...)` yields byte chunks. To write your own, subclass `StreamDecoder`. For `async def` endpoints, use the async stream decoders (see [Async clients](async.md#streaming)).
 - The connection is released when iteration finishes, when the loop exits early (`break` or an exception), or when you call `.close()` on the returned iterator. If you keep a partly consumed iterator around, close it when you are done.
 - To get the open streamed response itself, use `StreamResponseDecoder` with `-> Response`. You own that response: read it, iterate it to the end, or call `response.close()`.
 

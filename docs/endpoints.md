@@ -12,7 +12,7 @@ def retrieve(self, user_id: int) -> User: ...
 
 `retrieve(42)` sends `GET /users/42`, because `user_id` matches `{user_id}`, and returns the JSON response as a `User`. The two halves are independent: `User`'s fields come from the API's response, not from the arguments.
 
-Use decorators from `clientx.methods`:
+Use decorators from `clientx.methods`. They decorate `def` methods of a `ClientX` or `Resource`, and `async def` methods of an `AsyncClientX` or `AsyncResource` (see [Async clients](async.md)):
 
 - `get`
 - `post`

@@ -31,10 +31,11 @@ ClientX is inspired by FastAPI, which reads type hints to define server endpoint
 
 - **The method signature is the contract.** Path placeholders, query parameters, headers, and bodies come from the method's parameters and annotations, so there's no request-building code to keep in sync.
 - **Type checkers see real types.** Decorated methods keep their signatures, so editors and type checkers see the actual parameters and return types.
+- **Sync or async.** Write endpoints as `def` methods on a `ClientX`, or as `async def` methods on an `AsyncClientX`, with the same decorators.
 - **Mistakes surface early.** A missing return annotation or decoder raises an error when the class is defined, not on the first request.
 - **Pydantic v2 throughout.** Send models as request bodies, query parameters, or headers, and decode responses into models.
 - **Ready for AI agents.** `clientx.tools` turns a client's endpoints into tool definitions for AI models, built from the same signatures, docstrings, and types, and `clientx[mcp]` serves them as an MCP server in one call.
-- **Built on httpx2.** Every `httpx2.Client` option is available, including auth, timeouts, proxies, and custom transports, and responses can be streamed.
+- **Built on httpx2.** Every `httpx2.Client` and `httpx2.AsyncClient` option is available, including auth, timeouts, proxies, and custom transports, and responses can be streamed.
 
 ClientX is an independent project. It isn't affiliated with or endorsed by the FastAPI, Pydantic, or httpx2 projects.
 
@@ -47,6 +48,7 @@ ClientX is an independent project. It isn't affiliated with or endorsed by the F
 - Built-in deprecation warnings per endpoint.
 - Endpoint tags, for grouping endpoints and filtering the AI tools built from them.
 - Full access to `httpx2.Client` configuration through `ClientX(...)` kwargs.
+- Async clients (`AsyncClientX`, `AsyncResource`) with the same decorators, for `async def` endpoints.
 - Endpoints described as AI tools, with JSON Schemas and safety hints (`clientx.tools`).
 - A client served as an MCP server in one call (`clientx[mcp]`).
 
@@ -107,6 +109,7 @@ with ExampleAPI() as api:
 - Type checkers see the real signatures: `api.users.retrieve(user_id: int) -> User`.
 - A 4xx or 5xx response raises `httpx2.HTTPStatusError`.
 - The `with` block closes the client's connections when it ends. It's optional: a long-lived client is created once and closed with `close()` at shutdown, as [Closing a client](https://github.com/slatecipher/ClientX/blob/mainline/docs/configuration.md#closing-a-client) explains.
+- For async code, subclass `AsyncClientX` and `AsyncResource`, write the endpoints as `async def` methods, and `await` them, as [Async clients](https://github.com/slatecipher/ClientX/blob/mainline/docs/async.md) explains.
 - Using mypy? Turn off its `empty-body` check for your client modules, as [Defining endpoints](https://github.com/slatecipher/ClientX/blob/mainline/docs/endpoints.md#empty-method-bodies-and-mypy) explains.
 
 ## Guide
@@ -116,6 +119,7 @@ with ExampleAPI() as api:
 - [Return types and decoders](https://github.com/slatecipher/ClientX/blob/mainline/docs/decoders.md): `ModelDecoder`, `TypeAdapterDecoder`, `FromResponseDecoder`, the simple decoders, your own, and streaming.
 - [Building requests](https://github.com/slatecipher/ClientX/blob/mainline/docs/requests.md): how parameters become the path, query string, headers, form fields, JSON body, and files.
 - [Client configuration](https://github.com/slatecipher/ClientX/blob/mainline/docs/configuration.md): creating and closing a client, class defaults for the base URL and `User-Agent`, errors for 4xx and 5xx responses, and argument validation.
+- [Async clients](https://github.com/slatecipher/ClientX/blob/mainline/docs/async.md): `AsyncClientX` and `AsyncResource` for `async def` endpoints, concurrent requests, async streaming, and testing.
 - [Logging](https://github.com/slatecipher/ClientX/blob/mainline/docs/logging.md): ClientX's debug records, and your own request logging.
 - [AI tools and MCP](https://github.com/slatecipher/ClientX/blob/mainline/docs/ai-tools.md): endpoints as AI tools, serving a client over MCP, and listing a client's endpoints.
 - [Testing](https://github.com/slatecipher/ClientX/blob/mainline/docs/testing.md): testing a client, its tools, and an MCP server without the network.

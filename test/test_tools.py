@@ -1,5 +1,5 @@
 import logging
-from collections.abc import Callable, Iterator
+from collections.abc import AsyncIterator, Callable, Iterator
 from enum import Enum
 from typing import Annotated, Any, BinaryIO
 
@@ -18,7 +18,13 @@ from clientx import (
     Response,
     methods,
 )
-from clientx.decoders import ModelDecoder, StreamLinesDecoder, StreamResponseDecoder, TypeAdapterDecoder
+from clientx.decoders import (
+    AsyncStreamLinesDecoder,
+    ModelDecoder,
+    StreamLinesDecoder,
+    StreamResponseDecoder,
+    TypeAdapterDecoder,
+)
 from clientx.methods import delete, get, post
 from clientx.tools import Tool, list_tools
 
@@ -405,6 +411,9 @@ class AsyncExampleAPI(AsyncClientX):
     @get("/export", decoder=StreamResponseDecoder())
     async def export(self) -> Response: ...
 
+    @get("/events", decoder=AsyncStreamLinesDecoder())
+    async def events(self) -> AsyncIterator[str]: ...
+
 
 @pytest.fixture
 def make_async_api(mock_transport) -> Callable[[list[httpx2.Request]], AsyncExampleAPI]:
@@ -422,7 +431,11 @@ def make_async_api(mock_transport) -> Callable[[list[httpx2.Request]], AsyncExam
 def test_an_async_clients_endpoints_become_async_tools(make_api, make_async_api):
     async_tools = list_tools(make_async_api([]))
 
-    assert [tool.name for tool in async_tools] == ["users_retrieve", "users_remove", "health"]  # export streams
+    assert [tool.name for tool in async_tools] == [
+        "users_retrieve",
+        "users_remove",
+        "health",
+    ]  # export and events stream
     assert all(tool.is_async for tool in async_tools)
     assert async_tools[0].description == "Fetch one user by ID."
     assert not any(tool.is_async for tool in list_tools(make_api([])))

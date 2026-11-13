@@ -59,6 +59,7 @@ def test_an_unknown_user_raises() -> None:
 - Build responses with `httpx2.Response(status, json=...)`, `text=`, `content=`, and `headers=`. Decoders, the 4xx and 5xx check, and logging run on them as on real responses.
 - To test what a JSON body contains, read `json.loads(request.content)`; for form fields, `request.content` is URL-encoded.
 - Annotate the handler with types, so the test type-checks in strict mode.
+- `httpx2.MockTransport` serves an `AsyncClientX` too, with the same handler: see [Testing](async.md#testing) on the async page.
 
 To test a client's tools, call them through `list_tools(client)` and `Tool.call`, with the same mock transport. To test an MCP server, connect the `mcp` package's `Client` to the server in memory, with no subprocess:
 
