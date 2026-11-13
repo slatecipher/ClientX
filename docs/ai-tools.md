@@ -51,6 +51,7 @@ Each `Tool` has:
 | `output_schema` | JSON Schema for the result: from the return type, `{"status_code", "body"}` for an endpoint that returns a `Response`, or `None` for one that returns nothing. |
 | `read_only`, `destructive`, `idempotent` | Hints from the HTTP method: GET, HEAD, and OPTIONS are read-only; PUT, PATCH, and DELETE may change or delete data; GET, HEAD, OPTIONS, PUT, and DELETE are idempotent. |
 | `method`, `path`, `tags`, `deprecated` | The endpoint's metadata. |
+| `is_async` | The endpoint is `async def`, on an `AsyncClientX`: call the tool with `await tool.acall(arguments)` instead of `tool.call(arguments)`. Each raises `TypeError` for the other kind. |
 
 `list_tools` takes filters: `read_only=True`, `include_tags=[...]`, `exclude_tags=[...]`, and `include_deprecated=True` (deprecated endpoints are left out by default). Streaming endpoints are always left out, and so is any endpoint whose types have no JSON Schema, such as an upload typed as a file object (`BinaryIO`), with a warning. An upload typed as `bytes`, such as `dict[str, bytes]`, has a schema (a string with `"format": "binary"`), so it's listed.
 
@@ -86,6 +87,7 @@ Then point your MCP client at the command `python server.py`. In Claude Desktop'
 - The HTTP-method hints become MCP tool annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`), which MCP clients can use to ask for confirmation before changing data. Every tool also has `openWorldHint` set, because it reaches an external API.
 - Results come back as structured content and as JSON text. Invalid arguments, request failures, and 4xx and 5xx responses come back as error results the model can read, and the server keeps running. A 4xx or 5xx error result has the status, the method and the request URL's path, and the start of the response body, but never the host or the query string, so credentials in query parameters don't reach the model. The path includes any path in the base URL (`/v1/users/42`), unlike a log record's `clientx_path` (`/users/42`).
 - MCP messages use stdout, so don't print from the server process. Logging writes to stderr by default.
+- The client can be a `ClientX` or an `AsyncClientX`. An async client's tools are awaited on the server's event loop, and a sync client's run in a worker thread, so they don't block it.
 - `run_mcp_server` serves over stdio. For other transports, `create_mcp_server` returns the low-level `mcp.server.lowlevel.Server` to run yourself.
 
 ## Listing a Client's Endpoints

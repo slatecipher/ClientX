@@ -34,7 +34,7 @@ httpx2 also logs every request, at `INFO` level on the `httpx2` logger, and its 
 
 ## Your own request logging
 
-To log requests in your own format or with your own logger, use httpx2's event hooks. ClientX passes `event_hooks` through to `httpx2.Client`:
+To log requests in your own format or with your own logger, use httpx2's event hooks. ClientX passes `event_hooks` through to `httpx2.Client` (for an `AsyncClientX`, `httpx2.AsyncClient`, whose hooks must be `async` functions):
 
 ```python
 import logging
