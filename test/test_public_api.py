@@ -23,6 +23,8 @@ def test_top_level_exports():
             "Header",
             "PathParam",
             "Query",
+            "AsyncClientX",
+            "AsyncResource",
             "ClientX",
             "Resource",
             "DeprecatedMessage",

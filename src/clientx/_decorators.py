@@ -1,12 +1,22 @@
+import inspect
 import time
-from collections.abc import Callable, Iterable, Iterator
+from collections.abc import Callable, Coroutine, Iterable, Iterator
 from dataclasses import dataclass
 from functools import wraps
 from typing import Any, Concatenate, ParamSpec, Protocol, TypeVar, cast, overload
 
 import httpx2
 
-from clientx._client import ClientX, Resource, client_of, send_request
+from clientx._client import (
+    AsyncClientX,
+    AsyncResource,
+    ClientX,
+    Resource,
+    asend_request,
+    async_client_of,
+    client_of,
+    send_request,
+)
 from clientx._client_types import (
     Decoder,
     DeprecatedType,
@@ -17,29 +27,51 @@ from clientx._client_types import (
 from clientx._endpoint_context import Endpoint
 from clientx._logging import EndpointCall, log_endpoint_call
 from clientx._registry import register_endpoint_function
-from clientx._request_factory import RequestFactory
+from clientx._request_factory import RequestFactory, RequestSpec
 from clientx.decoders import StreamDecoder
 
 P = ParamSpec("P")
-T = TypeVar("T", bound=ClientX | Resource)
+T = TypeVar("T", bound=ClientX | AsyncClientX | Resource | AsyncResource)
 R = TypeVar("R")
 
 
+# Each decorator protocol has three overloads: `def` methods of a ClientX or Resource, `async def` methods of
+# an AsyncClientX or AsyncResource, then the `def` overload again.
+# - Limiting each overload to its own kind of class means only one can match a method, even when its types
+#   involve `Any` (an `-> Any` annotation, or `json_decoder`). If two matched, mypy would treat the endpoint
+#   as untyped. That's why async resources are a separate class.
+# - When a method fits none of them, mypy reports the first overload's error and pyright the last's. With the
+#   `def` overload in both places, both explain a mistake in a `def` endpoint the way they did before async
+#   support. The repeated overload never changes which one matches.
 class RawEndpointDecorator(Protocol):
     """Decorator returned by an HTTP verb call without ``decoder=``, e.g. ``get("/users")``.
 
-    The decorated method must return ``httpx2.Response`` or ``None``; any other
-    return type needs a decoder. Type checkers report the mismatch at the
-    decorator, and ClientX raises ``MissingDecoderError`` when the class is defined.
+    The decorated method must return ``httpx2.Response`` or ``None`` (or, for an
+    ``async def`` method, return them when awaited); any other return type needs a
+    decoder. Type checkers report the mismatch at the decorator, and ClientX raises
+    ``MissingDecoderError`` when the class is defined.
 
     Spelling the decorator types out (instead of a bare ``Callable``) keeps each
     decorated method's parameters and return type visible to type checkers. With
     a bare ``Callable``, mypy sees every endpoint as ``Any``.
     """
 
+    @overload
     def __call__[C: ClientX | Resource, **Q, ResponseOrNone: (httpx2.Response, None)](
         self, func: Callable[Concatenate[C, Q], ResponseOrNone], /
-    ) -> Callable[Concatenate[C, Q], ResponseOrNone]:
+    ) -> Callable[Concatenate[C, Q], ResponseOrNone]: ...
+
+    @overload
+    def __call__[C: AsyncClientX | AsyncResource, **Q, ResponseOrNone: (httpx2.Response, None)](
+        self, func: Callable[Concatenate[C, Q], Coroutine[Any, Any, ResponseOrNone]], /
+    ) -> Callable[Concatenate[C, Q], Coroutine[Any, Any, ResponseOrNone]]: ...
+
+    @overload
+    def __call__[C: ClientX | Resource, **Q, ResponseOrNone: (httpx2.Response, None)](
+        self, func: Callable[Concatenate[C, Q], ResponseOrNone], /
+    ) -> Callable[Concatenate[C, Q], ResponseOrNone]: ...
+
+    def __call__(self, func: Callable[..., Any], /) -> Callable[..., Any]:
         """Register ``func`` as an endpoint and return its request-sending replacement."""
         ...
 
@@ -47,9 +79,10 @@ class RawEndpointDecorator(Protocol):
 class DecodedEndpointDecorator[D](Protocol):
     """Decorator returned by an HTTP verb call with ``decoder=``.
 
-    ``D`` is the decoder's output type. Callers of the decorated method see
-    that type, and the method's declared return type must be the same or
-    narrower: ``decoder=ModelDecoder(User)`` fits ``-> User`` but not ``-> str``.
+    ``D`` is the decoder's output type. Callers of the decorated method see that
+    type (awaited, for an ``async def`` method), and the method's declared return
+    type must be the same or narrower: ``decoder=ModelDecoder(User)`` fits
+    ``-> User`` but not ``-> str``.
 
     The ``self`` annotation on ``__call__`` binds ``DecoderOutput`` to the decoder's
     output type before the method is checked against it. Decoders returning ``Any``
@@ -57,25 +90,73 @@ class DecodedEndpointDecorator[D](Protocol):
     result as ``Any`` while mypy keeps the annotation.
     """
 
+    @overload
     def __call__[C: ClientX | Resource, **Q, DecoderOutput](
         self: "DecodedEndpointDecorator[DecoderOutput]", func: Callable[Concatenate[C, Q], DecoderOutput], /
-    ) -> Callable[Concatenate[C, Q], DecoderOutput]:
+    ) -> Callable[Concatenate[C, Q], DecoderOutput]: ...
+
+    @overload
+    def __call__[C: AsyncClientX | AsyncResource, **Q, DecoderOutput](
+        self: "DecodedEndpointDecorator[DecoderOutput]",
+        func: Callable[Concatenate[C, Q], Coroutine[Any, Any, DecoderOutput]],
+        /,
+    ) -> Callable[Concatenate[C, Q], Coroutine[Any, Any, DecoderOutput]]: ...
+
+    @overload
+    def __call__[C: ClientX | Resource, **Q, DecoderOutput](
+        self: "DecodedEndpointDecorator[DecoderOutput]", func: Callable[Concatenate[C, Q], DecoderOutput], /
+    ) -> Callable[Concatenate[C, Q], DecoderOutput]: ...
+
+    def __call__(self, func: Callable[..., Any], /) -> Callable[..., Any]:
         """Register ``func`` as an endpoint and return its request-sending replacement."""
         ...
 
 
-def _raises_for_status(endpoint: Endpoint, client: ClientX) -> bool:
+def _raises_for_status(endpoint: Endpoint, client: ClientX | AsyncClientX) -> bool:
     """Whether ``endpoint`` checks the status code: its own setting if it has one (``True`` or
     ``False``), or else the client's. Not ``any()``: an endpoint's ``False`` must win over the client's ``True``.
     """
     return client.__clientx_raise_for_status__ if endpoint.raise_for_status is None else endpoint.raise_for_status
 
 
-def _validates_arguments(endpoint: Endpoint, client: ClientX) -> bool:
+def _validates_arguments(endpoint: Endpoint, client: ClientX | AsyncClientX) -> bool:
     """Whether ``endpoint`` checks its arguments: its own setting if it has one, or else the client's."""
     if endpoint.validate_arguments is None:
         return client.__clientx_validate_arguments__
     return endpoint.validate_arguments
+
+
+def _prepare(
+    endpoint: Endpoint,
+    request_factory: RequestFactory,
+    name: str,
+    *,
+    owner: ClientX | AsyncClientX | Resource | AsyncResource,
+    client: ClientX | AsyncClientX,
+    args: tuple[Any, ...],
+    kwargs: dict[str, Any],
+) -> tuple[EndpointCall, RequestSpec]:
+    """Do everything a call does before sending: warn if deprecated, bind and check the arguments, build the request.
+
+    Returns the call's log details and the request to send. ``def`` and ``async def`` endpoints share it.
+    """
+    endpoint.check_deprecation()
+
+    arguments = endpoint.bind(owner, args, kwargs, validate=_validates_arguments(endpoint, client))
+    spec = request_factory(arguments=arguments)
+
+    # Taken before `timeout` is added: it's a request option, not a request part.
+    call = EndpointCall(
+        endpoint=name,
+        method=endpoint.method,
+        path=spec.path,
+        parts=tuple(str(part) for part in spec.parts),
+        stream=endpoint.stream,
+    )
+
+    if endpoint.timeout is not None:
+        spec.parts.setdefault("timeout", endpoint.timeout)
+    return call, spec
 
 
 def _raise_status_error(response: httpx2.Response) -> None:
@@ -92,6 +173,30 @@ def _raise_status_error(response: httpx2.Response) -> None:
     finally:
         response.close()
     response.raise_for_status()
+
+
+async def _araise_status_error(response: httpx2.Response) -> None:
+    """The ``async`` counterpart of ``_raise_status_error``, for responses from an ``httpx2.AsyncClient``."""
+    try:
+        await response.aread()
+    finally:
+        await response.aclose()
+    response.raise_for_status()
+
+
+def _result(endpoint: Endpoint, decoder: Decoder | None, response: httpx2.Response) -> object:
+    """Return what the call returns: the decoder's output, or else ``None`` or the response, per the annotation."""
+    # A decoder, when given, always runs, whatever the return annotation.
+    if decoder is not None:
+        return _decode(decoder, response)
+
+    if is_none_type(endpoint.return_type):
+        return None
+
+    if is_response_type(endpoint.return_type):
+        return response
+
+    raise RuntimeError("Internal error: decoder was None for a decodable return type.")
 
 
 def _decode(decoder: Decoder, response: httpx2.Response) -> object:
@@ -171,6 +276,9 @@ class ApiMethod:
     ) -> DecodedEndpointDecorator[Any] | RawEndpointDecorator:
         """Build a decorator that registers an endpoint for this HTTP method.
 
+        It decorates a ``def`` method, for a ``ClientX``, or an ``async def`` method, for
+        an ``AsyncClientX``; calling an ``async def`` endpoint returns an awaitable.
+
         Args:
             path: URL path template for the endpoint (e.g., ``/v1/users/{user_id}``).
                 Defaults to ``""``: the client's base URL, or on a ``Resource``, its
@@ -222,31 +330,14 @@ class ApiMethod:
             def wrapper(_self: T, /, *args: P.args, **kwargs: P.kwargs) -> R:
                 # The client whose connection sends the request; `_self` may be a mounted resource.
                 client = client_of(_self)
-                endpoint.check_deprecation()
-
-                arguments = endpoint.bind(_self, args, kwargs, validate=_validates_arguments(endpoint, client))
-                spec = request_factory(arguments=arguments)
-
-                # Taken before `timeout` is added: it's a request option, not a request part.
-                call = EndpointCall(
-                    endpoint=endpoint_name,
-                    method=endpoint.method,
-                    path=spec.path,
-                    parts=tuple(str(part) for part in spec.parts),
-                    stream=endpoint.stream,
+                call, spec = _prepare(
+                    endpoint, request_factory, endpoint_name, owner=_self, client=client, args=args, kwargs=kwargs
                 )
-
-                if endpoint.timeout is not None:
-                    spec.parts.setdefault("timeout", endpoint.timeout)
 
                 started = time.perf_counter()
                 try:
                     response = send_request(
-                        client,
-                        method=endpoint.method,
-                        path=spec.path,
-                        stream=endpoint.stream,
-                        **spec.parts,
+                        client, method=endpoint.method, path=spec.path, stream=endpoint.stream, **spec.parts
                     )
                 except Exception as error:
                     log_endpoint_call(call, started=started, error=error)
@@ -259,22 +350,45 @@ class ApiMethod:
                         log_endpoint_call(call, started=started, status=response.status_code, error=error)
                         raise
                 log_endpoint_call(call, started=started, status=response.status_code)
+                # `_result` is typed `object`, since it serves every decoder. The decorator's overloads already
+                # check that the decoder's output matches the method's return type, `R`, so the cast restates that.
+                return cast(R, _result(endpoint, decoder, response))
 
-                # A decoder, when given, always runs, whatever the return annotation.
-                if decoder is not None:
-                    return cast(R, _decode(decoder, response))
+            @wraps(func)
+            # It returns the awaited value, so its return type isn't `R`: for an `async def` method, `R` is the
+            # coroutine type, which calling `async_wrapper` produces. So instead of casting the result as the
+            # sync wrapper does, the wrapper itself is cast to the method's type below.
+            async def async_wrapper(_self: T, /, *args: P.args, **kwargs: P.kwargs) -> object:
+                client = async_client_of(_self)
+                call, spec = _prepare(
+                    endpoint, request_factory, endpoint_name, owner=_self, client=client, args=args, kwargs=kwargs
+                )
 
-                if is_none_type(endpoint.return_type):
-                    return cast(R, None)
+                started = time.perf_counter()
+                try:
+                    response = await asend_request(
+                        client, method=endpoint.method, path=spec.path, stream=endpoint.stream, **spec.parts
+                    )
+                except Exception as error:
+                    log_endpoint_call(call, started=started, error=error)
+                    raise
 
-                if is_response_type(endpoint.return_type):
-                    return cast(R, response)
+                if response.is_error and _raises_for_status(endpoint, client):
+                    try:
+                        await _araise_status_error(response)
+                    except Exception as error:
+                        log_endpoint_call(call, started=started, status=response.status_code, error=error)
+                        raise
+                log_endpoint_call(call, started=started, status=response.status_code)
+                return _result(endpoint, decoder, response)
 
-                raise RuntimeError("Internal error: decoder was None for a decodable return type.")
-
-            endpoint.func = wrapper
-            register_endpoint_function(wrapper, endpoint)
-            return wrapper
+            # Either way, the endpoint function has the decorated method's type, `Callable[Concatenate[T, P], R]`.
+            endpoint_function = (
+                cast(Callable[Concatenate[T, P], R], async_wrapper) if inspect.iscoroutinefunction(func) else wrapper
+            )
+            endpoint.func = endpoint_function
+            register_endpoint_function(endpoint_function, endpoint)
+            return endpoint_function
 
         return decorator
 
