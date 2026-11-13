@@ -44,78 +44,11 @@ Give a client its credentials with `auth=` when you create it. `auth=` is httpx2
 
 Keep credentials out of endpoint parameters: every caller would have to pass them, and when endpoints are [AI tools](ai-tools.md), parameters are what the model sees and fills in.
 
-### Getting a token with a client ID and secret
-
-Many APIs want a short-lived bearer token from a token endpoint, which you get with a client ID and secret: OAuth 2's client credentials grant. An `Auth` subclass can do this itself. Its `auth_flow` method is a generator that yields each request to send and receives the response. It can yield a token request before the original request, and send the original request again after a 401. httpx2 sends all of them through the client, with its transport and settings.
-
-```python
-import math
-import os
-import time
-from base64 import b64encode
-from collections.abc import Generator
-from urllib.parse import quote_plus
-
-from clientx import Auth, ClientX, Request, Response
-
-
-class ClientCredentials(Auth):
-    """OAuth 2 client credentials: get a bearer token with a client ID and secret, and send it with every request."""
-
-    requires_response_body = True  # The flow reads the token response's JSON.
-
-    def __init__(self, token_url: str, client_id: str, client_secret: str, scope: str | None = None) -> None:
-        self.token_url = token_url
-        self.scope = scope
-        # RFC 6749, section 2.3.1: form-encode the ID and secret, then send them with HTTP Basic authentication.
-        credentials = f"{quote_plus(client_id)}:{quote_plus(client_secret)}"
-        self.client_authorization = f"Basic {b64encode(credentials.encode()).decode()}"
-        self.access_token = ""
-        self.expires_at = 0.0
-
-    def auth_flow(self, request: Request) -> Generator[Request, Response, None]:
-        if time.monotonic() >= self.expires_at:
-            yield from self.fetch_token()
-        request.headers["Authorization"] = f"Bearer {self.access_token}"
-        response = yield request
-        if response.status_code == 401:
-            yield from self.fetch_token()
-            request.headers["Authorization"] = f"Bearer {self.access_token}"
-            yield request
-
-    def fetch_token(self) -> Generator[Request, Response, None]:
-        data = {"grant_type": "client_credentials"}
-        if self.scope:
-            data["scope"] = self.scope
-        headers = {"Authorization": self.client_authorization}
-        response = yield Request("POST", self.token_url, data=data, headers=headers)
-        response.raise_for_status()
-        token = response.json()
-        self.access_token = token["access_token"]
-        # Renew 30 seconds early, so the token can't expire on its way. Without expires_in (it's optional),
-        # keep the token until the API rejects it.
-        lifetime = token.get("expires_in")
-        self.expires_at = math.inf if lifetime is None else time.monotonic() + lifetime - 30
-
-
-class ExampleAPI(ClientX):
-    ...
-
-
-# Read the ID and secret from the environment or a secrets manager, never from your source code.
-auth = ClientCredentials("https://auth.example.com/oauth/token", os.environ["CLIENT_ID"], os.environ["CLIENT_SECRET"])
-api = ExampleAPI("https://api.example.com", auth=auth)
-```
-
-- The first call gets a token, and later calls reuse it until it expires. If the API rejects it sooner with a 401, the request is sent again once, with a new token.
-- A failed token request, such as one with a wrong secret, raises `httpx2.HTTPStatusError` with the token endpoint's response, for example `400 {"error": "invalid_client"}`. The API request isn't sent.
-- With `requires_response_body = True`, httpx2 reads every response before returning it, not only the token response. On this client, a [streaming endpoint](decoders.md#streaming-responses) still works, but its response is read in full first.
-- Threads that share the client share its token. Two of them can get a new token at the same time, which costs an extra token request. To avoid that, use a lock, as httpx2's documentation shows.
-- [`examples/oauth2/`](https://github.com/slatecipher/ClientX/tree/mainline/examples/oauth2) runs this class against Duende's public demo server.
-
 Don't add credentials in a request [event hook](logging.md#your-own-request-logging). httpx2 documents hooks for logging, monitoring, and tracing. A request hook also runs again for every redirect, so it would put back an `Authorization` header that httpx2 dropped for another host. And it can't send a token request through the client's flow or send a request again after a 401.
 
 For other schemes, httpx2's [Third Party Packages](https://pydantic.dev/docs/httpx2/community/third_party_packages/) page lists libraries that support it. ClientX creates its own httpx2 client, so use a library's `Auth` class as `auth=`, not its client class.
+
+[`examples/oauth2/`](https://github.com/slatecipher/ClientX/tree/mainline/examples/oauth2) has an `Auth` class that gets an OAuth 2 bearer token with a client ID and secret, run against Duende's public demo server.
 
 ## Closing a client
 

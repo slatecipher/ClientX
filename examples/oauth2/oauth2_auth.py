@@ -12,6 +12,9 @@ class ClientCredentials(Auth):
 
     The token is reused until it expires. If the API rejects it sooner with a 401, the request is retried once
     with a new token. Pass an instance as a client's `auth=`.
+
+    Because the flow reads the token response, `requires_response_body` makes httpx2 read every response in full,
+    so a streaming endpoint on a client using this class still works but isn't streamed.
     """
 
     requires_response_body = True  # The flow reads the token response's JSON.
