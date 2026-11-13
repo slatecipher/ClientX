@@ -16,7 +16,7 @@ api = ExampleAPI("https://api.example.com", user_agent="my-app/1.0", timeout=5.0
 - `base_url`: the API's base URL. Optional when the class sets one (see below).
 - `user_agent`: the `User-Agent` to send. Without it, the first of these is sent: a `User-Agent` in `headers=`, the class's `user_agent=`, or `ClientX/<version>`.
 - `raise_for_status` and `validate_arguments`: see [Raising errors for 4xx and 5xx responses](#raising-errors-for-4xx-and-5xx-responses) and [Validating arguments](#validating-arguments) below.
-- Any other `httpx2.Client` option, such as `timeout`, `headers`, `auth`, `params`, `transport`, or `follow_redirects`. ClientX passes them to the httpx2 client it creates.
+- Any other `httpx2.Client` option, such as `timeout`, `headers`, `auth` (see [Authentication](#authentication)), `params`, `transport`, or `follow_redirects`. ClientX passes them to the httpx2 client it creates.
 
 Settings can't be changed afterwards; to use different ones, create another client. Instances are independent: each has its own connections, settings, and credentials, so clients for production and staging, or one client per account, can be used side by side. Class arguments (below) are only defaults for new instances.
 
@@ -37,6 +37,18 @@ staging = ExampleAPI("https://staging.example.com", timeout=10.0)  # arguments g
 A subclass keeps its parent's class arguments unless it sets its own. Without a base URL in the class or in the call, creating the client raises `TypeError`.
 
 `base_url` and `user_agent` are the only class arguments. Pass every other option, such as `timeout=` or `transport=`, when creating the client. Python rejects any other keyword in the class statement, a misspelling included, with `TypeError: ExampleAPI.__init_subclass__() takes no keyword arguments`.
+
+## Authentication
+
+Give a client its credentials with `auth=` when you create it. `auth=` is httpx2's authentication option: ClientX passes it to the httpx2 client, which applies it to every request. For what it accepts and how to write your own scheme, see httpx2's [Authentication](https://pydantic.dev/docs/httpx2/advanced/authentication/) documentation.
+
+Keep credentials out of endpoint parameters: every caller would have to pass them, and when endpoints are [AI tools](ai-tools.md), parameters are what the model sees and fills in.
+
+Don't add credentials in a request [event hook](logging.md#your-own-request-logging). httpx2 documents hooks for logging, monitoring, and tracing. A request hook also runs again for every redirect, so it would put back an `Authorization` header that httpx2 dropped for another host. And it can't send a token request through the client's flow or send a request again after a 401.
+
+For other schemes, httpx2's [Third Party Packages](https://pydantic.dev/docs/httpx2/community/third_party_packages/) page lists libraries that support it. ClientX creates its own httpx2 client, so use a library's `Auth` class as `auth=`, not its client class.
+
+[`examples/oauth2/`](https://github.com/slatecipher/ClientX/tree/mainline/examples/oauth2) has an `Auth` class that gets an OAuth 2 bearer token with a client ID and secret, run against Duende's public demo server.
 
 ## Closing a client
 
