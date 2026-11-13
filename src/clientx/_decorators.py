@@ -350,6 +350,8 @@ class ApiMethod:
                         log_endpoint_call(call, started=started, status=response.status_code, error=error)
                         raise
                 log_endpoint_call(call, started=started, status=response.status_code)
+                # `_result` is typed `object`, since it serves every decoder. The decorator's overloads already
+                # check that the decoder's output matches the method's return type, `R`, so the cast restates that.
                 return cast(R, _result(endpoint, decoder, response))
 
             @wraps(func)
