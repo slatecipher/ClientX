@@ -6,9 +6,8 @@ For async code, such as an asyncio app, a FastAPI service, or an MCP server, sub
 import asyncio
 from typing import Annotated
 
-from clientx import AsyncClientX, AsyncResource, Query
+from clientx import AsyncClientX, AsyncResource, Query, methods
 from clientx.decoders import ModelDecoder, TypeAdapterDecoder
-from clientx.methods import get
 from pydantic import BaseModel, TypeAdapter
 
 
@@ -18,12 +17,12 @@ class User(BaseModel):
 
 
 class Users(AsyncResource, prefix="/users"):
-    @get("/{user_id}", decoder=ModelDecoder(User))
+    @methods.get("/{user_id}", decoder=ModelDecoder(User))
     async def retrieve(self, user_id: int) -> User:
         """Fetch one user by ID."""
         ...
 
-    @get(decoder=TypeAdapterDecoder(TypeAdapter(list[User])))
+    @methods.get(decoder=TypeAdapterDecoder(TypeAdapter(list[User])))
     async def search(self, name: Annotated[str | None, Query()] = None) -> list[User]:
         """List users, or only those with this name."""
         ...
@@ -59,13 +58,12 @@ An `async def` endpoint streams with an async stream decoder, and returns an asy
 ```python
 from collections.abc import AsyncIterator
 
-from clientx import AsyncClientX
+from clientx import AsyncClientX, methods
 from clientx.decoders import AsyncStreamLinesDecoder
-from clientx.methods import get
 
 
 class EventsAPI(AsyncClientX, base_url="https://api.example.com"):
-    @get("/events", decoder=AsyncStreamLinesDecoder())
+    @methods.get("/events", decoder=AsyncStreamLinesDecoder())
     async def events(self) -> AsyncIterator[str]: ...
 
 
