@@ -12,6 +12,10 @@ fails if the typing contract regresses for users of either checker:
   its own comment if it's unused: pyright through the file-level
   ``reportUnnecessaryTypeIgnoreComment``, mypy through ``warn_unused_ignores`` in its
   ``strict`` mode. Code that should be rejected but is accepted is reported.
+- A method the decorator rejects is reported at the decorator. The decorators are overloaded
+  (for ``def`` and ``async def`` methods), so pyright reports it three times: the mismatch
+  (``reportArgumentType``), no matching overload (``reportCallIssue``), and the decorator's
+  result being unknown (``reportUntypedFunctionDecorator``).
 - ``reportUntypedFunctionDecorator`` is enabled because pyright otherwise hides an
   untyped decorator by falling back to the undecorated signature. mypy has no such
   fallback and would see every endpoint as ``Any``; its ``strict`` mode reports an
@@ -29,7 +33,7 @@ import httpx2
 import pytest
 from pydantic import BaseModel, TypeAdapter
 
-from clientx import Body, ClientX, Header, PathParam, Query, Resource, Response
+from clientx import AsyncClientX, AsyncResource, Body, ClientX, Header, PathParam, Query, Resource, Response
 from clientx.decoders import (
     ModelDecoder,
     StreamLinesDecoder,
@@ -38,7 +42,7 @@ from clientx.decoders import (
     json_decoder,
     text_decoder,
 )
-from clientx.exceptions import MissingDecoderError
+from clientx.exceptions import EndpointSignatureError, MissingDecoderError
 from clientx.methods import delete, get, post
 
 
@@ -74,7 +78,7 @@ class UsersClient(ClientX):
     def export(self) -> Response: ...
 
     # The decoder produces a User, so declaring a str return is rejected.
-    @get("/users/{user_id}/name", decoder=ModelDecoder(User))  # type: ignore[arg-type]  # pyright: ignore[reportArgumentType]
+    @get("/users/{user_id}/name", decoder=ModelDecoder(User))  # type: ignore[arg-type]  # pyright: ignore[reportArgumentType, reportCallIssue, reportUntypedFunctionDecorator]
     def get_user_name(self, user_id: str) -> str: ...
 
 
@@ -203,7 +207,7 @@ def test_methods_without_decoder_must_return_response_or_none() -> None:
     with pytest.raises(MissingDecoderError):
 
         class Broken(ClientX):
-            @get("/users/{user_id}")  # type: ignore[type-var]  # pyright: ignore[reportArgumentType]
+            @get("/users/{user_id}")  # type: ignore[type-var]  # pyright: ignore[reportArgumentType, reportCallIssue, reportUntypedFunctionDecorator]
             def get_user(self, user_id: str) -> User: ...
 
 
@@ -266,6 +270,96 @@ def _construct_with_every_httpx2_option() -> ClientX:
         transport=httpx2.HTTPTransport(),
         default_encoding="utf-8",
     )
+
+
+class AsyncUsersResource(AsyncResource, prefix="/users"):
+    @get("/{user_id}", decoder=ModelDecoder(User))
+    async def retrieve(self, user_id: str) -> User: ...
+
+    @post()
+    async def create(self, json: dict[str, object]) -> Response: ...
+
+    @get(decoder=TypeAdapterDecoder(TypeAdapter(list[User])))
+    async def list_all(self) -> list[User]: ...
+
+
+class AsyncItemsClient(AsyncClientX):
+    users = AsyncUsersResource()
+
+    @get("/items/{item_id}")
+    async def get_item(self, item_id: str) -> Response: ...
+
+    # An `Any` decoder with an `Any` annotation: still a typed method, whose arguments are checked.
+    @post("/items", decoder=json_decoder)
+    async def create_item(self, json: dict[str, object]) -> Any: ...
+
+    @get("/search", decoder=json_decoder)
+    async def search(self, q: Annotated[str, Query()]) -> dict[str, object]: ...
+
+    @delete("/items/{item_id}")
+    async def delete_item(self, item_id: str) -> None: ...
+
+    @get("/export", decoder=StreamResponseDecoder())
+    async def export(self) -> Response: ...
+
+    # The decoder produces a User, so declaring a str return is rejected, as for a `def` method.
+    @get("/users/{user_id}/name", decoder=ModelDecoder(User))  # type: ignore[type-var, arg-type]  # pyright: ignore[reportArgumentType, reportCallIssue, reportUntypedFunctionDecorator]
+    async def get_user_name(self, user_id: str) -> str: ...
+
+
+@pytest.mark.anyio
+async def test_async_methods_return_their_declared_types_when_awaited() -> None:
+    async with AsyncItemsClient("https://example.test", transport=_transport()) as client:
+        assert_type(client, AsyncItemsClient)
+        assert_type(await client.get_item("1"), Response)
+        assert_type(await client.create_item({"name": "x"}), Any)
+        assert_type(await client.delete_item("1"), None)
+        assert_type(client.users, AsyncUsersResource)
+        assert_type(AsyncItemsClient.users, AsyncUsersResource)
+        assert_type(await client.users.retrieve("1"), User)
+        assert_type(await client.users.create({"name": "x"}), Response)
+        assert_type(await client.users.list_all(), list[User])
+        response = await client.export()
+        assert_type(response, Response)
+        await response.aclose()
+
+
+@pytest.mark.anyio
+async def test_async_methods_reject_wrong_arguments() -> None:
+    async with AsyncItemsClient("https://example.test", transport=_transport()) as client:
+        await client.get_item(1)  # type: ignore[arg-type]  # pyright: ignore[reportArgumentType]
+        await client.create_item(json="not a dict")  # type: ignore[arg-type]  # pyright: ignore[reportArgumentType]
+        await client.search(1)  # type: ignore[arg-type]  # pyright: ignore[reportArgumentType]
+        await client.users.retrieve(1)  # type: ignore[arg-type]  # pyright: ignore[reportArgumentType]
+        with pytest.raises(TypeError):
+            await client.delete_item()  # type: ignore[call-arg]  # pyright: ignore[reportCallIssue]
+
+
+def test_async_and_sync_endpoints_go_on_their_own_kind_of_class() -> None:
+    """Type checkers reject the mix at the decorator, and ClientX when the class is defined."""
+    with pytest.raises(EndpointSignatureError):
+
+        class AsyncOnSyncClient(ClientX):
+            @get("/items")  # type: ignore[type-var]  # pyright: ignore[reportArgumentType, reportCallIssue, reportUntypedFunctionDecorator]
+            async def items(self) -> Response: ...
+
+    with pytest.raises(EndpointSignatureError):
+
+        class AsyncOnSyncResource(Resource):
+            @get("/items", decoder=ModelDecoder(User))  # type: ignore[arg-type]  # pyright: ignore[reportArgumentType, reportCallIssue, reportUntypedFunctionDecorator]
+            async def items(self) -> User: ...
+
+    with pytest.raises(EndpointSignatureError):
+
+        class SyncOnAsyncClient(AsyncClientX):
+            @get("/items")  # type: ignore[type-var]  # pyright: ignore[reportArgumentType, reportCallIssue, reportUntypedFunctionDecorator]
+            def items(self) -> Response: ...
+
+    with pytest.raises(EndpointSignatureError):
+
+        class SyncOnAsyncResource(AsyncResource):
+            @get("/items", decoder=ModelDecoder(User))  # type: ignore[type-var]  # pyright: ignore[reportArgumentType, reportCallIssue, reportUntypedFunctionDecorator]
+            def items(self) -> User: ...
 
 
 def test_client_options_accept_every_form_httpx2_accepts() -> None:

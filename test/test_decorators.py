@@ -1,5 +1,5 @@
 from collections.abc import Iterator
-from typing import Annotated
+from typing import Annotated, get_overloads
 
 import pytest
 from httpx2 import HTTPStatusError, Request, Response
@@ -192,12 +192,18 @@ def test_the_path_defaults_to_the_base_url(endpoint_of, mock_transport):
 def test_type_checker_messages_name_the_fix():
     # docs/decoders.md and llms.txt quote checker messages that use these names, such as
     # 'Type "User" is not assignable to constrained type variable "ResponseOrNone"'.
-    assert [param.__name__ for param in RawEndpointDecorator.__call__.__type_params__] == ["C", "Q", "ResponseOrNone"]
-    assert [param.__name__ for param in DecodedEndpointDecorator.__call__.__type_params__] == [
-        "C",
-        "Q",
-        "DecoderOutput",
+    # Each protocol has three overloads (def, async def, def again), and each must use the same names.
+    raw = [
+        [param.__name__ for param in overload.__type_params__]
+        for overload in get_overloads(RawEndpointDecorator.__call__)
     ]
+    decoded = [
+        [param.__name__ for param in overload.__type_params__]
+        for overload in get_overloads(DecodedEndpointDecorator.__call__)
+    ]
+
+    assert raw == [["C", "Q", "ResponseOrNone"]] * 3
+    assert decoded == [["C", "Q", "DecoderOutput"]] * 3
 
 
 def test_method_container_exposes_http_methods():

@@ -18,7 +18,7 @@ from pydantic_core import to_jsonable_python
 
 from clientx._annotation_extractor import NamedAnnotation, NamedAnnotationExtractor, model_annotations
 from clientx._annotations import PathParam
-from clientx._client import ClientX, Resource
+from clientx._client import AsyncClientX, AsyncResource, ClientX, Resource
 from clientx._client_types import (
     Decoder,
     DeprecatedType,
@@ -277,6 +277,15 @@ class Endpoint:
         return isinstance(self.decoder, StreamDecoder | StreamResponseDecoder)
 
     @property
+    def is_async(self) -> bool:
+        """Return whether the endpoint is an ``async def`` method, for an ``AsyncClientX``.
+
+        Returns:
+            bool: True when calling the endpoint returns an awaitable.
+        """
+        return inspect.iscoroutinefunction(self.func)
+
+    @property
     def func(self) -> Callable[..., Any]:
         """Return the bound implementation callable for this endpoint.
 
@@ -303,8 +312,9 @@ class Endpoint:
         Raises:
             MissingReturnTypeError: The function has no return annotation.
             MissingDecoderError: The return type needs a decoder and none was given.
-            EndpointSignatureError: The first parameter isn't positional, or there's
-                a ``*args`` or ``**kwargs`` parameter.
+            EndpointSignatureError: The first parameter isn't positional, there's
+                a ``*args`` or ``**kwargs`` parameter, or an ``async def`` endpoint's
+                decoder streams synchronously.
             MisplacedHelperError: A helper is nested inside another type, or a
                 parameter has two, here or in a model a parameter is annotated with.
             MissingPathArgumentsError: A path placeholder names no parameter.
@@ -418,10 +428,19 @@ class Endpoint:
         Raises:
             MissingDecoderError: When the endpoint return type is not a
                 response type and no decoder has been provided.
+            EndpointSignatureError: When an ``async def`` endpoint's decoder
+                streams synchronously.
         """
 
         if self.decoder is None and self._decoder_required:
             raise MissingDecoderError(self.func)
+        streams_synchronously = isinstance(self.decoder, StreamDecoder)
+        if self.is_async and streams_synchronously:
+            raise EndpointSignatureError(
+                self.func,
+                f"is `async def`, but its decoder, {type(self.decoder).__name__}, streams synchronously, "
+                "for `def` endpoints",
+            )
 
     def _resolve_return_type(self) -> Any:
         """Resolve and return the endpoint's annotated return type.
@@ -457,7 +476,7 @@ class Endpoint:
 
     def bind(
         self,
-        client: ClientX | Resource,
+        client: ClientX | AsyncClientX | Resource | AsyncResource,
         args: tuple[Any, ...],
         kwargs: dict[str, Any],
         *,

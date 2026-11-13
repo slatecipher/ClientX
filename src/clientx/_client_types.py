@@ -70,11 +70,11 @@ def is_response_type(return_type: Any) -> bool:
 
 # Parameter descriptions adapted from the httpx2.Client docstring.
 # httpx2: BSD-3-Clause, Copyright © 2019 Encode OSS Ltd; © 2026 Pydantic Services Inc. and contributors.
-class HttpxClientKwargs(TypedDict, total=False):
-    """Keyword arguments supported by httpx2.Client.
+class _HttpxClientOptions(TypedDict, total=False):
+    """The keyword arguments ``httpx2.Client`` and ``httpx2.AsyncClient`` share.
 
-    Intended for use with **kwargs: Unpack[HttpxClientKwargs] to preserve
-    IDE autocomplete and static type checking.
+    They differ only in ``transport`` and ``mounts``, which take sync or async
+    transports, so those are in ``HttpxClientKwargs`` and ``AsyncHttpxClientKwargs``.
     """
 
     auth: AuthTypes | None
@@ -104,9 +104,6 @@ class HttpxClientKwargs(TypedDict, total=False):
     proxy: ProxyTypes | None
     """A proxy URL or configuration where all traffic should be routed."""
 
-    mounts: Mapping[str, httpx2.BaseTransport | None] | None
-    """Transports to use for requests matching URL patterns, keyed by pattern."""
-
     timeout: TimeoutTypes
     """Timeouts: seconds, ``None`` for none, a (connect, read, write, pool) tuple, or an ``httpx2.Timeout``."""
 
@@ -118,9 +115,6 @@ class HttpxClientKwargs(TypedDict, total=False):
 
     max_redirects: int
     """Maximum number of redirect responses to follow."""
-
-    transport: httpx2.BaseTransport | None
-    """Transport instance used to send requests over the network."""
 
     trust_env: bool
     """Enable or disable usage of environment variables for configuration."""
@@ -148,6 +142,34 @@ class HttpxClientKwargs(TypedDict, total=False):
         Hooks should avoid consuming the response body or performing blocking
         operations that depend on the full response content.
     """
+
+
+class HttpxClientKwargs(_HttpxClientOptions, total=False):
+    """Keyword arguments supported by ``httpx2.Client``.
+
+    Intended for use with ``**kwargs: Unpack[HttpxClientKwargs]`` to preserve
+    IDE autocomplete and static type checking.
+    """
+
+    mounts: Mapping[str, httpx2.BaseTransport | None] | None
+    """Transports to use for requests matching URL patterns, keyed by pattern."""
+
+    transport: httpx2.BaseTransport | None
+    """Transport instance used to send requests over the network."""
+
+
+class AsyncHttpxClientKwargs(_HttpxClientOptions, total=False):
+    """Keyword arguments supported by ``httpx2.AsyncClient``.
+
+    The same as ``HttpxClientKwargs``, except that ``mounts`` and ``transport`` take
+    async transports, and event hooks must be ``async`` functions.
+    """
+
+    mounts: Mapping[str, httpx2.AsyncBaseTransport | None] | None
+    """Transports to use for requests matching URL patterns, keyed by pattern."""
+
+    transport: httpx2.AsyncBaseTransport | None
+    """Transport instance used to send requests over the network."""
 
 
 class DumpConfig(TypedDict, total=False):

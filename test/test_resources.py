@@ -152,7 +152,10 @@ def test_calling_an_endpoint_on_something_other_than_a_client_raises():
         @get("/health")
         def health(self) -> Response: ...
 
-    with pytest.raises(TypeError, match="must be called on a ClientX instance or a mounted Resource, not on 'object'"):
+    with pytest.raises(
+        TypeError,
+        match="`def` endpoints must be called on a ClientX instance or a Resource mounted on one, not on 'object'",
+    ):
         PlainAPI.health(object())  # pyright: ignore[reportArgumentType]
 
 
@@ -212,7 +215,8 @@ def test_subclasses_keep_the_parent_prefix_and_tags_unless_they_set_their_own(en
 
 def test_mounting_on_a_class_that_is_not_a_client_or_resource_raises():
     with pytest.raises(
-        TypeError, match=r"can only be mounted on a ClientX or Resource subclass, not on '[\w.<>]*NotAClient'"
+        TypeError,
+        match=r"can only be mounted on a ClientX or Resource subclass, not on '[\w.<>]*NotAClient'",
     ):
 
         class NotAClient:
