@@ -343,15 +343,11 @@ def _reserved_names(base: type) -> frozenset[str]:
 
 _RESERVED_NAMES = {base.__name__: _reserved_names(base) for base in (ClientX, AsyncClientX, Resource, AsyncResource)}
 
-# Each base, the kind of endpoint it holds, and the base for the other kind. A resource mounts on a
-# client of its own kind, or on another resource of its kind.
-_ASYNC_BASES = frozenset({"AsyncClientX", "AsyncResource"})
-_OTHER_KIND = {
-    "ClientX": "AsyncClientX",
-    "AsyncClientX": "ClientX",
-    "Resource": "AsyncResource",
-    "AsyncResource": "Resource",
-}
+# Each sync base's async counterpart. The async bases, and each base's counterpart in either direction,
+# follow from it. A resource mounts on a client of its own kind, or on another resource of its kind.
+_ASYNC_COUNTERPARTS = {"ClientX": "AsyncClientX", "Resource": "AsyncResource"}
+_ASYNC_BASES = frozenset(_ASYNC_COUNTERPARTS.values())
+_OTHER_KIND = {**_ASYNC_COUNTERPARTS, **{async_base: base for base, async_base in _ASYNC_COUNTERPARTS.items()}}
 
 
 def _base_url(cls: type[ClientX | AsyncClientX], base_url: URL | str | None, *, base: str) -> URL:
