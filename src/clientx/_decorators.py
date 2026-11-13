@@ -353,6 +353,9 @@ class ApiMethod:
                 return cast(R, _result(endpoint, decoder, response))
 
             @wraps(func)
+            # It returns the awaited value, so its return type isn't `R`: for an `async def` method, `R` is the
+            # coroutine type, which calling `async_wrapper` produces. So instead of casting the result as the
+            # sync wrapper does, the wrapper itself is cast to the method's type below.
             async def async_wrapper(_self: T, /, *args: P.args, **kwargs: P.kwargs) -> object:
                 client = async_client_of(_self)
                 call, spec = _prepare(
@@ -377,7 +380,7 @@ class ApiMethod:
                 log_endpoint_call(call, started=started, status=response.status_code)
                 return _result(endpoint, decoder, response)
 
-            # `R` is the coroutine type for an `async def` method, so both wrappers have the method's type.
+            # Either way, the endpoint function has the decorated method's type, `Callable[Concatenate[T, P], R]`.
             endpoint_function = (
                 cast(Callable[Concatenate[T, P], R], async_wrapper) if inspect.iscoroutinefunction(func) else wrapper
             )
