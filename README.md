@@ -37,8 +37,6 @@ ClientX is inspired by FastAPI, which reads type hints to define server endpoint
 - **Ready for AI agents.** `clientx.tools` turns a client's endpoints into tool definitions for AI models, built from the same signatures, docstrings, and types, and `clientx[mcp]` serves them as an MCP server in one call.
 - **Built on httpx2.** Every `httpx2.Client` and `httpx2.AsyncClient` option is available, including auth, timeouts, proxies, and custom transports, and responses can be streamed.
 
-ClientX is an independent project. It isn't affiliated with or endorsed by the FastAPI, Pydantic, or httpx2 projects.
-
 ## Features
 
 - Declarative endpoint definitions with HTTP verb decorators.
@@ -117,7 +115,7 @@ with ExampleAPI() as api:
 - [Resources](https://github.com/slatecipher/ClientX/blob/mainline/docs/resources.md): grouping endpoints under a path prefix, nesting them, and plain methods for logic such as pagination.
 - [Return types and decoders](https://github.com/slatecipher/ClientX/blob/mainline/docs/decoders.md): `ModelDecoder`, `TypeAdapterDecoder`, `FromResponseDecoder`, the simple decoders, your own, and streaming.
 - [Building requests](https://github.com/slatecipher/ClientX/blob/mainline/docs/requests.md): how parameters become the path, query string, headers, form fields, JSON body, and files.
-- [Client configuration](https://github.com/slatecipher/ClientX/blob/mainline/docs/configuration.md): creating and closing a client, class defaults for the base URL and `User-Agent`, errors for 4xx and 5xx responses, and argument validation.
+- [Client configuration](https://github.com/slatecipher/ClientX/blob/mainline/docs/configuration.md): creating and closing a client, class defaults for the base URL and `User-Agent`, authentication, errors for 4xx and 5xx responses, and argument validation.
 - [Async clients](https://github.com/slatecipher/ClientX/blob/mainline/docs/async.md): `AsyncClientX` and `AsyncResource` for `async def` endpoints, concurrent requests, async streaming, and testing.
 - [Logging](https://github.com/slatecipher/ClientX/blob/mainline/docs/logging.md): ClientX's debug records, and your own request logging.
 - [AI tools and MCP](https://github.com/slatecipher/ClientX/blob/mainline/docs/ai-tools.md): endpoints as AI tools, serving a client over MCP, and listing a client's endpoints.
@@ -127,3 +125,9 @@ with ExampleAPI() as api:
 ## Development
 
 See [CONTRIBUTING.md](https://github.com/slatecipher/ClientX/blob/mainline/CONTRIBUTING.md) for setup, checks, and conventions.
+
+## License
+
+ClientX is released under the [MIT License](https://github.com/slatecipher/ClientX/blob/mainline/LICENSE).
+
+ClientX is an independent project. It isn't affiliated with or endorsed by the FastAPI, Pydantic, or httpx2 projects.

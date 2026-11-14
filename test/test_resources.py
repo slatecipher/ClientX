@@ -202,14 +202,14 @@ def test_subclasses_keep_the_parent_prefix_and_tags_unless_they_set_their_own(en
         @get("/c")
         def c(self) -> Response: ...
 
-    found = {
-        name: (str(endpoint.path), endpoint.tags)
-        for name, endpoint in (("a", endpoint_of(Base.a)), ("b", endpoint_of(Child.b)), ("c", endpoint_of(Other.c)))
-    }
+    # Other.a is inherited, so it keeps Base's prefix and tags (docs/resources.md).
+    endpoints = {"a": Base.a, "b": Child.b, "c": Other.c, "inherited": Other.a}
+    found = {name: (str(endpoint_of(func).path), endpoint_of(func).tags) for name, func in endpoints.items()}
     assert found == {
         "a": ("/base/a", ["base"]),
         "b": ("/base/b", ["base"]),
         "c": ("/other/c", ["other"]),
+        "inherited": ("/base/a", ["base"]),
     }
 
 
