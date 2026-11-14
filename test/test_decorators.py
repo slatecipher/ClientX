@@ -358,6 +358,13 @@ def test_lists_and_dicts_of_models_are_sent_as_json(mock_transport):
             self, things: Annotated[list[Thing], Body(dump_config=DumpConfig(exclude_unset=True))]
         ) -> Response: ...
 
+        # Pydantic applies `exclude` to the list itself, so "__all__" reaches each item (docs/requests.md).
+        @method.post("/without-notes")
+        def without_notes(
+            self,
+            things: Annotated[list[Thing], Body(dump_config=DumpConfig(exclude={"__all__": {"note"}}))],
+        ) -> Response: ...
+
         @method.post("/plain")
         def plain(self, json: dict[str, object]) -> Response: ...
 
@@ -367,12 +374,14 @@ def test_lists_and_dicts_of_models_are_sent_as_json(mock_transport):
     api.bulk(items)
     api.by_key({"a": Thing(thingId=2)})
     api.changes([Thing(thingId=3)])
+    api.without_notes([Thing(thingId=5, note="x")])
     api.plain({"name": "Ada", "tags": None})
 
     assert [json.loads(request.content) for request in sent] == [
         [{"thingId": 1, "note": None}],
         {"a": {"thingId": 2, "note": None}},
         [{"thingId": 3}],
+        [{"thingId": 5}],
         {"name": "Ada", "tags": None},
     ]
     assert items == [Thing(thingId=1)]  # The caller's list isn't changed.

@@ -140,7 +140,7 @@ A model passed without a helper is expanded field by field. A field annotated wi
 
 ClientX dumps models with `mode="json"` and `by_alias=True`. Dates, UUIDs, and decimals become JSON values, and each field is sent under its alias, which is usually the API's own name for it (`user_id: int = Field(alias="userId")`, or `alias_generator=to_camel` for a whole model).
 
-The JSON body is dumped the same way when it's a list or dict that holds models, such as a `json: list[User]` parameter for a bulk create, or `Annotated[list[User], Body()]`. A `DumpConfig` given to `Body()` applies to each model in it.
+The JSON body is dumped the same way when it's a list or dict that holds models, such as a `json: list[User]` parameter for a bulk create, or `Annotated[list[User], Body()]`. A `DumpConfig` given to `Body()` applies to each model in it, except `include` and `exclude`: Pydantic applies those to the list or dict itself, so to leave a field out of every item, use `exclude={"__all__": {"internal_note"}}` (see Pydantic's [advanced include and exclude](https://docs.pydantic.dev/latest/concepts/serialization/#advanced-include-and-exclude)).
 
 `DumpConfig` takes these options of Pydantic's `model_dump`, and each one overrides ClientX's default:
 
