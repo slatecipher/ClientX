@@ -3,7 +3,7 @@ import inspect
 import httpx2
 import pytest
 from httpx2 import Request, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, TypeAdapter
 
 from clientx._client import ClientX, send_request
 from clientx._client_types import DumpConfig, HttpxClientKwargs
@@ -192,6 +192,13 @@ def test_dump_config_typed_dict_returns_fields():
         "exclude_none": True,
         "exclude_defaults": True,
     }
+
+
+def test_dump_config_keys_are_type_adapter_dump_options():
+    """A list or dict of models in a JSON body is dumped with a TypeAdapter, so each DumpConfig key must work there."""
+    dump_options = set(inspect.signature(TypeAdapter.dump_python).parameters) - {"self", "instance"}
+
+    assert DumpConfig.__optional_keys__ - dump_options == set()
 
 
 def test_dump_config_keys_are_model_dump_options():
