@@ -40,6 +40,7 @@ Type checkers see `api.users` as `Users`, and its endpoints keep their signature
 - A resource doesn't refer to the client class, so resources can live in their own modules.
 - Names that `ClientX` itself uses, such as `close`, are free for endpoints on a resource.
 - A subclass keeps its parent's prefix and tags unless it sets its own.
+- An endpoint belongs to the class whose body it's in. It can have a second name there (`QueryDevices = query_devices`), which sends the same request and is listed once as an AI tool. Putting it in another resource's or client's body raises `TypeError` when that class is defined, since that resource's prefix would change its path too: declare it again there.
 - An endpoint's name hides any other meaning of that name for the rest of the class body:
   - If you import the decorators themselves (`from clientx.method import get`), an endpoint named like one, such as `get`, replaces it, so a later `@get(...)` fails when the class is defined. Decorating with `@method.get(...)`, as these docs do, avoids that.
   - If an endpoint is named `list` (or `dict`, `type`, ...), a later `list[Post]` in an annotation or a decorator argument fails when the class is defined: `TypeError: 'function' object is not subscriptable`. Pyright reports it too. Define that endpoint last in the class, or write `builtins.list[Post]` after it.

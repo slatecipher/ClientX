@@ -10,6 +10,7 @@ ClientX raises explicit errors for common contract violations. Most of them are 
 - no positional first parameter for the client (usually `self`, but any name works), a `*args` or `**kwargs` parameter, or a `PathParam()` parameter with no placeholder in the path (including a resource prefix) -> `EndpointSignatureError`
 - an `async def` endpoint on a `ClientX` or `Resource`, a `def` endpoint on an `AsyncClientX` or `AsyncResource`, or a stream decoder for the other kind of endpoint -> `EndpointSignatureError`
 - a resource mounted on the other kind of client or resource, or a class that subclasses both `ClientX` and `AsyncClientX` (or both `Resource` and `AsyncResource`) -> `TypeError`
+- an endpoint that's already in another client or resource class's body -> `TypeError`
 - request-part helper nested inside another type, two helpers on one parameter or field, or `PathParam()` on a model field -> `MisplacedHelperError` (for a model field, when the class is defined if a parameter is annotated with the model, or else when the model is sent)
 
 At call time:

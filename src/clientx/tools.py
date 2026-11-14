@@ -145,6 +145,7 @@ def list_tools(
     """Describe a client's endpoints, including those on mounted resources, as tools.
 
     Streaming endpoints are left out: their results can't be returned as one value.
+    An endpoint with a second name, such as an alias, is listed once, under its first name.
     An endpoint whose parameter or return types have no JSON Schema (such as an
     upload typed as a file object, ``BinaryIO``) is left out with a warning. An
     upload typed as ``bytes`` has a schema, so it's listed.
@@ -166,15 +167,20 @@ def list_tools(
     excluded = frozenset(exclude_tags)
     tools: dict[str, Tool] = {}
 
+    listed: set[int] = set()
     for name, endpoint, function in _endpoints(client, ""):
         tags = frozenset(endpoint.tags)
-        if (
-            endpoint.stream
-            or (endpoint.deprecated is not None and not include_deprecated)
-            or (read_only and endpoint.method not in _READ_ONLY_METHODS)
-            or (included is not None and not tags & included)
-            or tags & excluded
-        ):
+        left_out = any(
+            (
+                id(endpoint) in listed,  # A second name for an endpoint already listed, such as an alias.
+                endpoint.stream,
+                endpoint.deprecated is not None and not include_deprecated,
+                read_only and endpoint.method not in _READ_ONLY_METHODS,
+                included is not None and not (tags & included),
+                tags & excluded,
+            )
+        )
+        if left_out:
             continue
         if not _TOOL_NAME.fullmatch(name):
             raise ValueError(
@@ -183,6 +189,7 @@ def list_tools(
             )
         if name in tools:
             raise ValueError(f"Two endpoints map to the tool name {name!r}; rename one of them.")
+        listed.add(id(endpoint))
         tool = _build_tool(name, endpoint, function)
         if tool is not None:
             tools[name] = tool

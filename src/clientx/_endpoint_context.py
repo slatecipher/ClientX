@@ -241,6 +241,9 @@ class Endpoint:
         self.validate_arguments = validate_arguments
         # Dedupe tags while preserving insertion order.
         self.tags = list(dict.fromkeys(tags or []))
+        # The client or resource class whose body the endpoint is in. A resource joins its prefix onto the
+        # endpoint's path, so an endpoint can belong to only one class.
+        self.owner: type | None = None
 
     def __repr__(self) -> str:
         """Return a dataclass-like summary of the endpoint configuration."""

@@ -4,7 +4,7 @@ import copy
 import inspect
 from collections.abc import Sequence
 from types import TracebackType
-from typing import Any, ClassVar, Self, Unpack
+from typing import TYPE_CHECKING, Any, ClassVar, Self, Unpack
 
 from httpx2 import URL, AsyncClient, Client, Headers, Response
 
@@ -12,6 +12,9 @@ from clientx._client_types import AsyncHttpxClientKwargs, HeaderTypes, HttpxClie
 from clientx._registry import endpoint_for
 from clientx._version import __version__
 from clientx.exceptions import EndpointNameConflictError, EndpointSignatureError, UnboundResourceError
+
+if TYPE_CHECKING:
+    from clientx._endpoint_context import Endpoint
 
 
 class _BaseClientX[HttpClient: Client | AsyncClient]:
@@ -391,6 +394,7 @@ def _set_up_subclass(
         cls.__clientx_user_agent__ = user_agent
     _check_member_names(cls, _RESERVED_NAMES[base], base=base)
     _check_endpoint_kinds(cls, base=base)
+    _claim_endpoints(cls)
     _check_path_helpers(cls)
 
 
@@ -407,11 +411,9 @@ def _set_up_resource(
 
     _check_member_names(cls, _RESERVED_NAMES[base], base=base)
     _check_endpoint_kinds(cls, base=base)
-    for value in vars(cls).values():
-        endpoint = endpoint_for(value)
-        if endpoint is not None:
-            endpoint.path = _join_path(cls.__clientx_prefix__, str(endpoint.path))
-            endpoint.tags = list(dict.fromkeys([*cls.__clientx_tags__, *endpoint.tags]))
+    for endpoint in _claim_endpoints(cls):
+        endpoint.path = _join_path(cls.__clientx_prefix__, str(endpoint.path))
+        endpoint.tags = list(dict.fromkeys([*cls.__clientx_tags__, *endpoint.tags]))
     # After the prefix is joined, since it can add the placeholder a PathParam() parameter needs.
     _check_path_helpers(cls)
 
@@ -431,6 +433,33 @@ def _check_mount(resource: Resource | AsyncResource, owner: type[Any], *, base: 
             f" For {'a' if is_async else 'an'} {_OTHER_KIND[clients.__name__]}, subclass {_OTHER_KIND[base]} instead."
         )
     raise TypeError(message)
+
+
+def _claim_endpoints(cls: type) -> list[Endpoint]:
+    """Make ``cls`` the owner of the endpoints in its body, and return them, each once.
+
+    A second name for an endpoint in the same body (an alias, ``QueryDevices = query_devices``) is the
+    same endpoint, so a resource joins its prefix once. An endpoint that another class's body already
+    has raises: a resource would join its prefix onto that endpoint's path too, and an endpoint has
+    one path.
+
+    Raises:
+        TypeError: If an endpoint in ``cls``'s body belongs to another client or resource class.
+    """
+    claimed: list[Endpoint] = []
+    for value in vars(cls).values():
+        endpoint = endpoint_for(value)
+        if endpoint is None or endpoint.owner is cls:
+            continue
+        if endpoint.owner is not None:
+            raise TypeError(
+                f"Endpoint '{endpoint.func.__qualname__}' belongs to '{endpoint.owner.__qualname__}', so it can't "
+                f"also be an endpoint of '{cls.__qualname__}': an endpoint has one path. Declare it in "
+                f"'{cls.__qualname__}' too."
+            )
+        endpoint.owner = cls
+        claimed.append(endpoint)
+    return claimed
 
 
 def _check_member_names(cls: type, reserved: frozenset[str], *, base: str) -> None:
