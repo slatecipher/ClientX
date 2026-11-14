@@ -6,7 +6,7 @@ ClientX maps method arguments into request parts in this order:
 2. Each remaining argument goes to the first of these that matches:
    1. Its name is a request part: `json`, `params`, `data`, `files`, or `headers`. The name wins even over an annotation, so a parameter named `data` is always sent as form data.
    2. It's annotated with a request part: `Annotated[..., Query()]`, `Header()`, `Form()`, `Body()`, or `File()`.
-   3. Its value is a Pydantic model, which is expanded field by field.
+   3. Its value is a Pydantic model, which is expanded field by field. A `RootModel` has no fields to expand, so its value is the whole JSON body.
 3. Arguments for the same request part are merged in parameter order, and later ones win: dicts are merged key by key, so a later `Header("X-Request-Id")` parameter overrides that key in an earlier `headers` dict, and any other value replaces the part. There's no warning, so put the parameter that should win last.
 
 ## By parameter name
@@ -139,6 +139,8 @@ A model passed without a helper is expanded field by field. A field annotated wi
 ## Serialization control with `DumpConfig`
 
 ClientX dumps models with `mode="json"` and `by_alias=True`. Dates, UUIDs, and decimals become JSON values, and each field is sent under its alias, which is usually the API's own name for it (`user_id: int = Field(alias="userId")`, or `alias_generator=to_camel` for a whole model).
+
+The JSON body is dumped the same way when it's a list or dict that holds models, such as a `json: list[User]` parameter for a bulk create, or `Annotated[list[User], Body()]`. A `DumpConfig` given to `Body()` applies to each model in it, except `include` and `exclude`: Pydantic applies those to the list or dict itself, so to leave a field out of every item, use `exclude={"__all__": {"internal_note"}}` (see Pydantic's [advanced include and exclude](https://docs.pydantic.dev/latest/concepts/serialization/#advanced-include-and-exclude)).
 
 `DumpConfig` takes these options of Pydantic's `model_dump`, and each one overrides ClientX's default:
 

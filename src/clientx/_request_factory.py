@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from inspect import BoundArguments
 from typing import Any, cast, get_args
 
-from pydantic import BaseModel
+from pydantic import BaseModel, RootModel, TypeAdapter
 from pydantic_core import to_jsonable_python
 
 from clientx._annotation_extractor import NamedAnnotation, model_annotations
@@ -26,6 +26,20 @@ _PARTS_BY_NAME: dict[str, RequestPartName] = {name: name for name in get_args(Re
 # How models are dumped unless a DumpConfig says otherwise: JSON-compatible values (ISO 8601 dates,
 # strings for UUIDs and decimals) under each field's alias, which is usually the API's own name.
 _DUMP_DEFAULTS: DumpConfig = {"mode": "json", "by_alias": True}
+
+
+# Dumps any value as `dump_model` dumps a model, including models inside lists and dicts.
+_ANY_VALUE: TypeAdapter[Any] = TypeAdapter(Any)
+
+
+def dump_json_value(value: object, dump_config: DumpConfig) -> Any:
+    """Dump a JSON body that isn't a model, such as a list or dict of models, as ``dump_model`` dumps a model.
+
+    Plain JSON values come back unchanged, and ``None`` stays ``null``.
+    """
+    config: DumpConfig = {**_DUMP_DEFAULTS, **dump_config}
+    # DumpConfig's `mode` allows any string, as `model_dump` does; `dump_python` is typed for the two it takes.
+    return _ANY_VALUE.dump_python(value, **cast(dict[str, Any], config))
 
 
 def dump_model(model: BaseModel, dump_config: DumpConfig) -> dict[str, Any]:
@@ -253,10 +267,18 @@ class RequestFactory:
                         continue
                     # Like a model field in JSON mode: an Enum becomes its value, a datetime ISO 8601.
                     payload = {marker.key or _default_name(field_name, part): to_jsonable_python(value)}
+                elif part == "json":
+                    # A list or dict of models is dumped like a model; httpx2's JSON encoder can't send models.
+                    payload = dump_json_value(value, marker.dump_config)
                 else:
                     payload = value
 
                 parts.append({part: payload})
+                continue
+
+            elif isinstance(value, RootModel):
+                # A root model has no fields to send to request parts: its value is the JSON body, as with Body().
+                parts.append({"json": dump_model(cast(BaseModel, value), marker.dump_config)})
                 continue
 
             elif isinstance(value, BaseModel):

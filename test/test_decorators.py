@@ -1,11 +1,13 @@
+import json
 from collections.abc import Iterator
 from typing import Annotated, get_overloads
 
 import pytest
 from httpx2 import HTTPStatusError, Request, Response
+from pydantic import BaseModel, Field, RootModel
 
 import clientx._decorators as decorators_module
-from clientx import Body, Header, method
+from clientx import Body, DumpConfig, Header, method
 from clientx._client import ClientX
 from clientx._decorators import ApiMethod, DecodedEndpointDecorator, RawEndpointDecorator
 from clientx.decoders import StreamLinesDecoder
@@ -332,3 +334,65 @@ def test_arguments_for_the_same_part_merge_in_parameter_order(mock_transport):
     assert request.headers["X-Request-Id"] == "from-param"
     assert request.headers["X-Other"] == "kept"
     assert request.content == b"[1,2]"
+
+
+class Thing(BaseModel):
+    thing_id: int = Field(alias="thingId")
+    note: str | None = None
+
+
+class Things(RootModel[list[Thing]]):
+    pass
+
+
+def test_lists_and_dicts_of_models_are_sent_as_json(mock_transport):
+    class API(ClientX):
+        @method.post("/bulk")
+        def bulk(self, json: list[Thing]) -> Response: ...
+
+        @method.post("/by-key")
+        def by_key(self, things: Annotated[dict[str, Thing], Body()]) -> Response: ...
+
+        @method.post("/changes")
+        def changes(
+            self, things: Annotated[list[Thing], Body(dump_config=DumpConfig(exclude_unset=True))]
+        ) -> Response: ...
+
+        # Pydantic applies `exclude` to the list itself, so "__all__" reaches each item (docs/requests.md).
+        @method.post("/without-notes")
+        def without_notes(
+            self,
+            things: Annotated[list[Thing], Body(dump_config=DumpConfig(exclude={"__all__": {"note"}}))],
+        ) -> Response: ...
+
+        @method.post("/plain")
+        def plain(self, json: dict[str, object]) -> Response: ...
+
+    sent: list[Request] = []
+    api = API("https://api.example.com", transport=mock_transport(sent))
+    items = [Thing(thingId=1)]
+    api.bulk(items)
+    api.by_key({"a": Thing(thingId=2)})
+    api.changes([Thing(thingId=3)])
+    api.without_notes([Thing(thingId=5, note="x")])
+    api.plain({"name": "Ada", "tags": None})
+
+    assert [json.loads(request.content) for request in sent] == [
+        [{"thingId": 1, "note": None}],
+        {"a": {"thingId": 2, "note": None}},
+        [{"thingId": 3}],
+        [{"thingId": 5}],
+        {"name": "Ada", "tags": None},
+    ]
+    assert items == [Thing(thingId=1)]  # The caller's list isn't changed.
+
+
+def test_a_root_model_is_the_whole_json_body(mock_transport):
+    class API(ClientX):
+        @method.post("/bulk")
+        def bulk(self, things: Things) -> Response: ...
+
+    sent: list[Request] = []
+    API("https://api.example.com", transport=mock_transport(sent)).bulk(Things([Thing(thingId=4, note="x")]))
+
+    assert json.loads(sent[0].content) == [{"thingId": 4, "note": "x"}]
