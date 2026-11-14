@@ -109,4 +109,4 @@ for tool in list_tools(UsersClient("https://api.example.com"), include_tags=["pu
     print(tool.method, tool.path, tool.tags, tool.description)  # GET /users ('public', 'users') List all users.
 ```
 
-It leaves out streaming endpoints, and endpoints whose types have no JSON Schema (with a warning). See [Using a Client from AI Agents](#) for everything a tool describes.
+It leaves out streaming endpoints, and endpoints whose types have no JSON Schema (with a warning). The [`Tool` attributes](#using-a-client-from-ai-agents) at the top of this page list everything a tool describes.

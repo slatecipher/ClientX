@@ -33,6 +33,8 @@ In practice, decoders are where you define response parsing and validation behav
 
 ## `ModelDecoder`
 
+Parses the JSON body and validates it with a Pydantic `BaseModel` subclass. For any other type, use `TypeAdapterDecoder`.
+
 ```python
 from clientx import ClientX, method
 from clientx.decoders import ModelDecoder
@@ -52,6 +54,8 @@ class UsersClient(ClientX):
 
 ## `TypeAdapterDecoder`
 
+Validates the JSON body as a type that isn't a `BaseModel`, such as a list of models, a `dict`, a dataclass, or a `TypedDict`.
+
 ```python
 from clientx import ClientX, method
 from clientx.decoders import TypeAdapterDecoder
@@ -69,6 +73,8 @@ class UsersClient(ClientX):
 `TypeAdapterDecoder` takes a `TypeAdapter`, not a bare type. For an API that wraps its data in an object, `key=` validates one member instead of the whole body: `TypeAdapterDecoder(TypeAdapter(list[User]), key="results")` decodes `{"count": 2, "results": [...]}` into a `list[User]`. A body that isn't a JSON object with that key raises `ValueError`, such as `TypeAdapterDecoder(key='results') expected a JSON object with a 'results' key, but the response body is an array.`
 
 ## `FromResponseDecoder`
+
+Builds the value with the model's own `from_response` classmethod, which receives the whole response. Use it when the value needs more than the body, such as a header or the status code.
 
 ```python
 from clientx import ClientX, method

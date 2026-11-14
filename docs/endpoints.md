@@ -28,9 +28,9 @@ Each decorator accepts:
 - `decoder` (required when return type is not `Response` or `None`)
 - `deprecated` (optional callable, including `DeprecatedMessage`)
 - `tags` (optional list of labels; `list_tools()` can filter by them)
-- `timeout` (optional per-endpoint `httpx2.Timeout` or seconds)
-- `raise_for_status` (optional `True` or `False`; overrides the client's setting, see [Raising errors for 4xx and 5xx responses](configuration.md#raising-errors-for-4xx-and-5xx-responses))
-- `validate_arguments` (optional `True` or `False`; overrides the client's setting, see [Validating arguments](configuration.md#validating-arguments))
+- `timeout` (optional per-endpoint `httpx2.Timeout` or seconds; defaults to the client's timeout)
+- `raise_for_status` (optional `True` or `False`; defaults to the client's setting, which is `True`: a 4xx or 5xx response raises `httpx2.HTTPStatusError`. See [Raising errors for 4xx and 5xx responses](configuration.md#raising-errors-for-4xx-and-5xx-responses))
+- `validate_arguments` (optional `True` or `False`; defaults to the client's setting, which is `False`: arguments aren't checked. See [Validating arguments](configuration.md#validating-arguments))
 
 ```python
 from clientx import ClientX, Response, method

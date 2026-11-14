@@ -39,7 +39,7 @@ Type checkers see `api.users` as `Users`, and its endpoints keep their signature
 - Mount resources on other resources to nest them, for example `api.repos.issues.retrieve(...)`. Each keeps its own prefix.
 - A resource doesn't refer to the client class, so resources can live in their own modules.
 - Names that `ClientX` itself uses, such as `close`, are free for endpoints on a resource.
-- A subclass keeps its parent's prefix and tags unless it sets its own.
+- A resource subclass inherits its parent's `prefix` and `tags` unless it sets its own. Either way, they apply only to the endpoints defined in the subclass's body: inherited endpoints keep the parent's paths and tags. A subclass's `tags` replace the parent's rather than adding to them. With `class Admins(Users, prefix="/admins")`, a new endpoint `@method.get("/{admin_id}")` in `Admins` is `GET /admins/{admin_id}`, but the inherited `retrieve` is still `GET /users/{user_id}`.
 - An endpoint belongs to the class whose body it's in. It can have a second name there (`QueryDevices = query_devices`), which sends the same request and is listed once as an AI tool. Putting it in another resource's or client's body raises `TypeError` when that class is defined, since that resource's prefix would change its path too: declare it again there.
 - An endpoint's name hides any other meaning of that name for the rest of the class body:
   - If you import the decorators themselves (`from clientx.method import get`), an endpoint named like one, such as `get`, replaces it, so a later `@get(...)` fails when the class is defined. Decorating with `@method.get(...)`, as these docs do, avoids that.
@@ -48,7 +48,7 @@ Type checkers see `api.users` as `Users`, and its endpoints keep their signature
 
 ## Plain methods
 
-A client or resource can also have ordinary, undecorated methods. They aren't endpoints, so they aren't tools either, and they can call endpoints through `self`. They're the place for logic around requests, such as following pages or normalizing an argument:
+A client or resource can also have ordinary, undecorated methods. They aren't endpoints, but they can call endpoints through `self`. They're the place for logic around requests, such as following pages or normalizing an argument:
 
 ```python
 from typing import Annotated
