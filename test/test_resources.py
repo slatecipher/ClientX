@@ -256,3 +256,48 @@ def test_a_prefix_placeholder_without_a_parameter_raises_when_the_resource_is_de
         class Items(Resource, prefix="/repos/{owner}"):  # pyright: ignore[reportUnusedClass]
             @get("/items")
             def list_items(self) -> Response: ...
+
+
+def test_a_second_name_for_an_endpoint_gets_the_prefix_once(endpoint_of, mock_transport):
+    class Devices(Resource, prefix="/devices", tags=["devices"]):
+        @get("/queries/devices/v1")
+        def query_devices_by_filter(self) -> Response: ...
+
+        QueryDevicesByFilter = query_devices_by_filter
+
+    class API(ClientX):
+        devices = Devices()
+
+    sent: list[httpx2.Request] = []
+    api = API("https://api.example.com", transport=mock_transport(sent))
+    api.devices.query_devices_by_filter()
+    api.devices.QueryDevicesByFilter()
+
+    assert [request.url.path for request in sent] == ["/devices/queries/devices/v1"] * 2
+    assert endpoint_of(Devices.QueryDevicesByFilter).tags == ["devices"]
+
+
+def test_an_endpoint_belongs_to_one_class(endpoint_of):
+    class First(Resource, prefix="/first"):
+        @get("/items")
+        def items(self) -> Response: ...
+
+    with pytest.raises(
+        TypeError, match=r"Endpoint '.*First.items' belongs to '.*First', so it can't also be an endpoint of '.*Second'"
+    ):
+
+        class Second(Resource, prefix="/second"):
+            items = First.items
+
+    assert str(endpoint_of(First.items).path) == "/first/items"
+
+    class API(ClientX):
+        @get("/health")
+        def health(self) -> Response: ...
+
+    with pytest.raises(TypeError, match="belongs to '.*API', so it can't also be an endpoint of '.*Health'"):
+
+        class Health(Resource, prefix="/v2"):
+            health = API.health
+
+    assert str(endpoint_of(API.health).path) == "/health"

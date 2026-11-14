@@ -467,3 +467,18 @@ async def test_call_and_acall_refuse_the_other_kind_of_tool(make_api, make_async
         await sync_tool.acall()
     with pytest.raises(TypeError, match=r"calls an `async def` endpoint: use `await tool.acall\(...\)`"):
         async_tool.call()
+
+
+def test_an_endpoint_with_a_second_name_is_listed_once():
+    class Devices(Resource, prefix="/devices"):
+        @get("/queries/devices/v1")
+        def query_devices_by_filter(self) -> Response:
+            """Find devices."""
+            ...
+
+        QueryDevicesByFilter = query_devices_by_filter
+
+    class API(ClientX):
+        devices = Devices()
+
+    assert [tool.name for tool in list_tools(API("https://api.example.com"))] == ["devices_query_devices_by_filter"]
