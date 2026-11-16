@@ -13,14 +13,16 @@ These are plain frozen dataclasses with no dependency on how they were built, so
 can be imported anywhere (type hints, tests, serializers) without pulling in the
 inspection logic.
 """
+
 from __future__ import annotations
 
 import inspect
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Iterator, TypeVar
+from typing import Any, TypeVar
 
-from clientx.utils.type_hints import NO_VALUE, describe_type, is_optional_type
+from clientx._compiler.type_hints import NO_VALUE, describe_type, is_optional_type
 
 MetadataType = TypeVar("MetadataType")
 
@@ -236,7 +238,10 @@ class SignatureInfo:
     def is_method(self) -> bool:
         """True for instance, class, and static methods, including ones whose owner wasn't found."""
         return self.method_kind in (
-            MethodKind.INSTANCE, MethodKind.CLASS, MethodKind.STATIC, MethodKind.UNKNOWN,
+            MethodKind.INSTANCE,
+            MethodKind.CLASS,
+            MethodKind.STATIC,
+            MethodKind.UNKNOWN,
         )
 
     @property
@@ -268,25 +273,17 @@ class SignatureInfo:
     @property
     def keyword_only_parameters(self) -> list[ParameterInfo]:
         """Parameters that must be passed as name=value (declared after * or *args)."""
-        return [
-            parameter
-            for parameter in self.parameters
-            if parameter.kind is inspect.Parameter.KEYWORD_ONLY
-        ]
+        return [parameter for parameter in self.parameters if parameter.kind is inspect.Parameter.KEYWORD_ONLY]
 
     @property
     def accepts_extra_positional(self) -> bool:
         """True if the callable declares *args."""
-        return any(
-            parameter.kind is inspect.Parameter.VAR_POSITIONAL for parameter in self.parameters
-        )
+        return any(parameter.kind is inspect.Parameter.VAR_POSITIONAL for parameter in self.parameters)
 
     @property
     def accepts_extra_keywords(self) -> bool:
         """True if the callable declares **kwargs."""
-        return any(
-            parameter.kind is inspect.Parameter.VAR_KEYWORD for parameter in self.parameters
-        )
+        return any(parameter.kind is inspect.Parameter.VAR_KEYWORD for parameter in self.parameters)
 
     def params_with(self, metadata_class: type) -> list[ParameterInfo]:
         """

@@ -9,9 +9,9 @@ from typing import Annotated, Any
 
 import pytest
 
-from clientx.utils import SignatureInfo, describe_signature
-from clientx.utils.models import MethodKind, ParameterInfo
-from clientx.utils.type_hints import NO_VALUE
+from clientx._compiler import SignatureInfo, describe_signature
+from clientx._compiler.models import MethodKind, ParameterInfo
+from clientx._compiler.type_hints import NO_VALUE
 
 # --------------------------------------------------------------------------- #
 # Callables to describe. Classes are at module level so their methods can be

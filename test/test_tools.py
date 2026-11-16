@@ -5,6 +5,14 @@ from typing import Annotated, Any, BinaryIO
 
 import httpx2
 import pytest
+from clientx.decoders import (
+    AsyncStreamLinesDecoder,
+    ModelDecoder,
+    StreamLinesDecoder,
+    StreamResponseDecoder,
+    TypeAdapterDecoder,
+)
+from clientx.tools import Tool, list_tools
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
 
 from clientx import (
@@ -18,15 +26,7 @@ from clientx import (
     Response,
     method,
 )
-from clientx.decoders import (
-    AsyncStreamLinesDecoder,
-    ModelDecoder,
-    StreamLinesDecoder,
-    StreamResponseDecoder,
-    TypeAdapterDecoder,
-)
 from clientx.method import delete, get, post
-from clientx.tools import Tool, list_tools
 
 
 class User(BaseModel):

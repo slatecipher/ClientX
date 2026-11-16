@@ -7,46 +7,20 @@ field is marked can change without breaking users.
 
 import functools
 from collections.abc import Callable
-from dataclasses import dataclass
-from enum import StrEnum
 from typing import Any, ParamSpec
 
 from pydantic.fields import FieldInfo
 
+from clientx._types import HttpxArgument, HttpxArgumentSpec
+
 P = ParamSpec("P")
-
-
-class HttpxArgument(StrEnum):
-    """A part of an HTTP request, named after the ``httpx2.Client.build_request`` argument that sets it."""
-
-    URL = "url"
-    PARAMS = "params"
-    HEADERS = "headers"
-    COOKIES = "cookies"
-    CONTENT = "content"
-    DATA = "data"
-    FILES = "files"
-    JSON = "json"
-
-
-@dataclass(frozen=True)
-class HttpxArgumentLocation:
-    """Field metadata that says which part of the request a model field goes to.
-
-    The helpers in ``clientx.arguments`` add it to ``FieldInfo.metadata``, and ``get_argument_location`` reads it.
-
-    Attributes:
-        in_: The request part. Named like OpenAPI's ``in``, with an underscore because ``in`` is a keyword.
-    """
-
-    in_: HttpxArgument
 
 
 def get_argument_location(field_info: object) -> HttpxArgument | None:
     """The request argument a field is marked for, or ``None`` if it's not a ``FieldInfo`` or has no mark."""
     if not isinstance(field_info, FieldInfo):
         return None
-    return next((meta.in_ for meta in field_info.metadata if isinstance(meta, HttpxArgumentLocation)), None)
+    return next((meta.in_ for meta in field_info.metadata if isinstance(meta, HttpxArgumentSpec)), None)
 
 
 def bind_argument(
@@ -74,7 +48,7 @@ def bind_argument(
     @functools.wraps(field_fn)
     def wrapper(*args: P.args, **kwargs: P.kwargs) -> Any:
         field_info = field_fn(*args, **kwargs)
-        field_info.metadata.append(HttpxArgumentLocation(in_=location))
+        field_info.metadata.append(HttpxArgumentSpec(in_=location))
         return field_info
 
     wrapper.__name__ = wrapper.__qualname__ = name

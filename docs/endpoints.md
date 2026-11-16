@@ -38,8 +38,7 @@ from clientx import ClientX, Response, method
 
 class ItemsClient(ClientX):
     @method.post("/items")
-    def create_item(self, json: dict[str, object]) -> Response:
-        ...
+    def create_item(self, json: dict[str, object]) -> Response: ...
 ```
 
 There's no method for sending a raw request through a client: to call a URL the client has no method for, add an endpoint for it.
@@ -75,8 +74,7 @@ class LegacyClient(ClientX):
         "/v1/legacy",
         deprecated=DeprecatedMessage("Deprecated: use /v2/new-endpoint instead."),
     )
-    def legacy(self) -> Response:
-        ...
+    def legacy(self) -> Response: ...
 ```
 
 You can also pass any callable as `deprecated`, and it will run on endpoint invocation.

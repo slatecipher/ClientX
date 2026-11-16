@@ -31,9 +31,6 @@ from typing import Annotated, Any, assert_type
 
 import httpx2
 import pytest
-from pydantic import BaseModel, TypeAdapter
-
-from clientx import AsyncClientX, AsyncResource, Body, ClientX, Header, PathParam, Query, Resource, Response
 from clientx.decoders import (
     AsyncStreamChunksDecoder,
     AsyncStreamLinesDecoder,
@@ -45,6 +42,9 @@ from clientx.decoders import (
     text_decoder,
 )
 from clientx.exceptions import EndpointSignatureError, MissingDecoderError
+from pydantic import BaseModel, TypeAdapter
+
+from clientx import AsyncClientX, AsyncResource, Body, ClientX, Header, PathParam, Query, Resource, Response
 from clientx.method import delete, get, post
 
 

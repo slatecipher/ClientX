@@ -29,8 +29,7 @@ from clientx import ClientX, Response, method
 
 class SearchClient(ClientX):
     @method.get("/search")
-    def search(self, params: dict[str, object], headers: dict[str, str]) -> Response:
-        ...
+    def search(self, params: dict[str, object], headers: dict[str, str]) -> Response: ...
 ```
 
 ## With `Query`, `Header`, `Form`, `Body`, and `File`
@@ -66,16 +65,14 @@ class ItemsClient(ClientX):
         item_type: Annotated[str, Query("type")],
         sort: Annotated[Sort, Query()] = Sort.NEWEST,
         page: Annotated[int | None, Query()] = None,
-    ) -> Response:
-        ...
+    ) -> Response: ...
 
     @method.post("/items")
     def create_item(
         self,
         token: Annotated[str, Header("Authorization")],
         payload: Annotated[dict[str, object], Body()],
-    ) -> Response:
-        ...
+    ) -> Response: ...
 ```
 
 `list_items("book", Sort.OLDEST)` sends `GET /items?type=book&sort=oldest`. `page` is left out because it's `None`.
@@ -148,8 +145,7 @@ class CreateUserPayload(BaseModel):
 
 class UsersClient(ClientX):
     @method.post("/users")
-    def create_user(self, payload: CreateUserPayload) -> Response:
-        ...
+    def create_user(self, payload: CreateUserPayload) -> Response: ...
 ```
 
 `create_user(CreateUserPayload(api_key="k-1", name="Ada", email="ada@example.com"))` sends `POST /users?notify=false` with an `X-Api-Key` header and the JSON body `{"name": "Ada", "email": "ada@example.com"}`.
@@ -198,8 +194,7 @@ class UsersClient(ClientX):
         self,
         user_id: str,
         changes: Annotated[UserChanges, Body(dump_config=DumpConfig(exclude_unset=True))],
-    ) -> Response:
-        ...
+    ) -> Response: ...
 ```
 
 `update_user("42", UserChanges(title=None))` sends the JSON body `{"title": null}`, which clears the title and leaves the name alone.

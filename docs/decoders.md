@@ -48,8 +48,7 @@ class User(BaseModel):
 
 class UsersClient(ClientX):
     @method.get("/users/{user_id}", decoder=ModelDecoder(User))
-    def get_user(self, user_id: str) -> User:
-        ...
+    def get_user(self, user_id: str) -> User: ...
 ```
 
 ## `TypeAdapterDecoder`
@@ -66,8 +65,7 @@ UserList = TypeAdapter(list[dict[str, str]])
 
 class UsersClient(ClientX):
     @method.get("/users", decoder=TypeAdapterDecoder(UserList))
-    def list_users(self) -> list[dict[str, str]]:
-        ...
+    def list_users(self) -> list[dict[str, str]]: ...
 ```
 
 `TypeAdapterDecoder` takes a `TypeAdapter`, not a bare type. For an API that wraps its data in an object, `key=` validates one member instead of the whole body: `TypeAdapterDecoder(TypeAdapter(list[User]), key="results")` decodes `{"count": 2, "results": [...]}` into a `list[User]`. A body that isn't a JSON object with that key raises `ValueError`, such as `TypeAdapterDecoder(key='results') expected a JSON object with a 'results' key, but the response body is an array.`
@@ -94,8 +92,7 @@ class SessionPayload(BaseModel):
 
 class SessionClient(ClientX):
     @method.get("/session", decoder=FromResponseDecoder(SessionPayload))
-    def get_session(self) -> SessionPayload:
-        ...
+    def get_session(self) -> SessionPayload: ...
 ```
 
 ## Vanilla decoders (`clientx.decoders`)
@@ -115,14 +112,12 @@ from clientx.decoders import json_decoder, text_decoder
 
 class HealthClient(ClientX):
     @method.get("/health", decoder=text_decoder)
-    def health(self) -> str:
-        ...
+    def health(self) -> str: ...
 
 
 class MetadataClient(ClientX):
     @method.get("/metadata", decoder=json_decoder)
-    def metadata(self) -> Any:
-        ...
+    def metadata(self) -> Any: ...
 ```
 
 `json_decoder` does no validation, so its result is `Any`. For a typed result, validate it with `TypeAdapterDecoder(TypeAdapter(dict[str, object]))` or a `ModelDecoder`.
@@ -155,8 +150,7 @@ def items_decoder(response: Response) -> list[Item]:
 
 class ItemsClient(ClientX):
     @method.get("/items", decoder=items_decoder)
-    def list_items(self) -> list[Item]:
-        ...
+    def list_items(self) -> list[Item]: ...
 ```
 
 The only requirement is that your decoder output matches the declared return annotation.
@@ -174,8 +168,7 @@ from clientx.decoders import StreamLinesDecoder
 
 class EventsClient(ClientX):
     @method.get("/events", decoder=StreamLinesDecoder())
-    def events(self) -> Iterator[str]:
-        ...
+    def events(self) -> Iterator[str]: ...
 
 
 for line in EventsClient("https://api.example.com").events():
@@ -193,8 +186,7 @@ from clientx.decoders import StreamResponseDecoder
 
 class FilesClient(ClientX):
     @method.get("/files/{file_id}", decoder=StreamResponseDecoder())
-    def download(self, file_id: str) -> Response:
-        ...
+    def download(self, file_id: str) -> Response: ...
 
 
 response = FilesClient("https://api.example.com").download("42")

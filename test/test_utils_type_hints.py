@@ -3,7 +3,7 @@ from typing import Annotated, Any, Literal, Optional, Union
 
 import pytest
 
-from clientx.utils.type_hints import NO_VALUE, describe_type, is_optional_type, is_union_type, unwrap_annotated
+from clientx._compiler.type_hints import NO_VALUE, describe_type, is_optional_type, is_union_type, unwrap_annotated
 
 
 class Point:

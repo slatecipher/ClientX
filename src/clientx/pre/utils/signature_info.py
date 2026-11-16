@@ -5,15 +5,17 @@ This module holds the inspection logic: reading the signature, resolving string 
 forward-reference type hints, splitting out Annotated metadata, and working out which
 class (if any) owns the callable. The result objects themselves live in models.py.
 """
+
 from __future__ import annotations
 
 import inspect
 import sys
 import typing
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
-from clientx.utils.models import MethodKind, ParameterInfo, ReturnInfo, SignatureInfo
-from clientx.utils.type_hints import unwrap_annotated
+from clientx._compiler.models import MethodKind, ParameterInfo, ReturnInfo, SignatureInfo
+from clientx._compiler.type_hints import unwrap_annotated
 
 
 # --------------------------------------------------------------------------- #
@@ -49,6 +51,7 @@ def describe_signature(func: Callable[..., Any]) -> SignatureInfo:
     """
     return _build_signature_info(func)
 
+
 # --------------------------------------------------------------------------- #
 # Internals: building a SignatureInfo
 # --------------------------------------------------------------------------- #
@@ -61,15 +64,17 @@ def _build_signature_info(func: Callable[..., Any]) -> SignatureInfo:
     for position, raw_parameter in enumerate(signature.parameters.values()):
         annotation = resolved_type_hints.get(raw_parameter.name, raw_parameter.annotation)
         base_type, metadata = unwrap_annotated(annotation)
-        parameters.append(ParameterInfo(
-            name=raw_parameter.name,
-            position=position,
-            kind=raw_parameter.kind,
-            annotation=annotation,
-            base_type=base_type,
-            metadata=metadata,
-            default=raw_parameter.default,
-        ))
+        parameters.append(
+            ParameterInfo(
+                name=raw_parameter.name,
+                position=position,
+                kind=raw_parameter.kind,
+                annotation=annotation,
+                base_type=base_type,
+                metadata=metadata,
+                default=raw_parameter.default,
+            )
+        )
 
     return_annotation = resolved_type_hints.get("return", signature.return_annotation)
     return_base_type, return_metadata = unwrap_annotated(return_annotation)
@@ -90,6 +95,7 @@ def _build_signature_info(func: Callable[..., Any]) -> SignatureInfo:
         returns=ReturnInfo(return_annotation, return_base_type, return_metadata),
         signature=signature,
     )
+
 
 def _resolve_ownership(func: Callable[..., Any]) -> tuple[MethodKind, type | None, Any]:
     """
@@ -137,6 +143,7 @@ def _resolve_ownership(func: Callable[..., Any]) -> tuple[MethodKind, type | Non
         return MethodKind.CLASS, owner, None
     return MethodKind.INSTANCE, owner, None
 
+
 def _find_class_by_qualname(func: Callable[..., Any]) -> type | None:
     """
     Follow a function's __qualname__ from its module to the class that contains it.
@@ -160,6 +167,7 @@ def _find_class_by_qualname(func: Callable[..., Any]) -> type | None:
             return None
     return current_object if inspect.isclass(current_object) else None
 
+
 def _find_defining_class(start_class: type, function: Callable[..., Any]) -> type | None:
     """
     Walk `start_class`'s method resolution order to find the class whose own
@@ -170,6 +178,7 @@ def _find_defining_class(start_class: type, function: Callable[..., Any]) -> typ
     `User` is the owner. Methods stored under a different name (aliases)
     are found by scanning each class's attributes for the same function.
     """
+
     def unwrap_descriptor(attribute: Any) -> Any:
         """Return the plain function inside a staticmethod/classmethod wrapper."""
         # Checked by type name so `attribute` stays typed as Any; isinstance would narrow
@@ -186,6 +195,7 @@ def _find_defining_class(start_class: type, function: Callable[..., Any]) -> typ
         if any(unwrap_descriptor(attribute) is function for attribute in namespace.values()):
             return candidate_class
     return None
+
 
 def _resolve_type_hints(func: Callable[..., Any]) -> dict[str, Any]:
     """

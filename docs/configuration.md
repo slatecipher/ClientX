@@ -6,8 +6,7 @@ Configure a client when you create it:
 from clientx import ClientX
 
 
-class ExampleAPI(ClientX):
-    ...
+class ExampleAPI(ClientX): ...
 
 
 api = ExampleAPI("https://api.example.com", user_agent="my-app/1.0", timeout=5.0)
@@ -28,8 +27,7 @@ A client class can ship its own base URL and `User-Agent` as class arguments, so
 from clientx import ClientX
 
 
-class ExampleAPI(ClientX, base_url="https://api.example.com", user_agent="example-api/1.0"):
-    ...
+class ExampleAPI(ClientX, base_url="https://api.example.com", user_agent="example-api/1.0"): ...
 
 
 api = ExampleAPI()  # https://api.example.com, User-Agent: example-api/1.0
@@ -79,8 +77,7 @@ class User(BaseModel):
 
 class UsersClient(ClientX):
     @method.get("/users/{user_id}", decoder=ModelDecoder(User))
-    def get_user(self, user_id: int) -> User:
-        ...
+    def get_user(self, user_id: int) -> User: ...
 
 
 with UsersClient("https://api.example.com") as client:

@@ -4,6 +4,7 @@ Helpers for taking type hints apart.
 Shared by models.py (for descriptive properties such as ParameterInfo.is_optional)
 and inspector.py (for splitting Annotated hints while building results).
 """
+
 from __future__ import annotations
 
 import inspect

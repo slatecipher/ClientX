@@ -3,11 +3,11 @@ from collections.abc import Callable, Iterator
 
 import httpx2
 import pytest
+from clientx.decoders import ModelDecoder, StreamLinesDecoder
+from clientx.exceptions import EndpointNameConflictError, MissingPathArgumentsError, UnboundResourceError
 from pydantic import BaseModel
 
 from clientx import ClientX, Resource, Response
-from clientx.decoders import ModelDecoder, StreamLinesDecoder
-from clientx.exceptions import EndpointNameConflictError, MissingPathArgumentsError, UnboundResourceError
 from clientx.method import get, post
 
 

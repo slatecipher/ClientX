@@ -2,11 +2,11 @@ import inspect
 
 import httpx2
 import pytest
+from clientx._client_types import DumpConfig, HttpxClientKwargs
 from httpx2 import Request, Response
 from pydantic import BaseModel, TypeAdapter
 
 from clientx._client import ClientX, send_request
-from clientx._client_types import DumpConfig, HttpxClientKwargs
 from clientx._version import __version__
 
 

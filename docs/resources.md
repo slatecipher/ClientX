@@ -15,12 +15,10 @@ class User(BaseModel):
 
 class Users(Resource, prefix="/users", tags=["users"]):
     @method.get("/{user_id}", decoder=ModelDecoder(User))
-    def retrieve(self, user_id: int) -> User:
-        ...
+    def retrieve(self, user_id: int) -> User: ...
 
     @method.post()
-    def create(self, json: dict[str, str]) -> Response:
-        ...
+    def create(self, json: dict[str, str]) -> Response: ...
 
 
 class ExampleAPI(ClientX):

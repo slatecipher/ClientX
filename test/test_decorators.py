@@ -2,13 +2,8 @@ import json
 from collections.abc import Iterator
 from typing import Annotated, get_overloads
 
-import pytest
-from httpx2 import HTTPStatusError, Request, Response
-from pydantic import BaseModel, Field, RootModel
-
 import clientx._decorators as decorators_module
-from clientx import Body, DumpConfig, Header, method
-from clientx._client import ClientX
+import pytest
 from clientx._decorators import ApiMethod, DecodedEndpointDecorator, RawEndpointDecorator
 from clientx.decoders import StreamLinesDecoder
 from clientx.exceptions import (
@@ -17,6 +12,11 @@ from clientx.exceptions import (
     PathTemplateError,
     PathValueError,
 )
+from httpx2 import HTTPStatusError, Request, Response
+from pydantic import BaseModel, Field, RootModel
+
+from clientx import Body, DumpConfig, Header, method
+from clientx._client import ClientX
 
 
 def test_api_method_registers_endpoint_and_returns_response(endpoint_of, mock_transport):

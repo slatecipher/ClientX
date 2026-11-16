@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field, ValidationError
 from pydantic.fields import FieldInfo
 
 import clientx.arguments
-from clientx._arguments import HttpxArgumentLocation, bind_argument
+from clientx._arguments import HttpxArgumentSpec, bind_argument
 from clientx.arguments import (
     Body,
     Cookie,
@@ -38,7 +38,7 @@ HELPERS = [
 
 def locations(model: type[BaseModel], field_name: str) -> list[HttpxArgument]:
     """The request parts a model field is marked for, in metadata order."""
-    return [item.in_ for item in model.model_fields[field_name].metadata if isinstance(item, HttpxArgumentLocation)]
+    return [item.in_ for item in model.model_fields[field_name].metadata if isinstance(item, HttpxArgumentSpec)]
 
 
 # --------------------------------------------------------------------------- #
@@ -60,11 +60,11 @@ def test_parts_are_strings():
 
 
 def test_location_is_a_frozen_value():
-    location = HttpxArgumentLocation(in_=HttpxArgument.JSON)
+    location = HttpxArgumentSpec(in_=HttpxArgument.JSON)
 
-    assert location == HttpxArgumentLocation(in_=HttpxArgument.JSON)
-    assert location != HttpxArgumentLocation(in_=HttpxArgument.DATA)
-    assert hash(location) == hash(HttpxArgumentLocation(in_=HttpxArgument.JSON))
+    assert location == HttpxArgumentSpec(in_=HttpxArgument.JSON)
+    assert location != HttpxArgumentSpec(in_=HttpxArgument.DATA)
+    assert hash(location) == hash(HttpxArgumentSpec(in_=HttpxArgument.JSON))
     with pytest.raises(FrozenInstanceError):
         location.in_ = HttpxArgument.DATA  # pyright: ignore[reportAttributeAccessIssue]
 
@@ -94,7 +94,7 @@ def test_helper_returns_a_field_marked_for_its_part(helper: Callable[..., Any], 
     field_info = helper()
 
     assert isinstance(field_info, FieldInfo)
-    assert field_info.metadata == [HttpxArgumentLocation(in_=part)]
+    assert field_info.metadata == [HttpxArgumentSpec(in_=part)]
 
 
 @pytest.mark.parametrize(("helper", "part"), HELPERS)
@@ -119,7 +119,7 @@ def test_each_call_creates_a_new_field():
     first, second = Query(), Query()
 
     assert first is not second
-    assert second.metadata == [HttpxArgumentLocation(in_=HttpxArgument.PARAMS)]  # Not marked twice.
+    assert second.metadata == [HttpxArgumentSpec(in_=HttpxArgument.PARAMS)]  # Not marked twice.
 
 
 def test_fields_in_one_model_are_marked_independently():
@@ -145,7 +145,7 @@ def test_location_comes_after_fields_own_metadata():
     field_info = Url(gt=0)
 
     assert len(field_info.metadata) == 2
-    assert field_info.metadata[-1] == HttpxArgumentLocation(in_=HttpxArgument.URL)
+    assert field_info.metadata[-1] == HttpxArgumentSpec(in_=HttpxArgument.URL)
 
 
 def test_helper_inside_annotated():
@@ -260,7 +260,7 @@ def test_bind_argument_passes_arguments_through_and_marks_the_result():
     assert helper.__name__ == "Custom"
     assert inspect.signature(helper) == inspect.signature(make_field)
     assert field_info.default == 1
-    assert field_info.metadata == [HttpxArgumentLocation(in_=HttpxArgument.HEADERS)]
+    assert field_info.metadata == [HttpxArgumentSpec(in_=HttpxArgument.HEADERS)]
 
 
 # --------------------------------------------------------------------------- #
