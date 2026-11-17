@@ -137,11 +137,11 @@ Suggested order:
 8. [x] The client's `__repr__`, on `_BaseClientX`: class name, base URL and User-Agent, with a password in
    the base URL shown as `[redacted]` (the old one showed it).
 9. [ ] Logging (old `_logging.py`): one DEBUG record per call, never values.
-10. [ ] Decorator typing (old `RawEndpointDecorator`/`DecodedEndpointDecorator` overloads). Done: a
-    `decoder=` is checked against the annotation, and a decoded endpoint of the wrong kind for its class
-    is rejected (see the decoder decisions). Still to do: reject an `async def` endpoint on a sync class
-    (and the reverse) without `decoder=`; today that decorator accepts either kind on any class, and only
-    the runtime check catches it.
+10. [x] Decorator typing. The verb decorator is overloaded: without `decoder=` it returns
+    `EndpointDecorator`, with one `DecodedEndpointDecorator[D]` (the endpoint must return what the decoder
+    does). Both limit each overload to its kind of class, so a `def` endpoint on an `AsyncClientX` or
+    `AsyncResource` is rejected by pyright and mypy. An `async def` endpoint on a sync class can't be: to a
+    type checker it's a `def` returning a coroutine. The check when the class is defined catches it.
 11. [ ] `clientx.tools` (old 314 lines), then `clientx.mcp` (old 210 lines).
 
 Decoder decisions (agreed 2026-11-17):

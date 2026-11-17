@@ -128,4 +128,4 @@ def test_an_endpoints_parameters_are_checked_when_it_is_decorated(source: str, m
     namespace: dict[str, object] = {}
     exec(source, namespace)  # noqa: S102 - each signature is written out as source, the clearest way to list them
     with pytest.raises(DefinitionError, match=re.escape(message)):
-        method.get("/items")(namespace["call"])  # type: ignore[arg-type]  # pyright: ignore[reportArgumentType]
+        method.get("/items")(namespace["call"])  # pyright: ignore[reportCallIssue, reportArgumentType]

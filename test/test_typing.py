@@ -189,3 +189,21 @@ def test_a_decoded_async_def_endpoint_needs_an_async_client() -> None:
         class Wrong(ClientX):
             @method.post("/jobs", decoder=status_of)  # type: ignore[arg-type]  # pyright: ignore[reportCallIssue, reportArgumentType, reportUntypedFunctionDecorator]
             async def submit(self) -> int: ...
+
+
+# The kind of class an endpoint is on. An `async def` endpoint on a sync class can't be rejected here:
+# to a type checker it's a `def` that returns a coroutine. The check when the class is defined catches it.
+
+
+def test_a_def_endpoint_needs_a_sync_class() -> None:
+    with pytest.raises(DefinitionError):
+
+        class WrongClient(AsyncClientX):
+            @method.get("/health")  # type: ignore[type-var]  # pyright: ignore[reportCallIssue, reportArgumentType, reportUntypedFunctionDecorator]
+            def health(self) -> None: ...
+
+    with pytest.raises(DefinitionError):
+
+        class WrongResource(AsyncResource):
+            @method.get("/health")  # type: ignore[type-var]  # pyright: ignore[reportCallIssue, reportArgumentType, reportUntypedFunctionDecorator]
+            def health(self) -> None: ...

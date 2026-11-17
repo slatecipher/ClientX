@@ -22,6 +22,26 @@ SyncOwner = TypeVar("SyncOwner", bound=ClientX | Resource)
 AsyncOwner = TypeVar("AsyncOwner", bound=AsyncClientX | AsyncResource)
 
 
+class EndpointDecorator(Protocol):
+    """The decorator a verb returns without ``decoder=``: the endpoint keeps its signature.
+
+    Each overload is limited to its kind of class: a ``def`` endpoint on a ``ClientX`` or
+    ``Resource``, an ``async def`` one on an ``AsyncClientX`` or ``AsyncResource``. So a ``def``
+    endpoint on an async class is reported. An ``async def`` endpoint on a sync class isn't: to a
+    type checker it's a ``def`` that returns a coroutine, so only the check when the class is
+    defined catches it. The ``def`` overload is repeated last, as in ``DecodedEndpointDecorator``.
+    """
+
+    @overload
+    def __call__(self, func: Callable[Concatenate[SyncOwner, P], R], /) -> Callable[Concatenate[SyncOwner, P], R]: ...
+    @overload
+    def __call__(
+        self, func: Callable[Concatenate[AsyncOwner, P], Coroutine[Any, Any, R]], /
+    ) -> Callable[Concatenate[AsyncOwner, P], Coroutine[Any, Any, R]]: ...
+    @overload
+    def __call__(self, func: Callable[Concatenate[SyncOwner, P], R], /) -> Callable[Concatenate[SyncOwner, P], R]: ...
+
+
 class DecodedEndpointDecorator(Protocol[D]):
     """The decorator a verb returns with ``decoder=``: it takes an endpoint that returns what the decoder does.
 
@@ -60,7 +80,7 @@ class Method:
         timeout: Timeout | float | None | UseClientDefault = USE_CLIENT_DEFAULT,
         raise_for_status: bool | None = None,
         validate_arguments: bool | None = None,
-    ) -> Callable[[Callable[Concatenate[T, P], R]], Callable[Concatenate[T, P], R]]: ...
+    ) -> EndpointDecorator: ...
     @overload
     def __call__(
         self,
