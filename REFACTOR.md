@@ -5,8 +5,7 @@ simpler and easier to read. The old code is kept in `src/clientx/pre/` for refer
 pieces are ported one small step at a time. Delete this file and `pre/` when the port is done.
 
 What's left in `pre/` (2026-11-17), each kept until its item is done: `tools.py` and `mcp.py` (item 11),
-`_decorators.py` (item 10's typing overloads), `decoders.py` (the open decoder
-decisions) and `_endpoint_context.py` (argument validation, #136). The ported modules were deleted. The
+and `_endpoint_context.py` (argument validation, #136). The ported modules were deleted. The
 old modules are also on `mainline` (`git show mainline:src/clientx/tools.py`). The `pre/` files import
 `clientx._client` and so on, which are the new modules now, so they're for reading, not running.
 
