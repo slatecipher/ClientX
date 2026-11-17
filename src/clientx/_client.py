@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from copy import copy
-from typing import Any, ClassVar, Self, Unpack
+from typing import Any, ClassVar, Self, Unpack, cast
 
 from httpx2 import URL, AsyncClient, Client, Headers
 
@@ -18,6 +18,24 @@ class _BaseClientX:
     __clientx_user_agent__: ClassVar[str] = f"ClientX/{__version__}"
     __clientx_raise_for_status__: bool = True
     __clientx_validate_arguments__: bool = False
+
+    def __repr__(self) -> str:
+        """Return the class name, the base URL with any password masked, and the ``User-Agent``."""
+        client = cast("ClientX | AsyncClientX", self)
+        return (
+            f"{type(self).__qualname__}(base_url={_masked(client.base_url)!r}, "
+            f"user_agent={client.headers.get('User-Agent')!r})"
+        )
+
+
+def _masked(url: URL) -> str:
+    """Return ``url`` as text, with a password replaced by ``[redacted]``, so a repr never shows it."""
+    text = str(url)
+    if not url.password:
+        return text
+    userinfo = url.userinfo.decode("ascii")
+    username = userinfo.split(":", 1)[0]
+    return text.replace(f"//{userinfo}@", f"//{username}:[redacted]@", 1)
 
 
 class ClientX(_BaseClientX, Client):
