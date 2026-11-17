@@ -23,7 +23,13 @@ The body is one kind: JSON, raw content (one ``Body()`` parameter), or a form (`
 parameters, and ``File()`` ones for a multipart form). A lone JSON parameter that's a model,
 mapping or list is the whole JSON body; any other JSON parameter is a field of a JSON object,
 under its alias or name. A ``None`` value is left out everywhere, so an optional parameter
-that isn't passed isn't sent. Models or mappings with a helper for another part aren't sent yet.
+that isn't passed isn't sent.
+
+A model, dataclass or mapping marked ``Query()``, ``Header()`` or ``Form()`` is spread into that
+part: each field is a separate value, under its alias or name (with ``_`` turned into ``-`` for
+a header), and each item of a mapping is sent under its own key. Each field follows the part's
+rule, as a parameter would. A helper on a model's field is an error: the parameter's helper
+decides where all of its fields go.
 
 The path template, such as ``"/users/{user_id}"``, is split into literal text and placeholders
 in the plan. Each call fills the placeholders with its arguments, encoded so that a value
@@ -38,9 +44,10 @@ sent as it's written.
 import json
 from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass, is_dataclass
+from dataclasses import fields as dataclass_fields
 from string import Formatter
 from types import NoneType, UnionType
-from typing import Any, TypeAliasType, Union, cast, get_args, get_origin
+from typing import Any, TypeAliasType, Union, cast, get_args, get_origin, get_type_hints
 from urllib.parse import quote
 
 from pydantic import BaseModel
@@ -70,6 +77,13 @@ _BODY_KINDS = {
     HttpxArgument.CONTENT: "raw content",
     HttpxArgument.DATA: "a form",
     HttpxArgument.FILES: "a form",
+}
+
+# What each part that takes text accepts, for error messages.
+_TEXT_PARTS = {
+    HttpxArgument.PARAMS: "the query string, which takes a plain value, such as str or int, or a list of them",
+    HttpxArgument.DATA: "the form, which takes a plain value, such as str or int, or a list of them",
+    HttpxArgument.HEADERS: "the headers, which take a plain value, such as str or int",
 }
 
 
@@ -125,19 +139,50 @@ class PlannedParameter:
 
 
 @dataclass(frozen=True, slots=True)
+class SpreadParameter:
+    """A model, dataclass or mapping parameter whose fields are sent as separate values in one part.
+
+    Attributes:
+        name: The parameter's name, and its key in the call's arguments.
+        part: The ``build_request`` argument its fields go to: ``params``, ``headers`` or ``data``.
+        keys: For a model or dataclass, each field's attribute name and the key it's sent
+            under. ``None`` for a mapping, whose own keys are sent as they are.
+    """
+
+    name: str
+    part: HttpxArgument
+    keys: tuple[tuple[str, str], ...] | None = None
+
+    def encode(self, value: object) -> dict[str, object]:
+        """Return the value's fields as httpx2 takes them for this part, by key.
+
+        The value becomes JSON-ready data first, so a model's own serializers apply. Then each
+        field becomes text, or a list of texts for a list. A field that's ``None`` is left out.
+        """
+        if self.keys is None:
+            items = cast("dict[object, object]", to_jsonable_python(dict(cast("Mapping[object, object]", value))))
+            pairs = [(str(key), item) for key, item in items.items()]
+        else:
+            fields = cast("dict[str, object]", to_jsonable_python(value, by_alias=False))
+            pairs = [(key, fields.get(attribute)) for attribute, key in self.keys]
+        return {key: _field_text(item) for key, item in pairs if item is not None}
+
+
+@dataclass(frozen=True, slots=True)
 class RequestPlan:
     """How an endpoint call's arguments become its request, worked out once, when its class is defined.
 
     Attributes:
         path: The path template, split into literal text and placeholders.
-        parameters: The parameters sent under a name: query parameters, headers, form
-            fields, files, and the fields of a JSON object.
+        parameters: The parameters sent under a name (query parameters, headers, form
+            fields, files, and the fields of a JSON object), and the ones spread into a part,
+            in signature order.
         body: The parameter that's the whole body, or ``None``: the raw content, or a lone
             JSON parameter that's a model, mapping or list. Its ``key`` isn't used.
     """
 
     path: tuple[str | Placeholder, ...]
-    parameters: tuple[PlannedParameter, ...] = ()
+    parameters: tuple[PlannedParameter | SpreadParameter, ...] = ()
     body: PlannedParameter | None = None
 
     def build(self, arguments: Mapping[str, object]) -> tuple[str, BuildRequestKwargs]:
@@ -155,10 +200,18 @@ class RequestPlan:
         fields: dict[HttpxArgument, dict[str, object]] = {}
         for parameter in self.parameters:
             value = arguments[parameter.name]
-            if value is not None:
-                fields.setdefault(parameter.part, {})[parameter.key] = parameter.encode(value)
+            if value is None:
+                continue
+            part_fields = fields.setdefault(parameter.part, {})
+            if isinstance(parameter, SpreadParameter):
+                # When keys clash, the later parameter wins, as in dict.update.
+                part_fields.update(parameter.encode(value))
+            else:
+                part_fields[parameter.key] = parameter.encode(value)
         # Each part's value is build_request's argument name: "params", "headers", "data", "files" or "json".
-        request_arguments = cast("BuildRequestKwargs", {part.value: values for part, values in fields.items()})
+        request_arguments = cast(
+            "BuildRequestKwargs", {part.value: values for part, values in fields.items() if values}
+        )
         if self.body is not None and (value := arguments[self.body.name]) is not None:
             if self.body.part is HttpxArgument.CONTENT:
                 request_arguments["content"] = cast("RequestContent", value)
@@ -206,17 +259,32 @@ def plan_request(template: str, parameters: Sequence[ParameterInfo]) -> RequestP
     json_parameters = [parameter for parameter, part in placed if part is HttpxArgument.JSON]
     lone_json = json_parameters[0] if len(json_parameters) == 1 else None
     body: PlannedParameter | None = None
-    planned: list[PlannedParameter] = []
+    planned: list[PlannedParameter | SpreadParameter] = []
     for parameter, part in placed:
         if part is HttpxArgument.CONTENT or (parameter is lone_json and not _all_plain(parameter.annotation)):
             body = PlannedParameter(parameter.name, part, parameter.name)
-        elif (planned_parameter := _plan_keyed(parameter, part)) is not None:
-            planned.append(planned_parameter)
+        else:
+            planned.append(_plan_keyed(parameter, part))
     return RequestPlan(path, tuple(planned), body)
 
 
 def _check_helper(parameter: ParameterInfo) -> None:
-    """Check that a parameter's helper is in its outermost ``Annotated``, and has no default of its own."""
+    """Check that a parameter's helper is in its outermost ``Annotated`` and has no default of its own.
+
+    Also check that no field of a model parameter has a helper: the parameter's helper, or its
+    inferred part, decides where the model goes.
+    """
+    for arm in _arms(parameter.annotation):
+        cls = _class_of(arm)
+        if cls is None or not issubclass(cls, BaseModel):
+            continue
+        for field_name, field_info in cls.model_fields.items():
+            if get_argument_location(field_info) is not None:
+                raise DefinitionError(
+                    f"Field {field_name!r} of {cls.__name__} has a clientx.arguments helper, but ClientX reads "
+                    f"helpers only on endpoint parameters. Put the helper on parameter {parameter.name!r} "
+                    f"instead, as in Annotated[{cls.__name__}, Query()]: all of the model's fields then go there."
+                )
     if _has_nested_helper(parameter):
         raise DefinitionError(
             f"Parameter {parameter.name!r} has a helper inside its type. ClientX reads a helper only "
@@ -282,33 +350,69 @@ def _check_one_body(placed: list[tuple[ParameterInfo, HttpxArgument]]) -> None:
         raise DefinitionError(f"Parameters {', '.join(content)} are all marked Body(), but a request has one body.")
 
 
-def _plan_keyed(parameter: ParameterInfo, part: HttpxArgument) -> PlannedParameter | None:
-    """Plan a parameter that's sent under a name, or return ``None`` if that isn't sent yet.
+def _plan_keyed(parameter: ParameterInfo, part: HttpxArgument) -> PlannedParameter | SpreadParameter:
+    """Plan a parameter that's sent under a name, or spread into its part.
 
     A JSON field or a file can be any value. A query parameter or form field is a plain value
-    or a list of them, and a header a plain value. A model or mapping with a helper for one of
-    those is spread into it, which isn't built yet.
+    or a list of them, and a header a plain value. A model, dataclass or mapping for one of
+    those parts is spread into it.
 
     Raises:
-        DefinitionError: If the parameter's type can't go to its part.
+        DefinitionError: If the parameter's type, or one of its fields, can't go to its part.
     """
     name, key = parameter.name, _key(parameter, part)
     if part in {HttpxArgument.JSON, HttpxArgument.FILES}:
         return PlannedParameter(name, part, key)
     arms = _arms(parameter.annotation)
-    if all(_is_plain(arm) for arm in arms):
-        return PlannedParameter(name, part, key)
-    if part is not HttpxArgument.HEADERS and all(_is_plain_list(arm) for arm in arms):
-        return PlannedParameter(name, part, key, many=True)
+    if _takes_text(arms, part):
+        return PlannedParameter(name, part, key, many=not all(_is_plain(arm) for arm in arms))
     if len(arms) == 1 and _has_fields(arms[0]):
-        return None  # A model or mapping, spread into the part, which isn't sent yet.
-    if part is HttpxArgument.HEADERS:
-        expected = "the headers, which take a plain value, such as str or int"
-    elif part is HttpxArgument.DATA:
-        expected = "the form, which takes a plain value, such as str or int, or a list of them"
-    else:
-        expected = "the query string, which takes a plain value, such as str or int, or a list of them"
-    raise DefinitionError(f"Parameter {name!r} goes to {expected}.")
+        return _plan_spread(parameter, part, arms[0])
+    raise DefinitionError(f"Parameter {name!r} goes to {_TEXT_PARTS[part]}.")
+
+
+def _plan_spread(parameter: ParameterInfo, part: HttpxArgument, annotation: Any) -> SpreadParameter:
+    """Plan a model, dataclass or mapping parameter whose fields are spread into ``part``.
+
+    A model's or dataclass's field is sent under its alias or attribute name, with ``_`` turned
+    into ``-`` for a header. A mapping's items are sent under their own keys.
+
+    Raises:
+        DefinitionError: If a field, or a mapping's value type, can't go to the part.
+    """
+    cls = cast("type[Any]", _class_of(annotation))
+    if issubclass(cls, Mapping):
+        args = get_args(annotation)
+        if not _takes_text(_arms(args[1] if len(args) == 2 else Any), part):
+            raise DefinitionError(
+                f"Parameter {parameter.name!r} sends each item of the mapping to {_TEXT_PARTS[part]}; "
+                "its value type isn't one."
+            )
+        return SpreadParameter(parameter.name, part)
+    keys: list[tuple[str, str]] = []
+    for attribute, (field_type, alias) in _fields_of(cls).items():
+        if not _takes_text(_arms(field_type), part):
+            raise DefinitionError(
+                f"Parameter {parameter.name!r} sends each field of {cls.__name__} to {_TEXT_PARTS[part]}; "
+                f"field {attribute!r} isn't one."
+            )
+        keys.append((attribute, alias or (attribute.replace("_", "-") if part is HttpxArgument.HEADERS else attribute)))
+    return SpreadParameter(parameter.name, part, tuple(keys))
+
+
+def _takes_text(arms: list[Any], part: HttpxArgument) -> bool:
+    """Return whether values of these types can go to ``part``: plain values, or lists of them except in headers."""
+    if all(_is_plain(arm) for arm in arms):
+        return True
+    return part is not HttpxArgument.HEADERS and all(_is_plain_list(arm) for arm in arms)
+
+
+def _fields_of(cls: type[Any]) -> dict[str, tuple[Any, str | None]]:
+    """Return a model's or dataclass's fields: each one's type and serialization alias, by attribute name."""
+    if issubclass(cls, BaseModel):
+        return {name: (info.annotation, info.serialization_alias) for name, info in cls.model_fields.items()}
+    hints = get_type_hints(cls)
+    return {field.name: (hints.get(field.name, Any), None) for field in dataclass_fields(cls)}
 
 
 def _key(parameter: ParameterInfo, part: HttpxArgument) -> str:
@@ -400,6 +504,13 @@ def _class_of(annotation: Any) -> type[Any] | None:
     """
     cls: object = get_origin(annotation) or annotation
     return cast("type[Any]", cls) if isinstance(cls, type) else None
+
+
+def _field_text(value: object) -> str | list[str]:
+    """Return a spread field's JSON-ready value as text, or a list of texts for a list."""
+    if isinstance(value, list):
+        return [_to_text(item) for item in cast("list[object]", value)]
+    return _to_text(value)
 
 
 def _to_text(value: object) -> str:

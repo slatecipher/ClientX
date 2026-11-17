@@ -56,7 +56,7 @@ def bind_argument(
     # functools.wraps copied field_fn's module, such as pydantic.fields.
     wrapper.__module__ = "clientx.arguments"
     wrapper.__doc__ = (
-        f"Create a ``pydantic.Field`` for a model field that goes to the request's ``{location}``.\n\n"
+        f"Create a ``pydantic.Field`` for an endpoint parameter that goes to the request's ``{location}``.\n\n"
         "Takes the same arguments as ``pydantic.Field``; see ``help(pydantic.Field)``."
     )
     return wrapper

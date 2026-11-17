@@ -64,6 +64,10 @@ pieces are ported one small step at a time. Delete this file and `pre/` when the
     `api.list()` sends `?page=1`, as a Python call would. `| None = None` lets the server decide. The
     alternative, sending only what the caller passed (generated SDKs' `NOT_GIVEN`/`UNSET`), is in #135,
     with explicit `null` and unset model fields.
+  - `DumpConfig` isn't ported (agreed 2026-11-17): the helpers wrap `pydantic.Field`, which has no
+    place for it, and models control their own serialization (aliases, `Field(exclude=True)`,
+    serializers). Its main use, `exclude_unset` for PATCH bodies, is decided in #135; if needed, it
+    comes back as a small separate `Annotated` marker.
   - An endpoint sends one kind of body: JSON, raw content (one `Body()`), or a form (`Form()`, plus
     `File()` for multipart). Any other mix raises `DefinitionError` (agreed 2026-11-17): httpx2 sends
     only one and silently drops the rest. Open: a JSON part inside a multipart form, as in Discord's
@@ -82,7 +86,7 @@ pieces are ported one small step at a time. Delete this file and `pre/` when the
 | `_method.py` | the verb decorator and the sync/async wrappers: warn if deprecated, bind, build the request from `endpoint.request_arguments()` (path, `timeout`), send (`stream=`), raise for 4xx/5xx, decode |
 | `_types.py`, `arguments.py`, `_arguments.py` | option TypedDicts, shared aliases; the `Field`-based request-part helpers (no `Cookie`) |
 | `exceptions.py` | `ClientXError`, `DefinitionError` (every check above raises it), `ArgumentError` (path values) |
-| `_request.py` | `plan_request(template, parameters)` places each parameter (path, helper, or inferred), checks the rules (one kind of body, no default inside a helper...), and returns a `RequestPlan`: the parsed path, a `PlannedParameter` per value sent under a name (query, headers, form, files, JSON fields), and the `body` parameter, if one is the whole body (raw content, or a lone JSON model, mapping or list). `RequestPlan.build(arguments)` renders the path and fills the parts (`PlannedParameter.encode`, `_to_text`) |
+| `_request.py` | `plan_request(template, parameters)` places each parameter (path, helper, or inferred), checks the rules (one kind of body, no default inside a helper...), and returns a `RequestPlan`: the parsed path, a `PlannedParameter` per value sent under a name (query, headers, form, files, JSON fields) or a `SpreadParameter` per model, dataclass or mapping spread into a part, and the `body` parameter, if one is the whole body (raw content, or a lone JSON model, mapping or list). `RequestPlan.build(arguments)` renders the path and fills the parts (`PlannedParameter.encode`, `_to_text`) |
 
 ## Missing functionality (besides docs and tests)
 
@@ -90,9 +94,9 @@ Suggested order:
 
 1. [x] `src/clientx/py.typed`: back in place, and the built wheel includes it. (The wheel also
    includes `clientx/pre/`: delete it before any release.)
-2. [ ] Request building (old `_request_factory.py` + `_annotation_extractor.py`, ~650 lines). The
-   wrappers send `build_request(endpoint.method, "")` and ignore `arguments`. Rules agreed (see
-   Decisions). Build one plan per endpoint at class setup, after the resource prefix is joined. Steps:
+2. [x] Request building, in `_request.py` (replaces the old `_request_factory.py` and
+   `_annotation_extractor.py`, ~650 lines). One plan per endpoint, built at class setup after the
+   resource prefix is joined; the rules are in Decisions. The open items are listed under each step:
    - [x] path templates (`{name}`, `{name:path}`, `{{ }}`), sent by the wrappers. Checked at class
      setup: each placeholder names a parameter; `Url()` needs a placeholder; a placeholder's parameter
      has no other helper. Left for the next step: path parameters must be plain values
@@ -105,8 +109,10 @@ Suggested order:
      `default=`-inside-a-helper check. JSON is serialized by the value's own type, with aliases. Open:
      several files under one name (a `File()` parameter takes one file); drop
      `ParameterInfo.httpx_argument_spec`, which nothing reads now that there's no `embed`
-   - models with a helper, spread into that part; `DumpConfig`. Drop the model-field examples from the
-     `arguments.py` docstring.
+   - [x] models, dataclasses and mappings with a `Query()`, `Header()` or `Form()` helper, spread into
+     that part (`SpreadParameter`): fields under their alias or name (`-` for `_` in headers), a
+     mapping's keys as given, the later parameter winning on a clash. A helper on a model's field raises
+     `DefinitionError`. The `arguments.py` docstrings now describe parameter-level helpers only
 3. [x] Per-endpoint `timeout`: passed to `build_request` as it is (see Decisions).
 4. [x] `deprecated=`: a message string; both wrappers warn before anything else (see Decisions).
 5. [ ] Argument validation (`validate_arguments` is stored on endpoint and client, never read).
@@ -116,7 +122,7 @@ Suggested order:
    - later, maybe: wrap an unresolvable annotation's `NameError` with the endpoint's name
 7. [ ] Public exports in `clientx/__init__.py`: `AsyncClientX`, `Resource`, `AsyncResource`,
    `ClientXError`, `__version__`, httpx2 re-exports (`Auth`, `Request`, `Response`, `Timeout`),
-   `DumpConfig`; decide whether to re-export the `clientx.arguments` helpers.
+   decide whether to re-export the `clientx.arguments` helpers.
 8. [ ] The client's `__repr__` (old: class name, base URL, User-Agent).
 9. [ ] Logging (old `_logging.py`): one DEBUG record per call, never values.
 10. [ ] Decorator typing (old `RawEndpointDecorator`/`DecodedEndpointDecorator` overloads): check a
@@ -141,6 +147,8 @@ response (old `StreamResponseDecoder`).
 - `docs/errors.md`, `llms.txt:103` and the tests' `pytest.raises(...)`: the old exception classes become
   `DefinitionError` or `ArgumentError` (tests match on the message). `examples/jsonplaceholder_example.py`
   catches `ArgumentValidationError`.
+- `docs/requests.md` (the "Serialization control with `DumpConfig`" section, lines 163-204) and
+  `llms.txt:12` and `:48` use `DumpConfig`, which isn't ported.
 - Tests still import the old modules (`clientx._client_types`, `clientx._compiler`, ...).
   Rename or move the tests that define `send`/`stream` endpoints on a `ClientX` (`test_decorators.py`).
   `test_unresolvable_hints_fall_back_to_the_raw_annotations` must expect a `NameError` now.

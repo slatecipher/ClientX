@@ -2,7 +2,8 @@
 
 Each helper takes exactly the arguments of ``pydantic.Field`` and returns its ``FieldInfo``, marked with the
 part of the request it goes to. On an endpoint parameter, put the helper inside ``Annotated``. ClientX reads
-it only there, by design: a helper given as a parameter's default value isn't read::
+it only there, by design: a helper given as a parameter's default value isn't read, and a default inside the
+helper raises ``DefinitionError``, so put it after ``=``::
 
     class UsersAPI(ClientX):
         @method.post("/users")
@@ -12,15 +13,13 @@ it only there, by design: a helper given as a parameter's default value isn't re
             dry_run: Annotated[bool, Query()] = False,
         ) -> None: ...
 
-A model field can carry a helper too, as its default or inside ``Annotated``, and ``get_argument_location``
-reads the mark back::
+A parameter without a helper is placed as FastAPI places it: a path placeholder's name goes to the path, a
+model, mapping, collection or dataclass to JSON, and anything else to the query string.
 
-    class CreateUserRequest(BaseModel):
-        username: Annotated[str, Json(min_length=3)]
-        dry_run: bool = Query(default=False)
-
-    get_argument_location(CreateUserRequest.model_fields["dry_run"])
-    # <HttpxArgument.PARAMS: 'params'>
+A helper on a model, dataclass or mapping parameter sends each of its fields to that part: with
+``filters: Annotated[Filters, Query()]``, each field of ``Filters`` is a query parameter. A helper on a
+model's own field raises ``DefinitionError``, because the parameter decides where all of its fields go.
+``get_argument_location`` returns the part a helper's ``FieldInfo`` is marked for.
 
 The helpers align one-to-one with the arguments of ``httpx2.Client.build_request`` that carry request data
 (every argument except ``method``, ``timeout``, ``extensions`` and ``cookies``), so ``Body`` is httpx's raw
@@ -34,14 +33,6 @@ so set cookies on the client instead. Each helper, and the argument it marks:
     ``Form``    ``data``
     ``File``    ``files``
     ``Json``    ``json``
-
-Known limitation, on model fields only: type checkers treat only ``pydantic.Field`` itself as a field
-specifier (Pydantic's ``dataclass_transform``), so they don't see a helper's alias, whether it's the default
-or inside ``Annotated``. With ``Query(alias="timeStamp")``, pyright accepts ``Model(timestamp=...)``, which
-fails at runtime, and rejects ``Model(timeStamp=...)``, which works. ``serialization_alias`` avoids this,
-since the field is then created by its own name. A helper as the default also makes the field look optional
-to them; inside ``Annotated`` it doesn't. Endpoint parameters are ordinary parameters, so type checkers
-check them as usual.
 """
 
 from pydantic import Field
