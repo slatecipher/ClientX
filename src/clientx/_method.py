@@ -45,7 +45,7 @@ class Method:
                 decoder=decoder,
                 deprecated=deprecated,
             )
-            
+
             @wraps(func)
             def wrapper(_self: T, /, *args: P.args, **kwargs: P.kwargs) -> R:
                 if endpoint.deprecated is not None:
