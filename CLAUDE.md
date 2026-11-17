@@ -77,4 +77,4 @@ The README is the PyPI page, so it stays short: an overview, install, a quicksta
 
 ## Conventions and releasing
 
-`CONTRIBUTING.md` is the source of truth for commit messages, branch names, pull request descriptions, labels, and the release steps. Follow it for every commit and pull request.
+@CONTRIBUTING.md is the source of truth for commit messages, branch names, pull request descriptions, labels, docstrings, and the release steps. Follow it for every commit and pull request, and its Docstrings section for every docstring you write or change. Keep this section, and the `@CONTRIBUTING.md` import in it, when rewriting this file.

@@ -200,11 +200,8 @@ Rebuilt from scratch (agreed 2026-11-17); the old suite (25 files, 6,566 lines) 
 - Docs and `llms.txt` use `PathParam`, now `Url()`.
 - `docs/logging.md` (and its links in `docs/README.md` and `llms.txt`): ClientX has no logger of its own
   now; point to httpx2's `httpx2` logger and keep the event hooks section.
-- `CLAUDE.md` describes the old architecture and test layout; rewrite it once the port is done.
-
-## Known lint items
-
-- `_arguments.py`: ruff UP047 on `bind_argument`.
+- `CLAUDE.md` describes the old architecture and test layout; rewrite it once the port is done. Keep its
+  "Conventions and releasing" section, which imports `CONTRIBUTING.md` (commit format, docstring rules).
 
 ## Trying it
 
