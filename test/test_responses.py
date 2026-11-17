@@ -416,6 +416,8 @@ def test_stream_true_needs_a_response_annotation_and_no_decoder(
 
 
 # Custom decoders
+#
+# Type checkers reject the mismatched decorators below too; the ignores let them reach the runtime checks.
 
 
 class Event(BaseModel):
@@ -482,7 +484,7 @@ def test_a_decoder_cant_go_with_none() -> None:
     with pytest.raises(DefinitionError, match=re.escape("is annotated -> None, so it returns nothing and can't take")):
 
         class API(ClientX):
-            @method.get("/jobs", decoder=lambda response: "surprise")
+            @method.get("/jobs", decoder=lambda response: "surprise")  # pyright: ignore[reportCallIssue, reportArgumentType]
             def submit(self) -> None: ...
 
 
@@ -505,7 +507,7 @@ def test_a_def_endpoint_cant_have_an_async_generator_decoder() -> None:
     ):
 
         class API(ClientX):
-            @method.get("/events", decoder=async_ndjson_events)
+            @method.get("/events", decoder=async_ndjson_events)  # pyright: ignore[reportCallIssue, reportArgumentType]
             def events(self) -> Iterator[Event]: ...
 
 
@@ -513,7 +515,7 @@ def test_an_async_def_endpoint_cant_have_a_plain_generator_decoder() -> None:
     with pytest.raises(DefinitionError, match=re.escape("so its stream decoder must be an async generator")):
 
         class API(AsyncClientX):
-            @method.get("/events", decoder=ndjson_events)
+            @method.get("/events", decoder=ndjson_events)  # pyright: ignore[reportCallIssue, reportArgumentType]
             async def events(self) -> AsyncIterator[Event]: ...
 
 
@@ -521,11 +523,11 @@ def test_a_generator_decoder_needs_a_stream_annotation() -> None:
     with pytest.raises(DefinitionError, match=re.escape("so annotate the endpoint -> Iterator[...]")):
 
         class API(ClientX):
-            @method.get("/events", decoder=ndjson_events)
+            @method.get("/events", decoder=ndjson_events)  # pyright: ignore[reportCallIssue, reportArgumentType]
             def events(self) -> list[Event]: ...
 
     with pytest.raises(DefinitionError, match=re.escape("so annotate the endpoint -> AsyncIterator[...]")):
 
         class AsyncAPI(AsyncClientX):
-            @method.get("/events", decoder=async_ndjson_events)
+            @method.get("/events", decoder=async_ndjson_events)  # pyright: ignore[reportCallIssue, reportArgumentType]
             async def events(self) -> list[Event]: ...

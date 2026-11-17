@@ -1,6 +1,7 @@
 # pyright: reportUnnecessaryTypeIgnoreComment=true, reportUntypedFunctionDecorator=true
 # mypy: disable-error-code="empty-body"
-"""Static typing contract: decorated endpoints keep their signatures for type checkers.
+"""Static typing contract: decorated endpoints keep their signatures for type checkers, and an
+endpoint with ``decoder=`` must return what its decoder returns.
 
 Pyright and mypy both check this file in the blocking ``make typecheck`` step, so CI fails
 if users of either checker would lose an endpoint's signature:
@@ -10,6 +11,9 @@ if users of either checker would lose an endpoint's signature:
   mypy, then ``# pyright: ignore[rule]``. Pyright doesn't read mypy's comments
   (``enableTypeIgnoreComments = false`` in ``pyproject.toml``), so each checker reports its
   own comment if it's unused, and code that should be rejected but isn't gets reported.
+- A method the decorator rejects is reported at the decorator. Pyright reports it three times:
+  no matching overload (``reportCallIssue``), the mismatch (``reportArgumentType``), and the
+  decorator's result being unknown (``reportUntypedFunctionDecorator``).
 - ``reportUntypedFunctionDecorator`` is on because pyright otherwise hides an untyped
   decorator by falling back to the undecorated signature; mypy would see ``Any``.
 - mypy's ``empty-body`` check is off, as users of mypy need, because endpoint bodies are ``...``.
@@ -25,7 +29,7 @@ import httpx2
 import pytest
 from pydantic import BaseModel
 
-from clientx import AsyncClientX, AsyncResource, ClientX, Query, Resource, Response, method
+from clientx import AsyncClientX, AsyncResource, ClientX, DefinitionError, Query, Resource, Response, method
 
 
 class User(BaseModel):
@@ -114,3 +118,74 @@ async def test_async_streaming_endpoints_return_an_async_iterator() -> None:
     lines = await api.logs()
     assert_type(lines, AsyncIterator[str])
     assert [line async for line in lines] == ["a", "b"]
+
+
+# decoder=: the endpoint returns what its decoder returns.
+
+
+class Event(BaseModel):
+    id: int
+
+
+def status_of(response: httpx2.Response) -> int:
+    return response.status_code
+
+
+def decode_events(response: httpx2.Response) -> Iterator[Event]:
+    for line in response.iter_lines():
+        yield Event.model_validate_json(line)
+
+
+async def decode_async_events(response: httpx2.Response) -> AsyncIterator[Event]:
+    async for line in response.aiter_lines():
+        yield Event.model_validate_json(line)
+
+
+class Decoded(ClientX):
+    @method.post("/jobs", decoder=status_of)
+    def submit(self) -> int: ...
+
+    @method.get("/events", decoder=decode_events)
+    def events(self) -> Iterator[Event]: ...
+
+    @method.get("/text", decoder=lambda response: response.text)
+    def text(self) -> str: ...
+
+    @method.post("/jobs", decoder=status_of)  # type: ignore[arg-type]  # pyright: ignore[reportCallIssue, reportArgumentType, reportUntypedFunctionDecorator]
+    def mismatched(self) -> str: ...
+
+
+class AsyncDecoded(AsyncClientX):
+    @method.post("/jobs", decoder=status_of)
+    async def submit(self) -> int: ...
+
+    @method.get("/events", decoder=decode_async_events)
+    async def events(self) -> AsyncIterator[Event]: ...
+
+    @method.post("/jobs", decoder=status_of)  # type: ignore[type-var, arg-type]  # pyright: ignore[reportCallIssue, reportArgumentType, reportUntypedFunctionDecorator]
+    async def mismatched(self) -> str: ...
+
+
+def test_a_decoded_endpoint_returns_what_its_decoder_returns() -> None:
+    api = Decoded("https://api.example.com", transport=answering(content=b'{"id": 1}\n'))
+    assert_type(api.submit(), int)
+    assert_type(api.events(), Iterator[Event])
+    assert_type(api.text(), str)
+    assert (api.submit(), list(api.events()), api.text()) == (200, [Event(id=1)], '{"id": 1}\n')
+
+
+@pytest.mark.anyio
+async def test_a_decoded_async_endpoint_returns_what_its_decoder_returns() -> None:
+    api = AsyncDecoded("https://api.example.com", transport=answering(content=b'{"id": 1}\n'))
+    assert_type(await api.submit(), int)
+    events = await api.events()
+    assert_type(events, AsyncIterator[Event])
+    assert [event async for event in events] == [Event(id=1)]
+
+
+def test_a_decoded_async_def_endpoint_needs_an_async_client() -> None:
+    with pytest.raises(DefinitionError):
+
+        class Wrong(ClientX):
+            @method.post("/jobs", decoder=status_of)  # type: ignore[arg-type]  # pyright: ignore[reportCallIssue, reportArgumentType, reportUntypedFunctionDecorator]
+            async def submit(self) -> int: ...

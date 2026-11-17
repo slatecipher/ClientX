@@ -137,10 +137,11 @@ Suggested order:
 8. [x] The client's `__repr__`, on `_BaseClientX`: class name, base URL and User-Agent, with a password in
    the base URL shown as `[redacted]` (the old one showed it).
 9. [ ] Logging (old `_logging.py`): one DEBUG record per call, never values.
-10. [ ] Decorator typing (old `RawEndpointDecorator`/`DecodedEndpointDecorator` overloads): check a
-    `decoder=` against the annotation; reject `async def` endpoints on sync classes for type checkers.
-    `Method.__call__` returns a plain generic decorator for now: pyright and mypy both keep the
-    endpoint's signature, but accept any `decoder=` and either kind of endpoint on any class.
+10. [ ] Decorator typing (old `RawEndpointDecorator`/`DecodedEndpointDecorator` overloads). Done: a
+    `decoder=` is checked against the annotation, and a decoded endpoint of the wrong kind for its class
+    is rejected (see the decoder decisions). Still to do: reject an `async def` endpoint on a sync class
+    (and the reverse) without `decoder=`; today that decorator accepts either kind on any class, and only
+    the runtime check catches it.
 11. [ ] `clientx.tools` (old 314 lines), then `clientx.mcp` (old 210 lines).
 
 Decoder decisions (agreed 2026-11-17):
@@ -157,8 +158,10 @@ Decoder decisions (agreed 2026-11-17):
     (coroutine) decoder, a generator decoder of the wrong kind (an async generator on a `def`
     endpoint, a plain one on an `async def` one), and a generator decoder on an endpoint that isn't
     annotated as a stream
-  - [ ] typing: type checkers check the decoder's return type against the annotation, for `def` and
-    `async def` endpoints, pinned in `test_typing.py` (the decoder half of item 10)
+  - [x] typing: type checkers check the decoder's return type against the annotation, for `def` and
+    `async def` endpoints, pinned in `test_typing.py` (the decoder half of item 10). The verb decorator
+    is overloaded; with `decoder=` it returns `DecodedEndpointDecorator[D]`, whose overloads are limited
+    to each kind of class, so a decoded `async def` endpoint on a sync class is rejected too
 
 ## Tests
 

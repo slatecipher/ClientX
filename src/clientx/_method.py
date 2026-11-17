@@ -1,12 +1,12 @@
 import warnings
-from collections.abc import Callable
+from collections.abc import Callable, Coroutine
 from dataclasses import dataclass
 from functools import wraps
-from typing import Concatenate, ParamSpec, TypeVar, cast
+from typing import Any, Concatenate, ParamSpec, Protocol, TypeVar, cast, overload
 
-from httpx2 import USE_CLIENT_DEFAULT, Timeout
+from httpx2 import USE_CLIENT_DEFAULT, Response, Timeout
 
-from clientx._client import AsyncClientX, ClientX, EndpointOwner, client_of
+from clientx._client import AsyncClientX, AsyncResource, ClientX, EndpointOwner, Resource, client_of
 from clientx._decoding import adecode, araise_status_error, decode, raise_status_error
 from clientx._endpoint import Endpoint
 from clientx._registry import register_endpoint_function
@@ -16,12 +16,64 @@ from clientx._types import Decoder, MethodType, UseClientDefault
 P = ParamSpec("P")
 T = TypeVar("T", bound=EndpointOwner)
 R = TypeVar("R")
+D = TypeVar("D")
+# The object a `def` endpoint and an `async def` endpoint are called on.
+SyncOwner = TypeVar("SyncOwner", bound=ClientX | Resource)
+AsyncOwner = TypeVar("AsyncOwner", bound=AsyncClientX | AsyncResource)
+
+
+class DecodedEndpointDecorator(Protocol[D]):
+    """The decorator a verb returns with ``decoder=``: it takes an endpoint that returns what the decoder does.
+
+    A ``def`` endpoint must return ``D``, the decoder's return type, and an ``async def`` endpoint's
+    coroutine must return it, so type checkers report an endpoint whose annotation doesn't match its
+    decoder. Each overload is limited to its kind of class: if both could match, as when ``D`` is
+    ``Any``, mypy would see the endpoint as untyped.
+
+    The ``def`` overload comes first and again last: when none matches, mypy reports the first
+    overload's error and pyright the last's, so both name the ``def`` form, the common case.
+    """
+
+    @overload
+    def __call__(self, func: Callable[Concatenate[SyncOwner, P], D], /) -> Callable[Concatenate[SyncOwner, P], D]: ...
+    @overload
+    def __call__(
+        self, func: Callable[Concatenate[AsyncOwner, P], Coroutine[Any, Any, D]], /
+    ) -> Callable[Concatenate[AsyncOwner, P], Coroutine[Any, Any, D]]: ...
+    @overload
+    def __call__(self, func: Callable[Concatenate[SyncOwner, P], D], /) -> Callable[Concatenate[SyncOwner, P], D]: ...
 
 
 @dataclass(frozen=True, slots=True)
 class Method:
     method: MethodType
 
+    @overload
+    def __call__(
+        self,
+        path: str = "",
+        *,
+        decoder: None = None,
+        stream: bool = False,
+        deprecated: str | None = None,
+        tags: list[str] | None = None,
+        timeout: Timeout | float | None | UseClientDefault = USE_CLIENT_DEFAULT,
+        raise_for_status: bool | None = None,
+        validate_arguments: bool | None = None,
+    ) -> Callable[[Callable[Concatenate[T, P], R]], Callable[Concatenate[T, P], R]]: ...
+    @overload
+    def __call__(
+        self,
+        path: str = "",
+        *,
+        decoder: Callable[[Response], D],
+        stream: bool = False,
+        deprecated: str | None = None,
+        tags: list[str] | None = None,
+        timeout: Timeout | float | None | UseClientDefault = USE_CLIENT_DEFAULT,
+        raise_for_status: bool | None = None,
+        validate_arguments: bool | None = None,
+    ) -> DecodedEndpointDecorator[D]: ...
     def __call__(
         self,
         path: str = "",
@@ -33,7 +85,13 @@ class Method:
         timeout: Timeout | float | None | UseClientDefault = USE_CLIENT_DEFAULT,
         raise_for_status: bool | None = None,
         validate_arguments: bool | None = None,
-    ) -> Callable[[Callable[Concatenate[T, P], R]], Callable[Concatenate[T, P], R]]:
+    ) -> Any:
+        """Return the decorator that turns a method into an endpoint; see the overloads for its types.
+
+        Without ``decoder=``, the endpoint keeps its own signature. With one, it must return what
+        the decoder returns: type checkers report a mismatch at the decorator.
+        """
+
         def decorator(func: Callable[Concatenate[T, P], R]) -> Callable[Concatenate[T, P], R]:
             endpoint = Endpoint(
                 method=self.method,
