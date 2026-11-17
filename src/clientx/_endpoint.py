@@ -71,8 +71,32 @@ class Endpoint:
 
         Raises:
             DefinitionError: If the function has no positional first parameter for the client or
-                resource (it has none, or it's keyword-only, ``*args`` or ``**kwargs``), has no
-                return annotation, or has one that can't be decoded without a ``decoder=``.
+                resource (it has none, or it's keyword-only, ``*args`` or ``**kwargs``), has a
+                ``*args`` or ``**kwargs`` parameter after it, has no return annotation, or has one
+                that can't be decoded without a ``decoder=``.
+        """
+        self._check_parameters()
+        self._check_return_annotation()
+
+        name = self.signature.qualname
+        returns = self.signature.returns
+        is_async = self.signature.is_async
+        try:
+            self.stream = is_stream(returns, is_async=is_async)
+            if self.decoder is None:
+                self.decoder = default_decoder(returns, is_async=is_async)
+        except DefinitionError as error:
+            raise DefinitionError(f"Endpoint '{name}': {error}") from error
+
+    def _check_parameters(self) -> None:
+        """Check that the first parameter is positional, and that no parameter is ``*args`` or ``**kwargs``.
+
+        The first parameter receives the client or resource, so a call must be able to pass it
+        positionally. Every other parameter sends one value, which its annotation places in the
+        request, so a ``*args`` or ``**kwargs`` parameter has nowhere to go.
+
+        Raises:
+            DefinitionError: If either rule is broken.
         """
         name = self.signature.qualname
         first = self.signature.parameters[0] if self.signature.parameters else None
@@ -81,20 +105,25 @@ class Endpoint:
                 f"Endpoint '{name}' needs a positional first parameter, such as `self`, "
                 "for the client or resource it's called on."
             )
+        for parameter in self.parameters():
+            if parameter.kind in (ParameterKind.VAR_POSITIONAL, ParameterKind.VAR_KEYWORD):
+                star = "*" if parameter.kind is ParameterKind.VAR_POSITIONAL else "**"
+                raise DefinitionError(
+                    f"Endpoint '{name}' can't take `{star}{parameter.name}`: each value it sends needs a "
+                    "parameter of its own, which decides where the value goes in the request."
+                )
 
-        returns = self.signature.returns
-        if returns.annotation is NO_VALUE:
+    def _check_return_annotation(self) -> None:
+        """Check that the function has a return annotation: it decides how the response is decoded.
+
+        Raises:
+            DefinitionError: If there's none.
+        """
+        if self.signature.returns.annotation is NO_VALUE:
             raise DefinitionError(
-                f"Endpoint '{name}' needs a return annotation, such as `-> None` or `-> User`: "
-                "it decides what the endpoint returns."
+                f"Endpoint '{self.signature.qualname}' needs a return annotation, such as `-> None` or "
+                "`-> User`: it decides what the endpoint returns."
             )
-        is_async = self.signature.is_async
-        try:
-            self.stream = is_stream(returns, is_async=is_async)
-            if self.decoder is None:
-                self.decoder = default_decoder(returns, is_async=is_async)
-        except DefinitionError as error:
-            raise DefinitionError(f"Endpoint '{name}': {error}") from error
 
     def bind(self, owner: object, *args: Any, **kwargs: Any) -> dict[str, Any]:
         """Match a call's arguments to the endpoint's parameters, with defaults filled in.
