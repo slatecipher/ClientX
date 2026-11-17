@@ -48,8 +48,6 @@ Don't add credentials in a request [event hook](logging.md#your-own-request-logg
 
 For other schemes, httpx2's [Third Party Packages](https://pydantic.dev/docs/httpx2/community/third_party_packages/) page lists libraries that support it. ClientX creates its own httpx2 client, so use a library's `Auth` class as `auth=`, not its client class.
 
-[`examples/oauth2/`](https://github.com/slatecipher/ClientX/tree/mainline/examples/oauth2) has an `Auth` class that gets an OAuth 2 bearer token with a client ID and secret, run against Duende's public demo server.
-
 ## Closing a client
 
 Close a client when you're done with it, to release its connections:

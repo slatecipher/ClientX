@@ -125,14 +125,6 @@ AI tools and MCP:
 - [Errors](https://github.com/slatecipher/ClientX/blob/mainline/docs/errors.md): every error ClientX raises, and when
 - [CHANGELOG](https://github.com/slatecipher/ClientX/blob/mainline/CHANGELOG.md): changes in each release; the API may change between minor versions before 1.0
 
-## Examples
-
-- [Beeceptor example client](https://github.com/slatecipher/ClientX/tree/mainline/examples/beeceptor): a complete client with resources, model decoders, and a deprecated endpoint, run by `examples/beeceptor_example.py`
-- [JSONPlaceholder example client](https://github.com/slatecipher/ClientX/tree/mainline/examples/jsonplaceholder): a client for a real public API with the request-part helpers (`Query("userId", description=...)`, `Body` with `exclude_unset` for PATCH), `PathParam(description=...)` with `Field(ge=1, le=100)` bounds for path parameters (checked before sending when `validate_arguments=True`), camelCase aliases, and a 404 caught as `httpx2.HTTPStatusError`, run by `examples/jsonplaceholder_example.py` (it needs network access)
-- [OAuth 2 example client](https://github.com/slatecipher/ClientX/tree/mainline/examples/oauth2): an `Auth` subclass that gets a bearer token with a client ID and secret (OAuth 2 client credentials), reuses it until it expires and renews it after a 401, used as `auth=` against Duende's public demo server, with a request hook that only logs; run by `examples/oauth2_example.py` (it needs network access)
-- [Async JSONPlaceholder example](https://github.com/slatecipher/ClientX/blob/mainline/examples/jsonplaceholder_async_example.py): an `AsyncClientX` with `AsyncResource`s for the same API (`examples/jsonplaceholder/jsonplaceholder_async_client.py`), fetching data one request at a time and concurrently with `asyncio.gather` (it needs network access)
-- [AI tools example](https://github.com/slatecipher/ClientX/blob/mainline/examples/beeceptor_tools_example.py): the same client's endpoints as AI tools, with definitions, schemas, filters, and calls
-
 ## Optional
 
 - [CONTRIBUTING](https://github.com/slatecipher/ClientX/blob/mainline/CONTRIBUTING.md): development setup and commit conventions for contributing to ClientX itself

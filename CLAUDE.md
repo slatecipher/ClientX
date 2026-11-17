@@ -12,9 +12,9 @@ All tooling runs through `uv`:
 
 ```bash
 uv sync --all-groups --reinstall-package clientx   # install/refresh deps + the package
-make lint             # ruff format + ruff check --fix on src, test and examples
+make lint             # ruff format + ruff check --fix on src and test
 make lint-ci          # check-only variant used in CI
-make typecheck        # pyright src + test/test_typing.py + examples, then mypy on test/test_typing.py (gates CI)
+make typecheck        # pyright src + test/test_typing.py, then mypy on test/test_typing.py (gates CI)
 make typecheck-tests  # pyright test (advisory only in CI, never blocks)
 make test             # pytest (coverage flags come from pyproject addopts)
 make check            # lint + typecheck + test
@@ -69,7 +69,7 @@ The decorator protocols (`RawEndpointDecorator`, `DecodedEndpointDecorator` in `
 
 `mcp.py` (public, `clientx.mcp`, needs the `mcp` extra; `mcp` is also in the dev group so CI tests it) serves `list_tools()` over MCP with the SDK's low-level `Server`, using the core's schemas as-is (one source of truth). Its `read_only` filter defaults to `True`, unlike `list_tools()`'s, so a server exposes endpoints that change data only when asked; tests that need write tools pass `read_only=False`. Non-object output schemas are wrapped as `{"result": ...}` with `$defs` moved to the top. Tests talk to it in-process with `mcp.Client(server)`. A tool call awaits `Tool.acall()` for an async client's tools, and runs `Tool.call()` with `anyio.to_thread.run_sync` for a sync client's, so a blocking call never stalls the server's event loop.
 
-`examples/beeceptor/`, `examples/jsonplaceholder/` and `examples/oauth2/` (an OAuth 2 client credentials `Auth` class, against Duende's public demo server) contain complete example clients, run by the `examples/*_example.py` scripts; `examples/jsonplaceholder/jsonplaceholder_async_client.py` is an `AsyncClientX` for the same API, run by `examples/jsonplaceholder_async_example.py`. All call live public APIs, so the scripts need network access; lint and typecheck cover them, but the test suite doesn't run them. `examples/ruff.toml` sorts their imports the way a user's project would, with `clientx` among the third-party packages and the example packages first-party, so they're correct to copy. Write the snippets in the README, `docs/`, and `llms.txt` the same way: `clientx` imports go in the third-party block, next to `httpx2` and `pydantic`.
+Write the snippets in the README, `docs/`, and `llms.txt` with imports sorted the way a user's project would sort them: `clientx` imports go in the third-party block, next to `httpx2` and `pydantic`.
 
 `llms.txt` (repo root) is a compact guide for AI coding assistants. Keep it in sync with the public API and the docs; its code sample must run and type-check.
 

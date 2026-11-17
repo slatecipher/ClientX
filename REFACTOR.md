@@ -178,19 +178,25 @@ Rebuilt from scratch (agreed 2026-11-17); the old suite (25 files, 6,566 lines) 
   in `[tool.coverage]`, so running one test file locally doesn't fail it.
 - Later: `test_typing.py` grows with item 10; tools, MCP and logging get tests when they're ported.
 - Streaming tests need an iterator or async-generator `MockTransport` body: `bytes` bodies are read
-  at once. `make typecheck` and `make lint-ci` still fail until `examples/` is updated.
+  at once.
 
-## Follow-ups for docs and examples
+## Follow-ups for docs
+
+`examples/` was dropped on 2026-11-17: the user wasn't a fan of what the examples demonstrated, and
+they called live APIs, so CI could only lint and type-check them. Ideas if examples come back: tested
+docs snippets, where every code sample in `docs/` is a file that CI type-checks and runs against a
+mock transport (as FastAPI's `docs_src/` does), or one realistic client, such as for GitHub's REST
+API, with a test that runs it against a mock transport.
 
 - `llms.txt:92` and `docs/errors.md:7`: httpx2's names are reserved on clients, free on resources.
 - `docs/decoders.md`: rewrite for annotation-driven decoding.
-- Docs and `examples/` still use the `base_url=` class argument and the old decoder classes.
+- Docs still use the `base_url=` class argument and the old decoder classes.
 - `DeprecatedMessage(...)` becomes a plain string in `docs/endpoints.md` (drop "any callable"),
-  `llms.txt:78` and `examples/beeceptor/beeceptor_client.py`.
+  and `llms.txt:78`.
 - `docs/endpoints.md:31` and `llms.txt:78`: an endpoint's `timeout=None` now means no timeout; leaving
   it out uses the client's.
 - `docs/errors.md` and `llms.txt:103`: the old exception classes become `DefinitionError` or
-  `ArgumentError`. `examples/jsonplaceholder_example.py` catches `ArgumentValidationError`.
+  `ArgumentError`.
 - `docs/requests.md` (the "Serialization control with `DumpConfig`" section, lines 163-204) and
   `llms.txt:12` and `:48` use `DumpConfig`, which isn't ported.
 - Docs and `llms.txt` use `PathParam`, now `Url()`.

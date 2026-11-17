@@ -62,7 +62,7 @@ strict = true
 # Editors check both trees. CI splits them: `make typecheck` passes `src` on the
 # command line (which overrides this list) and gates the build, while
 # `make typecheck-tests` covers `test` as a non-blocking report.
-include = ["src", "test", "examples"]
+include = ["src", "test"]
 pythonVersion = "3.12"
 typeCheckingMode = "standard"
 # The shipped package is held to strict mode; tests stay on standard.

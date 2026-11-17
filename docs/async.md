@@ -49,8 +49,6 @@ asyncio.run(main())
 - Plain methods can be `async def` too, and await endpoints through `self`, for example to follow pages (see [Plain methods](resources.md#plain-methods)).
 - ClientX itself only awaits httpx2, so a client runs on any event loop httpx2 supports, such as asyncio or trio.
 
-[`examples/jsonplaceholder_async_example.py`](https://github.com/slatecipher/ClientX/blob/mainline/examples/jsonplaceholder_async_example.py) fetches data from a real public API, one request at a time and all at once.
-
 ## Streaming
 
 An `async def` endpoint streams with an async stream decoder, and returns an async iterator: annotate it `-> AsyncIterator[...]`.
