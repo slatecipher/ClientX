@@ -5,7 +5,7 @@ simpler and easier to read. The old code is kept in `src/clientx/pre/` for refer
 pieces are ported one small step at a time. Delete this file and `pre/` when the port is done.
 
 What's left in `pre/` (2026-11-17), each kept until its item is done: `tools.py` and `mcp.py` (item 11),
-`_logging.py` (item 9), `_decorators.py` (item 10's typing overloads), `decoders.py` (the open decoder
+`_decorators.py` (item 10's typing overloads), `decoders.py` (the open decoder
 decisions) and `_endpoint_context.py` (argument validation, #136). The ported modules were deleted. The
 old modules are also on `mainline` (`git show mainline:src/clientx/tools.py`). The `pre/` files import
 `clientx._client` and so on, which are the new modules now, so they're for reading, not running.
@@ -136,7 +136,8 @@ Suggested order:
    `DeprecatedMessage`, `PathParam` (now `Url`), and the `clientx.decoders` module.
 8. [x] The client's `__repr__`, on `_BaseClientX`: class name, base URL and User-Agent, with a password in
    the base URL shown as `[redacted]` (the old one showed it).
-9. [ ] Logging (old `_logging.py`): one DEBUG record per call, never values.
+9. [x] Logging: not ported (agreed 2026-11-17). Users rely on httpx2's own logging (the `httpx2` logger)
+   and `event_hooks=`. A `clientx` logger is a question for later: #137.
 10. [x] Decorator typing. The verb decorator is overloaded: without `decoder=` it returns
     `EndpointDecorator`, with one `DecodedEndpointDecorator[D]` (the endpoint must return what the decoder
     does). Both limit each overload to its kind of class, so a `def` endpoint on an `AsyncClientX` or
@@ -198,6 +199,8 @@ Rebuilt from scratch (agreed 2026-11-17); the old suite (25 files, 6,566 lines) 
 - `docs/requests.md` (the "Serialization control with `DumpConfig`" section, lines 163-204) and
   `llms.txt:12` and `:48` use `DumpConfig`, which isn't ported.
 - Docs and `llms.txt` use `PathParam`, now `Url()`.
+- `docs/logging.md` (and its links in `docs/README.md` and `llms.txt`): ClientX has no logger of its own
+  now; point to httpx2's `httpx2` logger and keep the event hooks section.
 - `CLAUDE.md` describes the old architecture and test layout; rewrite it once the port is done.
 
 ## Known lint items
