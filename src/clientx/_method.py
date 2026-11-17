@@ -15,13 +15,15 @@ from clientx._types import Decoder, MethodType, UseClientDefault
 
 
 class EndpointDecorator(Protocol):
-    """The decorator a verb returns without ``decoder=``: the endpoint keeps its signature.
+    """The decorator a verb returns without ``decoder=``.
 
-    Each overload is limited to its kind of class: a ``def`` endpoint on a ``ClientX`` or
-    ``Resource``, an ``async def`` one on an ``AsyncClientX`` or ``AsyncResource``. So a ``def``
-    endpoint on an async class is reported. An ``async def`` endpoint on a sync class isn't: to a
-    type checker it's a ``def`` that returns a coroutine, so only the check when the class is
-    defined catches it. The ``def`` overload is repeated last, as in ``DecodedEndpointDecorator``.
+    The endpoint keeps its signature. Each overload is limited to its kind of
+    class: a ``def`` endpoint on a ``ClientX`` or ``Resource``, an ``async def``
+    one on an ``AsyncClientX`` or ``AsyncResource``. So a ``def`` endpoint on an
+    async class is reported. An ``async def`` endpoint on a sync class isn't: to
+    a type checker it's a ``def`` that returns a coroutine, so only the check
+    when the class is defined catches it. The ``def`` overload is repeated last,
+    as in ``DecodedEndpointDecorator``.
     """
 
     @overload
@@ -39,15 +41,17 @@ class EndpointDecorator(Protocol):
 
 
 class DecodedEndpointDecorator[D](Protocol):
-    """The decorator a verb returns with ``decoder=``: it takes an endpoint that returns what the decoder does.
+    """The decorator a verb returns with ``decoder=``.
 
-    A ``def`` endpoint must return ``D``, the decoder's return type, and an ``async def`` endpoint's
-    coroutine must return it, so type checkers report an endpoint whose annotation doesn't match its
-    decoder. Each overload is limited to its kind of class: if both could match, as when ``D`` is
-    ``Any``, mypy would see the endpoint as untyped.
+    A ``def`` endpoint must return ``D``, the decoder's return type, and an
+    ``async def`` endpoint's coroutine must return it, so type checkers report
+    an endpoint whose annotation doesn't match its decoder. Each overload is
+    limited to its kind of class: if both could match, as when ``D`` is ``Any``,
+    mypy would see the endpoint as untyped.
 
-    The ``def`` overload comes first and again last: when none matches, mypy reports the first
-    overload's error and pyright the last's, so both name the ``def`` form, the common case.
+    The ``def`` overload comes first and again last: when none matches, mypy
+    reports the first overload's error and pyright the last's, so both name the
+    ``def`` form, the common case.
     """
 
     @overload
@@ -66,7 +70,7 @@ class DecodedEndpointDecorator[D](Protocol):
 
 @dataclass(frozen=True, slots=True)
 class Method:
-    """An HTTP verb's endpoint decorator, such as ``method.get``: one per verb in ``clientx.method``."""
+    """An HTTP verb's endpoint decorator, such as ``method.get``."""
 
     method: MethodType
 
@@ -110,24 +114,25 @@ class Method:
     ) -> Any:
         """Return the decorator that turns a method into an endpoint.
 
-        Without ``decoder=``, the endpoint keeps its own signature. With one, it must return what
-        the decoder returns: type checkers report a mismatch at the decorator.
+        Without ``decoder=``, the endpoint keeps its own signature. With one, it
+        must return what the decoder returns: type checkers report a mismatch at
+        the decorator.
 
         Args:
-            path: The path template, such as ``"/users/{user_id}"``, relative to the client's
-                base URL. A resource joins its prefix onto it.
-            decoder: Turns the ``httpx2.Response`` into the return value, in place of the
-                decoding the return annotation implies. A generator decoder streams, for an
-                endpoint annotated ``-> Iterator[...]`` (an async generator for
-                ``-> AsyncIterator[...]``).
-            stream: Return the open, unread response, which the caller reads and closes.
-                Only with ``-> Response`` and no ``decoder=``.
+            path: The path template, such as ``"/users/{user_id}"``, relative to
+                the client's base URL. A resource joins its prefix onto it.
+            decoder: Turns the ``httpx2.Response`` into the return value, in
+                place of the decoding the return annotation implies. A generator
+                decoder streams, for an endpoint annotated ``-> Iterator[...]``
+                (an async generator for ``-> AsyncIterator[...]``).
+            stream: Return the open, unread response, which the caller reads and
+                closes. Only with ``-> Response`` and no ``decoder=``.
             deprecated: The message of a ``DeprecationWarning`` each call emits.
             tags: Tags that group endpoints. A resource's tags go in front.
-            timeout: The request timeout, as httpx2 takes it: the default uses the client's,
-                and ``None`` turns it off.
-            raise_for_status: Whether a 4xx or 5xx response raises ``httpx2.HTTPStatusError``;
-                ``None`` uses the client's setting.
+            timeout: The request timeout, as httpx2 takes it: the default uses
+                the client's, and ``None`` turns it off.
+            raise_for_status: Whether a 4xx or 5xx response raises
+                ``httpx2.HTTPStatusError``; ``None`` uses the client's setting.
             validate_arguments: Not implemented yet, so it has no effect (#136).
         """
 
@@ -148,7 +153,8 @@ class Method:
             @wraps(func)
             def wrapper(_self: T, /, *args: P.args, **kwargs: P.kwargs) -> R:
                 if endpoint.deprecated is not None:
-                    # `stacklevel=2` names the caller's line. The warning must stay in the wrapper's own frame.
+                    # `stacklevel=2` names the caller's line. The warning must
+                    # stay in the wrapper's own frame.
                     warnings.warn(endpoint.deprecated, DeprecationWarning, stacklevel=2)
                 client = client_of(_self, ClientX)
                 arguments = endpoint.bind(_self, *args, **kwargs)
@@ -186,8 +192,9 @@ class Method:
 
 
 def _raises_for_status(endpoint: Endpoint, client: ClientX | AsyncClientX) -> bool:
-    """Return whether ``endpoint`` raises for a 4xx or 5xx: its own setting if it has one, or else the client's.
+    """Return whether ``endpoint`` raises for a 4xx or 5xx response.
 
-    Not ``or``: an endpoint's ``False`` must win over the client's ``True``.
+    Its own setting, if it has one, wins over the client's. Not ``or``: an
+    endpoint's ``False`` must win over the client's ``True``.
     """
     return client.__clientx_raise_for_status__ if endpoint.raise_for_status is None else endpoint.raise_for_status

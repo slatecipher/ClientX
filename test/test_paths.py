@@ -1,4 +1,4 @@
-"""Path templates: placeholders filled with the call's arguments, encoded so a value can't change the path."""
+"""Path templates: placeholders, filled so a value can't change the path."""
 
 import datetime
 import enum
@@ -22,7 +22,7 @@ class Color(enum.Enum):
 
 
 def sent_path(sent: list[httpx2.Request]) -> str:
-    """Return the path of the one request sent, as it went out: percent-encoded."""
+    """Return the one request's path as it went out, percent-encoded."""
     (request,) = sent
     return request.url.raw_path.decode()
 

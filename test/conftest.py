@@ -1,10 +1,10 @@
 """Fixtures shared by the test modules.
 
-pytest finds this file by itself and passes a fixture to every test that names it as a
-parameter. The suite runs in pytest's recommended ``importlib`` import mode, where test
-modules can't import each other or a helper module, so shared helpers are fixtures. Each one
-returns a function, so a test can call it as often as it needs, with different arguments
-("factories as fixtures").
+pytest finds this file by itself and passes a fixture to every test that names
+it as a parameter. The suite runs in pytest's recommended ``importlib`` import
+mode, where test modules can't import each other or a helper module, so shared
+helpers are fixtures. Each one returns a function, so a test can call it as
+often as it needs, with different arguments ("factories as fixtures").
 """
 
 from collections.abc import Callable
@@ -18,13 +18,15 @@ type Handler = Callable[[httpx2.Request], httpx2.Response]
 
 @pytest.fixture
 def mock_transport() -> Callable[..., httpx2.MockTransport]:
-    """Return a function that builds a transport answering every request without a network.
+    """Return a function that builds a transport that needs no network.
 
-    It's called as ``mock_transport(sent=None, handler=None, *, status=200, **response)``.
-    Each request is appended to ``sent``, if given. The answer comes from ``handler`` if
-    given, or else is a new ``httpx2.Response(status, **response)`` for each request, such
-    as ``mock_transport(sent, json={"id": 1})`` or ``mock_transport(status=404)``.
-    ``httpx2.MockTransport`` serves async clients too.
+    It's called as
+    ``mock_transport(sent=None, handler=None, *, status=200, **response)``. Each
+    request is appended to ``sent``, if given. The answer comes from ``handler``
+    if given, or else is a new ``httpx2.Response(status, **response)`` for each
+    request, such as ``mock_transport(sent, json={"id": 1})`` or
+    ``mock_transport(status=404)``. ``httpx2.MockTransport`` serves async
+    clients too.
     """
 
     def build(

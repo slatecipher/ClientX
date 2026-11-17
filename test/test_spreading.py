@@ -1,4 +1,4 @@
-"""Models, dataclasses and mappings with a Query(), Header() or Form() helper, spread into that part."""
+"""Models, dataclasses and mappings spread by Query(), Header() or Form()."""
 
 import dataclasses
 import datetime
@@ -58,7 +58,8 @@ def only_request(sent: list[httpx2.Request]) -> httpx2.Request:
 
 
 def test_a_models_fields_become_query_parameters(mock_transport: MockTransport) -> None:
-    # Dumped first, so the model's own serializers and Field(exclude=True) apply; None fields are left out.
+    # Dumped first, so the model's own serializers and Field(exclude=True)
+    # apply; None fields are left out.
     class API(ClientX):
         @method.get("/issues")
         def search(self, filters: Annotated[Filters, Query()]) -> None: ...
@@ -110,7 +111,8 @@ def test_a_models_fields_become_headers(mock_transport: MockTransport) -> None:
         Tracing(x_request_id="r-1"), more={"X-Custom_Name": "as given"}
     )
     request = only_request(sent)
-    # A field's name gets hyphens and an alias is kept; a mapping's keys are sent as they are.
+    # A field's name gets hyphens and an alias is kept; a mapping's keys are
+    # sent as they are.
     assert [(name.decode(), value.decode()) for name, value in request.headers.raw][-3:] == [
         ("x-request-id", "r-1"),
         ("traceparent", "00-abc"),

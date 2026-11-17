@@ -1,9 +1,10 @@
-"""Request-part helpers built on ``pydantic.Field``, also exported by ``clientx``.
+"""Request-part helpers built on ``pydantic.Field``, exported by ``clientx``.
 
-Each helper takes exactly the arguments of ``pydantic.Field`` and returns its ``FieldInfo``, marked with the
-part of the request it goes to. On an endpoint parameter, put the helper inside ``Annotated``. ClientX reads
-it only there, by design: a helper given as a parameter's default value isn't read, and a default inside the
-helper raises ``DefinitionError``, so put it after ``=``::
+Each helper takes exactly the arguments of ``pydantic.Field`` and returns its
+``FieldInfo``, marked with the part of the request it goes to. On an endpoint
+parameter, put the helper inside ``Annotated``. ClientX reads it only there, by
+design: a helper given as a parameter's default value isn't read, and a default
+inside the helper raises ``DefinitionError``, so put it after ``=``::
 
     class UsersAPI(ClientX):
         @method.post("/users")
@@ -13,18 +14,22 @@ helper raises ``DefinitionError``, so put it after ``=``::
             dry_run: Annotated[bool, Query()] = False,
         ) -> None: ...
 
-A parameter without a helper is placed as FastAPI places it: a path placeholder's name goes to the path, a
-model, mapping, collection or dataclass to JSON, and anything else to the query string.
+A parameter without a helper is placed as FastAPI places it: a path
+placeholder's name goes to the path, a model, mapping, collection or dataclass
+to JSON, and anything else to the query string.
 
-A ``Query()``, ``Header()`` or ``Form()`` helper on a model, dataclass or mapping parameter sends each of its
-fields to that part: with
-``filters: Annotated[Filters, Query()]``, each field of ``Filters`` is a query parameter. A helper on a
-model's own field raises ``DefinitionError``, because the parameter decides where all of its fields go.
+A ``Query()``, ``Header()`` or ``Form()`` helper on a model, dataclass or
+mapping parameter sends each of its fields to that part: with
+``filters: Annotated[Filters, Query()]``, each field of ``Filters`` is a query
+parameter. A helper on a model's own field raises ``DefinitionError``, because
+the parameter decides where all of its fields go.
 
-The helpers align one-to-one with the arguments of ``httpx2.Client.build_request`` that carry request data
-(every argument except ``method``, ``timeout``, ``extensions`` and ``cookies``), so ``Body`` is httpx's raw
-``content`` and ``Json`` its ``json``. There's no ``Cookie`` helper: httpx2 is deprecating per-request cookies,
-so set cookies on the client instead. Each helper, and the argument it marks:
+The helpers align one-to-one with the arguments of
+``httpx2.Client.build_request`` that carry request data (every argument except
+``method``, ``timeout``, ``extensions`` and ``cookies``), so ``Body`` is httpx's
+raw ``content`` and ``Json`` its ``json``. There's no ``Cookie`` helper: httpx2
+is deprecating per-request cookies, so set cookies on the client instead. Each
+helper, and the argument it marks:
 
     ``Url``     ``url``
     ``Query``   ``params``

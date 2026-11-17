@@ -1,25 +1,31 @@
 # pyright: reportUnnecessaryTypeIgnoreComment=true, reportUntypedFunctionDecorator=true
 # mypy: disable-error-code="empty-body"
-"""Static typing contract: decorated endpoints keep their signatures for type checkers, and an
-endpoint with ``decoder=`` must return what its decoder returns.
+"""Static typing contract: endpoints keep their signatures for type checkers.
 
-Pyright and mypy both check this file in the blocking ``make typecheck`` step, so CI fails
-if users of either checker would lose an endpoint's signature:
+An endpoint with ``decoder=`` must return what its decoder returns.
+
+Pyright and mypy both check this file in the blocking ``make typecheck`` step,
+so CI fails if users of either checker would lose an endpoint's signature:
 
 - ``assert_type`` fails if the inferred type isn't exactly the expected one.
-- Each line that must be rejected has one comment per checker: ``# type: ignore[code]`` for
-  mypy, then ``# pyright: ignore[rule]``. Pyright doesn't read mypy's comments
-  (``enableTypeIgnoreComments = false`` in ``pyproject.toml``), so each checker reports its
-  own comment if it's unused, and code that should be rejected but isn't gets reported.
-- A method the decorator rejects is reported at the decorator. Pyright reports it three times:
-  no matching overload (``reportCallIssue``), the mismatch (``reportArgumentType``), and the
-  decorator's result being unknown (``reportUntypedFunctionDecorator``).
-- ``reportUntypedFunctionDecorator`` is on because pyright otherwise hides an untyped
-  decorator by falling back to the undecorated signature; mypy would see ``Any``.
-- mypy's ``empty-body`` check is off, as users of mypy need, because endpoint bodies are ``...``.
+- Each line that must be rejected has one comment per checker:
+  ``# type: ignore[code]`` for mypy, then ``# pyright: ignore[rule]``. Pyright
+  doesn't read mypy's comments (``enableTypeIgnoreComments = false`` in
+  ``pyproject.toml``), so each checker reports its own comment if it's unused,
+  and code that should be rejected but isn't gets reported.
+- A method the decorator rejects is reported at the decorator. Pyright reports
+  it three times: no matching overload (``reportCallIssue``), the mismatch
+  (``reportArgumentType``), and the decorator's result being unknown
+  (``reportUntypedFunctionDecorator``).
+- ``reportUntypedFunctionDecorator`` is on because pyright otherwise hides an
+  untyped decorator by falling back to the undecorated signature; mypy would see
+  ``Any``.
+- mypy's ``empty-body`` check is off, as users of mypy need, because endpoint
+  bodies are ``...``.
 
-The tests also run under pytest, against a transport of their own: ``make typecheck`` checks
-this file alone, so it doesn't use the fixtures in ``conftest.py``.
+The tests also run under pytest, against a transport of their own:
+``make typecheck`` checks this file alone, so it doesn't use the fixtures in
+``conftest.py``.
 """
 
 from collections.abc import AsyncIterator, Iterator
@@ -71,7 +77,7 @@ class AsyncAPI(AsyncClientX):
 
 
 def answering(**response: Any) -> httpx2.MockTransport:
-    """Return a transport that answers every request with ``httpx2.Response(200, **response)``."""
+    """Return a transport that answers ``httpx2.Response(200, **response)``."""
     return httpx2.MockTransport(lambda request: httpx2.Response(200, **response))
 
 
@@ -191,8 +197,9 @@ def test_a_decoded_async_def_endpoint_needs_an_async_client() -> None:
             async def submit(self) -> int: ...
 
 
-# The kind of class an endpoint is on. An `async def` endpoint on a sync class can't be rejected here:
-# to a type checker it's a `def` that returns a coroutine. The check when the class is defined catches it.
+# The kind of class an endpoint is on. An `async def` endpoint on a sync class
+# can't be rejected here: to a type checker it's a `def` that returns a
+# coroutine. The check when the class is defined catches it.
 
 
 def test_a_def_endpoint_needs_a_sync_class() -> None:

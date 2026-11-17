@@ -14,18 +14,18 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from clientx._endpoint import Endpoint
 
-# Keyed by id() so lookups never hash arbitrary class attributes. Each entry keeps
-# its function alive, so the id can't be reused by another object.
+# Keyed by id() so lookups never hash arbitrary class attributes. Each entry
+# keeps its function alive, so the id can't be reused by another object.
 _endpoints: dict[int, tuple[Callable[..., Any], Endpoint]] = {}
 
 
 def register_endpoint_function(func: Callable[..., Any], endpoint: Endpoint) -> None:
-    """Record that ``func`` is the function the decorator returned for ``endpoint``."""
+    """Record that the decorator returned ``func`` for ``endpoint``."""
     _endpoints[id(func)] = (func, endpoint)
 
 
 def endpoint_for(value: object) -> Endpoint | None:
-    """Return the ``Endpoint`` for an endpoint function, or ``None`` for anything else."""
+    """Return the ``Endpoint`` of an endpoint function, or ``None``."""
     entry = _endpoints.get(id(value))
     if entry is not None and entry[0] is value:
         return entry[1]

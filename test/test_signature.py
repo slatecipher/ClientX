@@ -1,7 +1,8 @@
-"""inspect_signature and ParameterInfo: what ClientX reads from an endpoint's signature, once.
+"""inspect_signature and ParameterInfo: what ClientX reads from a signature.
 
-These test an internal module directly, because what they check (resolved annotations, aliases
-expanded, which helper counts) is easier to see here than through a request.
+These test an internal module directly, because what they check (resolved
+annotations, aliases expanded, which helper counts) is easier to see here than
+through a request.
 """
 
 import functools
@@ -41,7 +42,8 @@ def parameter(annotation: Any) -> ParameterInfo:
         pytest.param(Annotated[QueryUserId, Header()], HttpxArgument.HEADERS, id="the parameter's over an alias's"),
         pytest.param(QueryUserId, HttpxArgument.PARAMS, id="from an alias"),
         pytest.param(Annotated[int, Field(gt=0)], None, id="a plain Field isn't one"),
-        # Python supports `|` on Annotated; pyright doesn't model it outside an annotation.
+        # Python supports `|` on Annotated; pyright doesn't model it outside an
+        # annotation.
         pytest.param(Annotated[int, Query()] | None, None, id="nested in a union isn't found"),  # pyright: ignore[reportOperatorIssue]
         pytest.param(int, None, id="no Annotated"),
     ],
@@ -94,7 +96,8 @@ def test_inspect_signature_describes_every_parameter() -> None:
 
 
 def test_string_annotations_are_resolved_with_their_metadata() -> None:
-    # As with `from __future__ import annotations`: names resolve in the function's module.
+    # As with `from __future__ import annotations`: names resolve in the
+    # function's module.
     def endpoint(self: "object", user_id: "QueryUserId") -> "None": ...
 
     info = inspect_signature(endpoint)

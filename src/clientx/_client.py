@@ -28,7 +28,7 @@ class _BaseClientX:
 
 
 def _masked(url: URL) -> str:
-    """Return ``url`` as text, with a password replaced by ``[redacted]``, so a repr never shows it."""
+    """Return ``url`` as text with any password masked, for a repr."""
     text = str(url)
     if not url.password:
         return text
@@ -53,7 +53,8 @@ class ClientX(_BaseClientX, Client):
             user = api.get_user(1)
     """
 
-    # Which kind of class this is: `def` endpoints and resources. `_class_setup` reads it.
+    # Which kind of class this is: `def` endpoints and resources. `_class_setup`
+    # reads it.
     __clientx_is_async__: ClassVar[bool] = False
 
     def __init__(
@@ -65,18 +66,20 @@ class ClientX(_BaseClientX, Client):
         validate_arguments: bool | None = None,
         **kwargs: Unpack[HttpxClientOptions],
     ) -> None:
-        """Initialize a client with a base URL and optional ``httpx2.Client`` configuration.
+        """Initialize with a base URL and ``httpx2.Client`` options.
 
         Args:
             base_url: Base URL used for all relative request paths.
-            user_agent: The ``User-Agent`` header to send. When ``None``, a ``User-Agent`` given in
-                ``headers=`` is kept, or else the class's default: its ``user_agent=`` class
-                argument, or ``ClientX/<version>``.
-            raise_for_status: Raise ``httpx2.HTTPStatusError`` when an endpoint gets a 4xx or 5xx
-                response, before any decoder runs. On when ``None``. An endpoint's own
-                ``raise_for_status=`` overrides it.
+            user_agent: The ``User-Agent`` header to send. When ``None``, a
+                ``User-Agent`` given in ``headers=`` is kept, or else the
+                class's default: its ``user_agent=`` class argument, or
+                ``ClientX/<version>``.
+            raise_for_status: Raise ``httpx2.HTTPStatusError`` when an endpoint
+                gets a 4xx or 5xx response, before any decoder runs. On when
+                ``None``. An endpoint's own ``raise_for_status=`` overrides it.
             validate_arguments: Not implemented yet, so it has no effect (#136).
-            **kwargs: Additional keyword arguments passed directly to ``httpx2.Client``.
+            **kwargs: Additional keyword arguments passed directly to
+                ``httpx2.Client``.
         """
         super().__init__(base_url=base_url, **kwargs)
         _configure(
@@ -88,26 +91,29 @@ class ClientX(_BaseClientX, Client):
         )
 
     def __init_subclass__(cls, *, user_agent: str | None = None, **kwargs: Any) -> None:
-        """Check the class's body, store its default ``User-Agent``, and set up its endpoints.
+        """Check the class, store its ``User-Agent``, and set up its endpoints.
 
-        An endpoint or mounted resource can't use a name ``ClientX`` already uses, which
-        includes all of ``httpx2.Client``'s, such as ``get`` or ``send``. Those names are
-        free on a ``Resource``. The ``user_agent=`` class argument is sent unless the
-        caller gives one. A subclass without it keeps its parent's, and a direct subclass
-        sends ``ClientX/<version>``.
+        An endpoint or mounted resource can't use a name ``ClientX`` already
+        uses, which includes all of ``httpx2.Client``'s, such as ``get`` or
+        ``send``. Those names are free on a ``Resource``. The ``user_agent=``
+        class argument is sent unless the caller gives one. A subclass without
+        it keeps its parent's, and a direct subclass sends
+        ``ClientX/<version>``.
         """
         super().__init_subclass__(**kwargs)
         set_up_client(cls, base=ClientX, user_agent=user_agent)
 
 
 class AsyncClientX(_BaseClientX, AsyncClient):
-    """Base class for an async HTTP API client: like ``ClientX``, with ``async def`` endpoints.
+    """Base class for an async HTTP API client, with ``async def`` endpoints.
 
-    An ``AsyncClientX`` is an ``httpx2.AsyncClient``, so it's used with
-    ``async with`` and closed with ``aclose()``.
+    It works like ``ClientX``, but an ``AsyncClientX`` is an
+    ``httpx2.AsyncClient``, so it's used with ``async with`` and closed with
+    ``aclose()``.
     """
 
-    # Which kind of class this is: `async def` endpoints and resources. `_class_setup` reads it.
+    # Which kind of class this is: `async def` endpoints and resources.
+    # `_class_setup` reads it.
     __clientx_is_async__: ClassVar[bool] = True
 
     def __init__(
@@ -119,10 +125,11 @@ class AsyncClientX(_BaseClientX, AsyncClient):
         validate_arguments: bool | None = None,
         **kwargs: Unpack[AsyncHttpxClientOptions],
     ) -> None:
-        """Initialize a client with a base URL and optional ``httpx2.AsyncClient`` configuration.
+        """Initialize with a base URL and ``httpx2.AsyncClient`` options.
 
-        Takes the same arguments as ``ClientX``, except that ``transport`` and ``mounts``
-        take async transports, and event hooks must be ``async`` functions.
+        Takes the same arguments as ``ClientX``, except that ``transport`` and
+        ``mounts`` take async transports, and event hooks must be ``async``
+        functions.
         """
         super().__init__(base_url=base_url, **kwargs)
         _configure(
@@ -134,7 +141,7 @@ class AsyncClientX(_BaseClientX, AsyncClient):
         )
 
     def __init_subclass__(cls, *, user_agent: str | None = None, **kwargs: Any) -> None:
-        """Check the class's body, store its default ``User-Agent``, and set up its endpoints, as ``ClientX`` does."""
+        """Check the class and set up its endpoints, like ``ClientX``."""
         super().__init_subclass__(**kwargs)
         set_up_client(cls, base=AsyncClientX, user_agent=user_agent)
 
@@ -147,7 +154,8 @@ def _configure(
     raise_for_status: bool | None,
     validate_arguments: bool | None,
 ) -> None:
-    # httpx2 always sets its own User-Agent, so read the caller's from `headers=`, not from `client.headers`.
+    # httpx2 always sets its own User-Agent, so read the caller's from
+    # `headers=`, not from `client.headers`.
     client.headers["User-Agent"] = (
         user_agent or Headers(headers).get("User-Agent") or type(client).__clientx_user_agent__
     )
@@ -158,10 +166,10 @@ def _configure(
 
 
 class _BaseResource:
-    """What ``Resource`` and ``AsyncResource`` share: the prefix, the tags, and binding to a parent.
+    """Shared base of ``Resource`` and ``AsyncResource``: prefix, tags, parent.
 
-    Internal state uses ``__clientx_*__`` names, so names ``ClientX`` uses, such as
-    ``close``, are free for endpoints on a resource.
+    Internal state uses ``__clientx_*__`` names, so names ``ClientX`` uses, such
+    as ``close``, are free for endpoints on a resource.
     """
 
     __clientx_prefix__: ClassVar[str] = ""
@@ -171,11 +179,11 @@ class _BaseResource:
     __clientx_is_async__: ClassVar[bool]
 
     def __set_name__(self, owner: type[Any], name: str) -> None:
-        """Check that the resource is mounted on a client or resource of its own kind."""
+        """Check that the resource is mounted on its own kind of class."""
         check_mount(type(self).__qualname__, is_async=self.__clientx_is_async__, owner=owner)
 
     def __get__(self, instance: ClientX | AsyncClientX | _BaseResource | None, owner: type[Any] | None = None) -> Self:
-        """Return a copy bound to ``instance``, or the resource itself on class access."""
+        """Return a copy bound to ``instance``, or ``self`` on class access."""
         if instance is None:
             return self
         bound = copy(self)
@@ -187,7 +195,7 @@ class _BaseResource:
 
 
 class Resource(_BaseResource):
-    """Base class for a group of endpoints under a path prefix, mounted on a client.
+    """Base class for a group of endpoints under a path prefix.
 
     Declare endpoints as on a ``ClientX``, and mount an instance as a class
     attribute of a client::
@@ -207,23 +215,26 @@ class Resource(_BaseResource):
     __clientx_is_async__: ClassVar[bool] = False
 
     def __init_subclass__(cls, *, prefix: str | None = None, tags: Sequence[str] | None = None, **kwargs: Any) -> None:
-        """Check the class's body, store its prefix and tags, and apply them to its endpoints.
+        """Check the class, and apply its prefix and tags to its endpoints.
 
-        The ``prefix=`` class argument, such as ``"/users"``, is joined onto each
-        endpoint's path, and ``tags=`` go before each endpoint's own tags. A subclass
-        without them keeps its parent's.
+        The ``prefix=`` class argument, such as ``"/users"``, is joined onto
+        each endpoint's path, and ``tags=`` go before each endpoint's own tags.
+        A subclass without them keeps its parent's.
         """
         super().__init_subclass__(**kwargs)
         set_up_resource(cls, base=Resource, prefix=prefix, tags=tags)
 
 
 class AsyncResource(_BaseResource):
-    """Base class for a group of ``async def`` endpoints: like ``Resource``, mounted on an ``AsyncClientX``."""
+    """Base class for a group of ``async def`` endpoints, like ``Resource``.
+
+    Mount it on an ``AsyncClientX`` or another ``AsyncResource``.
+    """
 
     __clientx_is_async__: ClassVar[bool] = True
 
     def __init_subclass__(cls, *, prefix: str | None = None, tags: Sequence[str] | None = None, **kwargs: Any) -> None:
-        """Check the class's body, store its prefix and tags, and apply them to its endpoints, as ``Resource`` does."""
+        """Check the class and apply its prefix and tags, like ``Resource``."""
         super().__init_subclass__(**kwargs)
         set_up_resource(cls, base=AsyncResource, prefix=prefix, tags=tags)
 
@@ -232,14 +243,14 @@ def client_of[C: ClientX | AsyncClientX](owner: object, kind: type[C]) -> C:
     """Return the client an endpoint call on ``owner`` goes through.
 
     Args:
-        owner: The object the endpoint was called on: a client, or a resource mounted
-            on one (possibly through other resources).
-        kind: The client class the endpoint needs: ``ClientX`` for a ``def`` endpoint,
-            ``AsyncClientX`` for an ``async def`` one.
+        owner: The object the endpoint was called on: a client, or a resource
+            mounted on one (possibly through other resources).
+        kind: The client class the endpoint needs: ``ClientX`` for a ``def``
+            endpoint, ``AsyncClientX`` for an ``async def`` one.
 
     Raises:
-        DefinitionError: If ``owner`` is a resource that isn't mounted on a client, or isn't
-            a ``kind`` instance or a resource mounted on one.
+        DefinitionError: If ``owner`` is a resource that isn't mounted on a
+            client, or isn't a ``kind`` instance or a resource mounted on one.
     """
     current = owner
     while isinstance(current, _BaseResource):

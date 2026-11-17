@@ -1,4 +1,4 @@
-"""Request bodies: JSON, raw content, forms and files, and the one-kind-of-body rule."""
+"""Request bodies: JSON, raw content, forms, files, and the one-body rule."""
 
 import datetime
 import json
@@ -62,7 +62,8 @@ def test_a_lone_model_is_the_whole_json_body(mock_transport: MockTransport) -> N
 
 
 def test_a_model_is_sent_by_its_own_type(mock_transport: MockTransport) -> None:
-    # A subclass keeps its extra fields, and a field the caller didn't set is sent with its default.
+    # A subclass keeps its extra fields, and a field the caller didn't set is
+    # sent with its default.
     class API(ClientX):
         @method.post("/users")
         def create(self, user: NewUser) -> None: ...
@@ -136,7 +137,8 @@ def test_a_json_field_is_sent_under_its_alias(mock_transport: MockTransport) -> 
 
 
 def test_a_json_field_thats_none_is_left_out(mock_transport: MockTransport) -> None:
-    # So a PATCH sends only what was passed, and nothing at all when nothing was.
+    # So a PATCH sends only what was passed, and nothing at all when nothing
+    # was.
     class API(ClientX):
         @method.patch("/users/{user_id}")
         def update(

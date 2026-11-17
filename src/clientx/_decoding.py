@@ -1,7 +1,7 @@
 """Decode an endpoint's response as its return annotation says.
 
-The return annotation decides how a response becomes the value an endpoint returns,
-so most endpoints need no ``decoder=``:
+The return annotation decides how a response becomes the value an endpoint
+returns, so most endpoints need no ``decoder=``:
 
     -> None             nothing
     -> Response         the response, read (unread with ``stream=True``)
@@ -13,13 +13,14 @@ so most endpoints need no ``decoder=``:
 An ``async def`` endpoint streams with ``AsyncIterator[str]`` and
 ``AsyncIterator[bytes]`` instead.
 
-An endpoint's own ``decoder=``, any callable that takes an ``httpx2.Response``, replaces
-the decoder the annotation implies. An ``Iterator`` or ``AsyncIterator`` annotation streams
-the response either way, and ``decode`` / ``adecode`` close it when iteration ends.
+An endpoint's own ``decoder=``, any callable that takes an ``httpx2.Response``,
+replaces the decoder the annotation implies. An ``Iterator`` or
+``AsyncIterator`` annotation streams the response either way, and ``decode`` /
+``adecode`` close it when iteration ends.
 
-A 4xx or 5xx response isn't decoded when the endpoint checks the status: the wrapper calls
-``raise_status_error`` (``araise_status_error`` for ``async def``) instead, which raises
-``httpx2.HTTPStatusError``.
+A 4xx or 5xx response isn't decoded when the endpoint checks the status: the
+wrapper calls ``raise_status_error`` (``araise_status_error`` for ``async def``)
+instead, which raises ``httpx2.HTTPStatusError``.
 """
 
 from __future__ import annotations
@@ -40,13 +41,14 @@ if TYPE_CHECKING:
 
 
 def is_stream(returns: ReturnInfo, *, is_async: bool) -> bool:
-    """Return whether an endpoint's return annotation makes it stream its response.
+    """Return whether an endpoint's return annotation makes it stream.
 
-    A ``def`` endpoint streams with ``-> Iterator[T]``, an ``async def`` one with
-    ``-> AsyncIterator[T]``.
+    A ``def`` endpoint streams with ``-> Iterator[T]``, an ``async def`` one
+    with ``-> AsyncIterator[T]``.
 
     Raises:
-        DefinitionError: If the annotation is the other kind of endpoint's iterator.
+        DefinitionError: If the annotation is the other kind of endpoint's
+            iterator.
     """
     origin = get_origin(returns.base_type)
     if is_async and origin is Iterator:
@@ -57,17 +59,18 @@ def is_stream(returns: ReturnInfo, *, is_async: bool) -> bool:
 
 
 def default_decoder(returns: ReturnInfo, *, is_async: bool) -> Decoder | None:
-    """Return the decoder an endpoint's return annotation implies, or ``None`` for ``-> None``.
+    """Return the decoder ``returns`` implies, or ``None`` for ``-> None``.
 
-    It's for an endpoint without ``decoder=``, and dispatches on ``returns.base_type``, so
-    ``Annotated`` and ``type`` aliases don't hide the type. The ``TypeAdapter`` gets the full
-    ``returns.annotation``, so ``Annotated`` constraints are validated too. It's built here,
-    once, so a type Pydantic can't validate fails now rather than on the first call.
+    It's for an endpoint without ``decoder=``, and dispatches on
+    ``returns.base_type``, so ``Annotated`` and ``type`` aliases don't hide the
+    type. The ``TypeAdapter`` gets the full ``returns.annotation``, so
+    ``Annotated`` constraints are validated too. It's built here, once, so a
+    type Pydantic can't validate fails now rather than on the first call.
 
     Raises:
-        DefinitionError: If the annotation needs a ``decoder=``: it streams items other than ``str``
-            or ``bytes``, or names a type Pydantic can't validate. Also if it's the other kind
-            of endpoint's iterator.
+        DefinitionError: If the annotation needs a ``decoder=``: it streams
+            items other than ``str`` or ``bytes``, or names a type Pydantic
+            can't validate. Also if it's the other kind of endpoint's iterator.
     """
     return_type = returns.base_type
     if return_type is None or return_type is NoneType:
@@ -131,13 +134,13 @@ def _achunks(response: Response) -> AsyncIterator[bytes]:
 
 
 def raise_status_error(response: Response) -> None:
-    """Raise ``httpx2.HTTPStatusError`` for ``response``, which must be a 4xx or 5xx.
+    """Raise ``httpx2.HTTPStatusError`` for a 4xx or 5xx ``response``.
 
-    The caller checks ``response.is_error`` first: called on a 3xx this would raise, and on
-    a successful streamed response it would read the body the decoder should stream. The
-    body is read, so the error keeps it, and the response is closed, so a streamed one frees
-    its connection. For a response that isn't streamed, httpx2 has already done both, and
-    they do nothing.
+    The caller checks ``response.is_error`` first: called on a 3xx this would
+    raise, and on a successful streamed response it would read the body the
+    decoder should stream. The body is read, so the error keeps it, and the
+    response is closed, so a streamed one frees its connection. For a response
+    that isn't streamed, httpx2 has already done both, and they do nothing.
     """
     try:
         response.read()
@@ -147,7 +150,7 @@ def raise_status_error(response: Response) -> None:
 
 
 async def araise_status_error(response: Response) -> None:
-    """Raise ``httpx2.HTTPStatusError`` for a 4xx or 5xx response from an ``httpx2.AsyncClient``.
+    """Raise ``httpx2.HTTPStatusError`` for a 4xx or 5xx async ``response``.
 
     See ``raise_status_error``.
     """
@@ -159,13 +162,15 @@ async def araise_status_error(response: Response) -> None:
 
 
 def decode(decoder: Decoder | None, response: Response, *, stream: bool) -> object:
-    """Return what a ``def`` endpoint returns: ``decoder``'s output, or ``None`` without a decoder.
+    """Return a ``def`` endpoint's result: ``decoder``'s output, or ``None``.
 
-    For a streamed response, ``decoder`` returns an iterator. The response is closed if the
-    decoder raises, and otherwise when iteration finishes, stops early, or fails.
+    For a streamed response, ``decoder`` returns an iterator. The response is
+    closed if the decoder raises, and otherwise when iteration finishes, stops
+    early, or fails.
 
     Args:
-        decoder: The endpoint's decoder, or ``None`` for an endpoint that returns nothing.
+        decoder: The endpoint's decoder, or ``None`` for an endpoint that
+            returns nothing.
         response: The response, read already unless ``stream`` is true.
         stream: Whether the response was sent in streaming mode.
     """
@@ -184,9 +189,10 @@ def decode(decoder: Decoder | None, response: Response, *, stream: bool) -> obje
 def _close_when_done(items: Iterable[object], response: Response) -> Iterator[object]:
     """Yield from ``items``, then close ``response`` however iteration ends.
 
-    The ``finally`` block runs on exhaustion, on an exception, and when the generator is
-    closed (explicitly, or by a ``for`` loop that breaks early). An iterator that's never
-    started, or is kept alive, stays open until it's closed or garbage-collected.
+    The ``finally`` block runs on exhaustion, on an exception, and when the
+    generator is closed (explicitly, or by a ``for`` loop that breaks early). An
+    iterator that's never started, or is kept alive, stays open until it's
+    closed or garbage-collected.
     """
     try:
         yield from items
@@ -195,7 +201,10 @@ def _close_when_done(items: Iterable[object], response: Response) -> Iterator[ob
 
 
 async def adecode(decoder: Decoder | None, response: Response, *, stream: bool) -> object:
-    """Return what an ``async def`` endpoint returns, as ``decode`` does; a stream is an async iterator."""
+    """Return an ``async def`` endpoint's result, as ``decode`` does.
+
+    A stream is an async iterator.
+    """
     if decoder is None:
         return None
     if not stream:
@@ -209,16 +218,18 @@ async def adecode(decoder: Decoder | None, response: Response, *, stream: bool) 
 
 
 async def _aclose_when_done(items: AsyncIterable[object], response: Response) -> AsyncIterator[object]:
-    """Yield from ``items``, then close them and ``response`` however iteration ends.
+    """Yield from ``items``, then close them and ``response``.
 
-    The exit stack closes them on exhaustion, on an exception, and when the iterator is
-    closed with ``aclose()``. If the caller stops iterating without closing it, the event
-    loop closes it when it's garbage-collected (the async generator finalizer hook).
+    The exit stack closes them on exhaustion, on an exception, and when the
+    iterator is closed with ``aclose()``. If the caller stops iterating without
+    closing it, the event loop closes it when it's garbage-collected (the async
+    generator finalizer hook).
     """
     async with AsyncExitStack() as stack:
         stack.push_async_callback(response.aclose)
-        # What `yield from` does for the sync version: close the decoder's own generator too.
-        # Callbacks run last in, first out: the generator, then the response.
+        # What `yield from` does for the sync version: close the decoder's own
+        # generator too. Callbacks run last in, first out: the generator, then
+        # the response.
         if isinstance(items, AsyncGenerator):
             stack.push_async_callback(items.aclose)
         async for item in items:

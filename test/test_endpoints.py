@@ -1,4 +1,4 @@
-"""Endpoint options and rules: the HTTP method, deprecated=, timeout=, and the parameters an endpoint can have."""
+"""Endpoint options and rules: method, deprecated=, timeout=, parameters."""
 
 import linecache
 import re

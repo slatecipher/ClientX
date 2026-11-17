@@ -1,44 +1,49 @@
 """Build the request an endpoint call sends.
 
-When the client or resource class that declares an endpoint is defined, ``plan_request``
-works out its ``RequestPlan`` from its path template and parameters, and checks that they fit
-together. On each call, ``RequestPlan.build`` turns the call's arguments into the URL path and
-the other ``build_request`` arguments, without reading annotations again.
+When the client or resource class that declares an endpoint is defined,
+``plan_request`` works out its ``RequestPlan`` from its path template and
+parameters, and checks that they fit together. On each call,
+``RequestPlan.build`` turns the call's arguments into the URL path and the other
+``build_request`` arguments, without reading annotations again.
 
 Where each parameter goes is decided once, the way FastAPI decides it:
 
 1. A parameter that a path placeholder names fills it. It must be a plain value.
-2. A parameter with a ``clientx.arguments`` helper in its outermost ``Annotated`` goes where
-   the helper says. A helper anywhere else in its type, as in ``Annotated[str, Header()] | None``,
-   is an error.
-3. Any other parameter goes to the JSON body if its type is a model, mapping, collection or
-   dataclass, or a union with one of those, and to the query string otherwise.
+2. A parameter with a ``clientx.arguments`` helper in its outermost
+   ``Annotated`` goes where the helper says. A helper anywhere else in its type,
+   as in ``Annotated[str, Header()] | None``, is an error.
+3. Any other parameter goes to the JSON body if its type is a model, mapping,
+   collection or dataclass, or a union with one of those, and to the query
+   string otherwise.
 
-A query parameter or form field is a plain value, or a list of plain values, which repeats
-the key (``?tag=a&tag=b``). A header is a plain value. A file is passed to httpx2 as it is.
-Each is sent under its helper's alias, or else under the parameter's name, with ``_`` turned
-into ``-`` for a header. ``_to_text`` turns values into text.
+A query parameter or form field is a plain value, or a list of plain values,
+which repeats the key (``?tag=a&tag=b``). A header is a plain value. A file is
+passed to httpx2 as it is. Each is sent under its helper's alias, or else under
+the parameter's name, with ``_`` turned into ``-`` for a header. ``_to_text``
+turns values into text.
 
-The body is one kind: JSON, raw content (one ``Body()`` parameter), or a form (``Form()``
-parameters, and ``File()`` ones for a multipart form). A lone JSON parameter that isn't a plain
-value (a model, dataclass, mapping or collection) is the whole JSON body; any other JSON
-parameter is a field of a JSON object, under its alias or name. A ``None`` value is left out
-everywhere, so an optional parameter that isn't passed isn't sent.
+The body is one kind: JSON, raw content (one ``Body()`` parameter), or a form
+(``Form()`` parameters, and ``File()`` ones for a multipart form). A lone JSON
+parameter that isn't a plain value (a model, dataclass, mapping or collection)
+is the whole JSON body; any other JSON parameter is a field of a JSON object,
+under its alias or name. A ``None`` value is left out everywhere, so an optional
+parameter that isn't passed isn't sent.
 
-A model, dataclass or mapping marked ``Query()``, ``Header()`` or ``Form()`` is spread into that
-part: each field is a separate value, under its alias or name (with ``_`` turned into ``-`` for
-a header), and each item of a mapping is sent under its own key. Each field follows the part's
-rule, as a parameter would. A helper on a model's field is an error: the parameter's helper
-decides where all of its fields go.
+A model, dataclass or mapping marked ``Query()``, ``Header()`` or ``Form()`` is
+spread into that part: each field is a separate value, under its alias or name
+(with ``_`` turned into ``-`` for a header), and each item of a mapping is sent
+under its own key. Each field follows the part's rule, as a parameter would. A
+helper on a model's field is an error: the parameter's helper decides where all
+of its fields go.
 
-The path template, such as ``"/users/{user_id}"``, is split into literal text and placeholders
-in the plan. Each call fills the placeholders with its arguments, encoded so that a value
-can't change which path is called.
+The path template, such as ``"/users/{user_id}"``, is split into literal text
+and placeholders in the plan. Each call fills the placeholders with its
+arguments, encoded so that a value can't change which path is called.
 
-A placeholder is ``{name}``, filled with one path segment, or ``{name:path}``, whose value
-keeps its slashes, for values such as file paths. ``{{`` and ``}}`` are literal braces. Any
-other brace is a mistake, so ``{user-id}`` fails when the class is defined rather than being
-sent as it's written.
+A placeholder is ``{name}``, filled with one path segment, or ``{name:path}``,
+whose value keeps its slashes, for values such as file paths. ``{{`` and ``}}``
+are literal braces. Any other brace is a mistake, so ``{user-id}`` fails when
+the class is defined rather than being sent as it's written.
 """
 
 import json
@@ -64,14 +69,16 @@ _SYNTAX = (
     "slashes, where name is a parameter's name. Write a literal brace as {{ or }}."
 )
 
-# `quote` leaves dots alone, so a `.` or `..` value is encoded here: it can't move up the path.
+# `quote` leaves dots alone, so a `.` or `..` value is encoded here: it can't
+# move up the path.
 _DOT_SEGMENTS = {".": "%2E", "..": "%2E%2E"}
 
-# How deep `_arms` follows a union inside a union: a stop for a `type` alias that contains itself.
+# How deep `_arms` follows a union inside a union: a stop for a `type` alias
+# that contains itself.
 _MAX_UNION_DEPTH = 100
 
-# The kind of body each part makes, for the one-kind-of-body check. A form's fields and files
-# make one multipart body together.
+# The kind of body each part makes, for the one-kind-of-body check. A form's
+# fields and files make one multipart body together.
 _BODY_KINDS = {
     HttpxArgument.JSON: "JSON",
     HttpxArgument.CONTENT: "raw content",
@@ -93,8 +100,8 @@ class Placeholder:
 
     Attributes:
         name: The name of the parameter whose value fills it.
-        keep_slashes: Whether the value keeps its slashes, so it can fill several
-            segments: the placeholder is ``{name:path}``.
+        keep_slashes: Whether the value keeps its slashes, so it can fill
+            several segments: the placeholder is ``{name:path}``.
     """
 
     name: str
@@ -106,15 +113,16 @@ class Placeholder:
 
 @dataclass(frozen=True, slots=True)
 class PlannedParameter:
-    """Where one parameter's value goes in the request, and the name it's sent under.
+    """Where a parameter's value goes, and the key it's sent under.
 
     Attributes:
         name: The parameter's name, and its key in the call's arguments.
-        part: The ``build_request`` argument it goes to, such as ``params`` or ``json``.
-        key: The name it's sent under: the query parameter's, header's, form field's, file's,
-            or JSON field's name.
-        many: Whether the value is a list of values, sent as a repeated query parameter or
-            form field.
+        part: The ``build_request`` argument it goes to, such as ``params`` or
+            ``json``.
+        key: The name it's sent under: the query parameter's, header's, form
+            field's, file's, or JSON field's name.
+        many: Whether the value is a list of values, sent as a repeated query
+            parameter or form field.
     """
 
     name: str
@@ -125,8 +133,9 @@ class PlannedParameter:
     def encode(self, value: object) -> object:
         """Return ``value`` as httpx2 takes it for this parameter's part.
 
-        A file is passed as it is, and a JSON field becomes JSON-ready data, by the value's own
-        type and with aliases. Anything else becomes text, or a list of texts for a list.
+        A file is passed as it is, and a JSON field becomes JSON-ready data, by
+        the value's own type and with aliases. Anything else becomes text, or a
+        list of texts for a list.
         """
         if self.part is HttpxArgument.FILES:
             return value
@@ -139,13 +148,15 @@ class PlannedParameter:
 
 @dataclass(frozen=True, slots=True)
 class SpreadParameter:
-    """A model, dataclass or mapping parameter whose fields are sent as separate values in one part.
+    """A model, dataclass or mapping parameter spread into one part.
 
     Attributes:
         name: The parameter's name, and its key in the call's arguments.
-        part: The ``build_request`` argument its fields go to: ``params``, ``headers`` or ``data``.
-        keys: For a model or dataclass, each field's attribute name and the key it's sent
-            under. ``None`` for a mapping, whose own keys are sent as they are.
+        part: The ``build_request`` argument its fields go to: ``params``,
+            ``headers`` or ``data``.
+        keys: For a model or dataclass, each field's attribute name and the key
+            it's sent under. ``None`` for a mapping, whose own keys are sent as
+            they are.
     """
 
     name: str
@@ -155,8 +166,9 @@ class SpreadParameter:
     def encode(self, value: object) -> dict[str, object]:
         """Return the value's fields as httpx2 takes them for this part, by key.
 
-        The value becomes JSON-ready data first, so a model's own serializers apply. Then each
-        field becomes text, or a list of texts for a list. A field that's ``None`` is left out.
+        The value becomes JSON-ready data first, so a model's own serializers
+        apply. Then each field becomes text, or a list of texts for a list. A
+        field that's ``None`` is left out.
         """
         if self.keys is None:
             items = cast("dict[object, object]", to_jsonable_python(dict(cast("Mapping[object, object]", value))))
@@ -169,15 +181,16 @@ class SpreadParameter:
 
 @dataclass(frozen=True, slots=True)
 class RequestPlan:
-    """How an endpoint call's arguments become its request, worked out once, when its class is defined.
+    """How a call's arguments become the request, worked out once per endpoint.
 
     Attributes:
         path: The path template, split into literal text and placeholders.
-        parameters: The parameters sent under a name (query parameters, headers, form
-            fields, files, and the fields of a JSON object), and the ones spread into a part,
-            in signature order.
-        body: The parameter that's the whole body, or ``None``: the raw content, or a lone
-            JSON parameter that isn't a plain value. Its ``key`` isn't used.
+        parameters: The parameters sent under a name (query parameters, headers,
+            form fields, files, and the fields of a JSON object), and the ones
+            spread into a part, in signature order.
+        body: The parameter that's the whole body, or ``None``: the raw content,
+            or a lone JSON parameter that isn't a plain value. Its ``key`` isn't
+            used.
     """
 
     path: tuple[str | Placeholder, ...]
@@ -185,16 +198,19 @@ class RequestPlan:
     body: PlannedParameter | None = None
 
     def build(self, arguments: Mapping[str, object]) -> tuple[str, BuildRequestKwargs]:
-        """Return the URL path and the ``build_request`` arguments that carry one call's arguments.
+        """Return the URL path and the ``build_request`` arguments for one call.
 
-        A ``None`` value is left out: httpx2 would send ``?key=`` or an empty form field, and
-        rejects ``None`` as a header. A ``None`` body means no body.
+        A ``None`` value is left out: httpx2 would send ``?key=`` or an empty
+        form field, and rejects ``None`` as a header. A ``None`` body means no
+        body.
 
         Args:
-            arguments: The call's arguments by parameter name, as ``Endpoint.bind`` returns them.
+            arguments: The call's arguments by parameter name, as
+                ``Endpoint.bind`` returns them.
 
         Raises:
-            ArgumentError: If a value would change which path is called; see ``_encode_path_value``.
+            ArgumentError: If a value would change which path is called; see
+                ``_encode_path_value``.
         """
         fields: dict[HttpxArgument, dict[str, object]] = {}
         for parameter in self.parameters:
@@ -207,7 +223,8 @@ class RequestPlan:
                 part_fields.update(parameter.encode(value))
             else:
                 part_fields[parameter.key] = parameter.encode(value)
-        # Each part's value is build_request's argument name: "params", "headers", "data", "files" or "json".
+        # Each part's value is build_request's argument name: "params",
+        # "headers", "data", "files" or "json".
         request_arguments = cast(
             "BuildRequestKwargs", {part.value: values for part, values in fields.items() if values}
         )
@@ -220,18 +237,18 @@ class RequestPlan:
 
 
 def plan_request(template: str, parameters: Sequence[ParameterInfo]) -> RequestPlan:
-    """Work out an endpoint's ``RequestPlan`` from its full path template and its parameters.
+    """Work out an endpoint's ``RequestPlan`` from its path and parameters.
 
     Args:
         template: The path template, with any resource prefix joined on.
-        parameters: The parameters that take the call's arguments: all but the first one,
-            which receives the client or resource.
+        parameters: The parameters that take the call's arguments: all but the
+            first one, which receives the client or resource.
 
     Raises:
-        DefinitionError: If the template is malformed or doesn't fit the parameters, a
-            helper is nested inside a parameter's type or has a default, the parameters
-            make more than one kind of body, or a parameter's type can't go where it
-            would be sent.
+        DefinitionError: If the template is malformed or doesn't fit the
+            parameters, a helper is nested inside a parameter's type or has a
+            default, the parameters make more than one kind of body, or a
+            parameter's type can't go where it would be sent.
     """
     path = _parse_path(template)
     placeholders = {part.name: part for part in path if isinstance(part, Placeholder)}
@@ -268,11 +285,11 @@ def plan_request(template: str, parameters: Sequence[ParameterInfo]) -> RequestP
 
 
 def _check_helper(parameter: ParameterInfo) -> None:
-    """Raise ``DefinitionError`` if a parameter's helper is nested or has a default, or a model field has one.
+    """Raise ``DefinitionError`` if a parameter's helper can't be used.
 
-    The helper must be in the parameter's outermost ``Annotated``. A field of a model
-    parameter can't have a helper: the parameter's helper, or its inferred part, decides
-    where the model goes.
+    The helper must be in the parameter's outermost ``Annotated``, without a
+    default of its own. A field of a model parameter can't have a helper: the
+    parameter's helper, or its inferred part, decides where the model goes.
     """
     for arm in _arms(parameter.annotation):
         cls = _class_of(arm)
@@ -300,7 +317,10 @@ def _check_helper(parameter: ParameterInfo) -> None:
 
 
 def _check_path_parameter(parameter: ParameterInfo, placeholder: Placeholder, template: str) -> None:
-    """Raise ``DefinitionError`` unless a parameter that fills a placeholder is a plain value with no other helper."""
+    """Raise ``DefinitionError`` if a parameter can't fill its placeholder.
+
+    It must be a plain value, with no helper but ``Url()``.
+    """
     name, part = parameter.name, parameter.httpx_argument
     if part not in {None, HttpxArgument.URL}:
         raise DefinitionError(
@@ -315,12 +335,14 @@ def _check_path_parameter(parameter: ParameterInfo, placeholder: Placeholder, te
 
 
 def _part_of(parameter: ParameterInfo, template: str) -> HttpxArgument:
-    """Return the part a parameter that isn't in the path goes to: its helper's, or else the inferred one.
+    """Return the part a parameter outside the path goes to.
 
-    Without a helper, a plain value goes to the query string, and anything else to JSON.
+    It's its helper's part. Without a helper, a plain value goes to the query
+    string, and anything else to JSON.
 
     Raises:
-        DefinitionError: If the parameter is marked ``Url()``: it has no placeholder.
+        DefinitionError: If the parameter is marked ``Url()``: it has no
+            placeholder.
     """
     name, part = parameter.name, parameter.httpx_argument
     if part is HttpxArgument.URL:
@@ -334,9 +356,10 @@ def _part_of(parameter: ParameterInfo, template: str) -> HttpxArgument:
 
 
 def _check_one_body(placed: list[tuple[ParameterInfo, HttpxArgument]]) -> None:
-    """Raise ``DefinitionError`` unless the parameters make one kind of body, with at most one ``Body()``.
+    """Raise ``DefinitionError`` unless the parameters make one body.
 
-    httpx2 sends only one body: given several, it silently drops the others.
+    That's one kind of body, with at most one ``Body()``: httpx2 sends one body,
+    and given several, it silently drops the others.
     """
     body_parameters = [(parameter.name, _BODY_KINDS[part]) for parameter, part in placed if part in _BODY_KINDS]
     if len({kind for _, kind in body_parameters}) > 1:
@@ -353,12 +376,13 @@ def _check_one_body(placed: list[tuple[ParameterInfo, HttpxArgument]]) -> None:
 def _plan_keyed(parameter: ParameterInfo, part: HttpxArgument) -> PlannedParameter | SpreadParameter:
     """Plan a parameter that's sent under a name, or spread into its part.
 
-    A JSON field or a file can be any value. A query parameter or form field is a plain value
-    or a list of them, and a header a plain value. A model, dataclass or mapping for one of
-    those parts is spread into it.
+    A JSON field or a file can be any value. A query parameter or form field is
+    a plain value or a list of them, and a header a plain value. A model,
+    dataclass or mapping for one of those parts is spread into it.
 
     Raises:
-        DefinitionError: If the parameter's type, or one of its fields, can't go to its part.
+        DefinitionError: If the parameter's type, or one of its fields, can't go
+            to its part.
     """
     name, key = parameter.name, _key(parameter, part)
     if part in {HttpxArgument.JSON, HttpxArgument.FILES}:
@@ -372,13 +396,15 @@ def _plan_keyed(parameter: ParameterInfo, part: HttpxArgument) -> PlannedParamet
 
 
 def _plan_spread(parameter: ParameterInfo, part: HttpxArgument, annotation: Any) -> SpreadParameter:
-    """Plan a model, dataclass or mapping parameter whose fields are spread into ``part``.
+    """Plan a model, dataclass or mapping parameter spread into ``part``.
 
-    A model's or dataclass's field is sent under its alias or attribute name, with ``_`` turned
-    into ``-`` for a header. A mapping's items are sent under their own keys.
+    A model's or dataclass's field is sent under its alias or attribute name,
+    with ``_`` turned into ``-`` for a header. A mapping's items are sent under
+    their own keys.
 
     Raises:
-        DefinitionError: If a field, or a mapping's value type, can't go to the part.
+        DefinitionError: If a field, or a mapping's value type, can't go to the
+            part.
     """
     cls = cast("type[Any]", _class_of(annotation))
     if issubclass(cls, Mapping):
@@ -401,14 +427,17 @@ def _plan_spread(parameter: ParameterInfo, part: HttpxArgument, annotation: Any)
 
 
 def _takes_text(arms: list[Any], part: HttpxArgument) -> bool:
-    """Return whether values of these types can go to ``part``: plain values, or lists of them except in headers."""
+    """Return whether values of these types can go to ``part`` as text.
+
+    They can if they're plain values, or lists of them except in headers.
+    """
     if all(_is_plain(arm) for arm in arms):
         return True
     return part is not HttpxArgument.HEADERS and all(_is_plain_list(arm) for arm in arms)
 
 
 def _fields_of(cls: type[Any]) -> dict[str, tuple[Any, str | None]]:
-    """Return a model's or dataclass's fields: each one's type and serialization alias, by attribute name."""
+    """Return each field's type and serialization alias, by attribute name."""
     if issubclass(cls, BaseModel):
         return {name: (info.annotation, info.serialization_alias) for name, info in cls.model_fields.items()}
     hints = get_type_hints(cls)
@@ -416,10 +445,11 @@ def _fields_of(cls: type[Any]) -> dict[str, tuple[Any, str | None]]:
 
 
 def _key(parameter: ParameterInfo, part: HttpxArgument) -> str:
-    """Return the name a value is sent under: a query parameter's, header's, form field's, file's or JSON field's.
+    """Return the key a parameter's value is sent under.
 
-    It's the helper's alias (``Query(alias="q")`` sets ``serialization_alias`` too), or else the
-    parameter's name, with ``_`` turned into ``-`` for a header, as FastAPI's ``Header()`` does.
+    It's the helper's alias (``Query(alias="q")`` sets ``serialization_alias``
+    too), or else the parameter's name, with ``_`` turned into ``-`` for a
+    header, as FastAPI's ``Header()`` does.
     """
     field_info = parameter.clientx_field_info
     if field_info is not None and field_info.serialization_alias:
@@ -428,18 +458,20 @@ def _key(parameter: ParameterInfo, part: HttpxArgument) -> str:
 
 
 def _has_nested_helper(parameter: ParameterInfo) -> bool:
-    """Return whether a helper is inside the parameter's type, as in ``Annotated[str, Header()] | None``.
+    """Return whether a helper is nested inside the parameter's type.
 
-    A helper in the outermost ``Annotated`` isn't nested: ``ParameterInfo`` has already found it.
+    For example, ``Annotated[str, Header()] | None``. A helper in the outermost
+    ``Annotated`` isn't nested: ``ParameterInfo`` has already found it.
     """
     return any(_contains_helper(arg, frozenset()) for arg in get_args(parameter.base_type))
 
 
 def _contains_helper(annotation: Any, seen: frozenset[TypeAliasType]) -> bool:
-    """Return whether ``annotation``, or any type inside it, has a helper in an ``Annotated``.
+    """Return whether ``annotation``, or a type inside it, has a helper.
 
-    ``seen`` holds the ``type`` aliases already expanded on the way here, so one that contains
-    itself, such as ``type Value = dict[str, Value] | str``, is expanded only once.
+    ``seen`` holds the ``type`` aliases already expanded on the way here, so one
+    that contains itself, such as ``type Value = dict[str, Value] | str``, is
+    expanded only once.
     """
     alias = annotation if isinstance(annotation, TypeAliasType) else get_origin(annotation)
     if isinstance(alias, TypeAliasType):
@@ -453,10 +485,11 @@ def _contains_helper(annotation: Any, seen: frozenset[TypeAliasType]) -> bool:
 
 
 def _arms(annotation: Any, depth: int = 0) -> list[Any]:
-    """Return the types a value of ``annotation`` can have: a union's members, without ``None``.
+    """Return the types a value of ``annotation`` can have, without ``None``.
 
-    Each comes without ``Annotated`` or a ``type`` alias, and a union inside a union is flattened.
-    A type that isn't a union is the only one.
+    For a union, they're its members, each without ``Annotated`` or a ``type``
+    alias, and a union inside a union is flattened. A type that isn't a union is
+    the only one.
     """
     base, _ = unwrap_annotated(annotation)
     if base is NoneType:
@@ -473,8 +506,9 @@ def _all_plain(annotation: Any) -> bool:
 def _is_plain(annotation: Any) -> bool:
     """Return whether a value of this type is sent as one piece of text.
 
-    It is unless it's a model, a collection (a mapping, list, tuple, set...) or a dataclass.
-    ``str`` and ``bytes`` are plain, and so are ``Any`` and a missing annotation.
+    It is unless it's a model, a collection (a mapping, list, tuple, set...) or
+    a dataclass. ``str`` and ``bytes`` are plain, and so are ``Any`` and a
+    missing annotation.
     """
     cls = _class_of(annotation)
     if cls is None or issubclass(cls, str | bytes | bytearray):
@@ -483,7 +517,7 @@ def _is_plain(annotation: Any) -> bool:
 
 
 def _is_plain_list(annotation: Any) -> bool:
-    """Return whether the type is a collection of plain values, such as ``list[str]``, but not a mapping."""
+    """Return whether the type is a non-mapping collection of plain values."""
     cls = _class_of(annotation)
     if cls is None or _is_plain(annotation) or not issubclass(cls, Collection) or issubclass(cls, Mapping):
         return False
@@ -491,15 +525,16 @@ def _is_plain_list(annotation: Any) -> bool:
 
 
 def _has_fields(annotation: Any) -> bool:
-    """Return whether a value of the type has named fields: it's a model, a mapping or a dataclass."""
+    """Return whether the type is a model, mapping or dataclass."""
     cls = _class_of(annotation)
     return cls is not None and (issubclass(cls, BaseModel | Mapping) or is_dataclass(cls))
 
 
 def _class_of(annotation: Any) -> type[Any] | None:
-    """Return the class a type stands for, such as ``list`` for ``list[str]``, or ``None`` if it isn't one.
+    """Return the class a type stands for, or ``None`` if it isn't one.
 
-    ``Literal["a"]`` and a ``TypeVar``, for example, aren't classes.
+    ``list[str]`` stands for ``list``. ``Literal["a"]`` and a ``TypeVar``, for
+    example, aren't classes.
     """
     cls: object = get_origin(annotation) or annotation
     return cast("type[Any]", cls) if isinstance(cls, type) else None
@@ -512,10 +547,11 @@ def _field_text(value: object) -> str | list[str]:
 
 
 def _to_text(value: object) -> str:
-    """Return ``value`` as the text that's sent for it, in a path, a query string or a header.
+    """Return ``value`` as the text that's sent for it.
 
-    An ``Enum`` becomes its value, a ``datetime`` ISO 8601 text, a ``UUID`` its string, and
-    a number or bool JSON text (``2``, ``true``). Any other object uses ``str``.
+    An ``Enum`` becomes its value, a ``datetime`` ISO 8601 text, a ``UUID`` its
+    string, and a number or bool JSON text (``2``, ``true``). Any other object
+    uses ``str``.
     """
     jsonable = to_jsonable_python(value, fallback=str)
     return jsonable if isinstance(jsonable, str) else json.dumps(jsonable)
@@ -524,13 +560,15 @@ def _to_text(value: object) -> str:
 def _parse_path(template: str) -> tuple[str | Placeholder, ...]:
     """Split a path template into literal text and placeholders, in order.
 
-    ``string.Formatter`` parses it, so the syntax is Python's format string syntax, limited
-    to ``{name}`` and ``{name:path}``. ``{{`` and ``}}`` become literal braces.
+    ``string.Formatter`` parses it, so the syntax is Python's format string
+    syntax, limited to ``{name}`` and ``{name:path}``. ``{{`` and ``}}`` become
+    literal braces.
 
     Raises:
-        DefinitionError: If a brace is neither part of a placeholder nor doubled, or a
-            placeholder isn't ``{name}`` or ``{name:path}`` with a valid parameter name:
-            ``{id:int}``, ``{user-id}``, ``{a.b}``, ``{c[0]}``, ``{d!r}`` and ``{}`` all raise.
+        DefinitionError: If a brace is neither part of a placeholder nor
+            doubled, or a placeholder isn't ``{name}`` or ``{name:path}`` with a
+            valid parameter name: ``{id:int}``, ``{user-id}``, ``{a.b}``,
+            ``{c[0]}``, ``{d!r}`` and ``{}`` all raise.
     """
     try:
         fields = list(Formatter().parse(template))
@@ -538,7 +576,8 @@ def _parse_path(template: str) -> tuple[str | Placeholder, ...]:
         raise DefinitionError(f"Path {template!r} has a brace that isn't part of a placeholder. {_SYNTAX}") from error
     parts: list[str | Placeholder] = []
     for text, name, spec, conversion in fields:
-        # Text after a `{{` or `}}` comes back as a separate piece: join it to the text before.
+        # Text after a `{{` or `}}` comes back as a separate piece: join it to
+        # the text before.
         if text and parts and isinstance(last := parts[-1], str):
             parts[-1] = last + text
         elif text:
@@ -553,15 +592,17 @@ def _parse_path(template: str) -> tuple[str | Placeholder, ...]:
 
 
 def _render_path(parts: tuple[str | Placeholder, ...], values: Mapping[str, object]) -> str:
-    """Return the path, with each placeholder filled with its parameter's encoded value.
+    """Return the path with each placeholder filled with its encoded value.
 
     Args:
         parts: The template, as ``_parse_path`` returns it.
         values: The call's arguments by parameter name. It has a value for every
-            placeholder, because each placeholder names one of the endpoint's parameters.
+            placeholder, because each placeholder names one of the endpoint's
+            parameters.
 
     Raises:
-        ArgumentError: If a value would change which path is called; see ``_encode_path_value``.
+        ArgumentError: If a value would change which path is called; see
+            ``_encode_path_value``.
     """
     return "".join(part if isinstance(part, str) else _encode_path_value(part, values[part.name]) for part in parts)
 
@@ -569,15 +610,16 @@ def _render_path(parts: tuple[str | Placeholder, ...], values: Mapping[str, obje
 def _encode_path_value(placeholder: Placeholder, value: object) -> str:
     """Return ``value`` as percent-encoded text for ``placeholder``.
 
-    The value becomes text as ``_to_text`` says. Then every character that isn't unreserved
-    is percent-encoded, slashes too unless the placeholder keeps them, so a value can't add
-    path segments, a query string or a fragment. A ``.`` or ``..`` segment is encoded too,
-    so it can't move up the path.
+    The value becomes text as ``_to_text`` says. Then every character that isn't
+    unreserved is percent-encoded, slashes too unless the placeholder keeps
+    them, so a value can't add path segments, a query string or a fragment. A
+    ``.`` or ``..`` segment is encoded too, so it can't move up the path.
 
     Raises:
-        ArgumentError: If the value is ``None`` or empty, or, for a ``{name:path}``
-            placeholder, has an empty segment. Each would call a different path:
-            ``/users/{user_id}`` with ``""`` would call ``/users/``.
+        ArgumentError: If the value is ``None`` or empty, or, for a
+            ``{name:path}`` placeholder, has an empty segment. Each would call a
+            different path: ``/users/{user_id}`` with ``""`` would call
+            ``/users/``.
     """
     if value is None:
         raise _path_value_error(placeholder, value, "None would be sent as 'null'")
@@ -591,7 +633,7 @@ def _encode_path_value(placeholder: Placeholder, value: object) -> str:
 
 
 def _path_value_error(placeholder: Placeholder, value: object, problem: str) -> ArgumentError:
-    """Return the error for a value that would call a different path, naming the placeholder and the problem."""
+    """Return the error for a value that would call a different path."""
     return ArgumentError(
         f"Can't fill {placeholder} with {value!r}: {problem}, so a different path would be called. "
         "No request was sent.",

@@ -1,4 +1,4 @@
-"""Clients and resources: how they're set up, the rules for their class bodies, and their settings."""
+"""Clients and resources: setup, class-body rules, and settings."""
 
 import inspect
 import re
@@ -300,8 +300,9 @@ async def test_async_resources_send_through_the_async_client(mock_transport: Moc
 def test_a_typed_dict_lists_every_parameter_of_its_httpx2_function(
     typed_dict: Any, function: Callable[..., object], passed_separately: set[str]
 ) -> None:
-    # If httpx2 adds a parameter, add it to the TypedDict. If only CI's test-lowest job fails, a key
-    # we list is newer than the lowest httpx2 version pyproject.toml allows.
+    # If httpx2 adds a parameter, add it to the TypedDict. If only CI's
+    # test-lowest job fails, a key we list is newer than the lowest httpx2
+    # version pyproject.toml allows.
     parameters = inspect.signature(function).parameters.values()
     keywords = {p.name for p in parameters if p.kind in {p.POSITIONAL_OR_KEYWORD, p.KEYWORD_ONLY}}
     assert typed_dict.__required_keys__ == frozenset()

@@ -2,8 +2,8 @@
 
 ``__init_subclass__`` on the bases in ``_client.py`` calls into this module, so
 the rules that run once per class live here, apart from the classes themselves.
-This module imports nothing from ``_client.py`` at runtime, so ``_client.py`` can
-import it without a circular import.
+This module imports nothing from ``_client.py`` at runtime, so ``_client.py``
+can import it without a circular import.
 """
 
 from __future__ import annotations
@@ -20,7 +20,8 @@ if TYPE_CHECKING:
     from clientx._client import AsyncClientX, AsyncResource, ClientX, Resource
     from clientx._endpoint import Endpoint
 
-# The sync and the async base of each kind of class, by `__clientx_is_async__`, for error messages.
+# The sync and the async base of each kind of class, by `__clientx_is_async__`,
+# for error messages.
 _CLIENT_BASES = ("ClientX", "AsyncClientX")
 _RESOURCE_BASES = ("Resource", "AsyncResource")
 
@@ -28,12 +29,13 @@ _RESOURCE_BASES = ("Resource", "AsyncResource")
 def set_up_client(
     cls: type[ClientX | AsyncClientX], *, base: type[ClientX | AsyncClientX], user_agent: str | None
 ) -> None:
-    """Check a client subclass's body, store its default ``User-Agent``, and claim and set up its endpoints.
+    """Set up a new client subclass: check its body and claim its endpoints.
 
-    ``base`` is ``ClientX`` or ``AsyncClientX``, whose names the endpoints can't use.
-    A subclass without its own ``user_agent`` keeps its parent's. Claiming the endpoints
-    stops a resource from taking one and joining its prefix onto the client's path. Each
-    endpoint's request plan is worked out once its path is final.
+    ``base`` is ``ClientX`` or ``AsyncClientX``, whose names the endpoints can't
+    use. A subclass without its own ``user_agent`` keeps its parent's. Claiming
+    the endpoints stops a resource from taking one and joining its prefix onto
+    the client's path. Each endpoint's request plan is worked out once its path
+    is final.
     """
     _check_one_kind(cls, _CLIENT_BASES)
     _check_member_names(cls, base, fix="Rename it, or put it on a Resource mounted on the client.")
@@ -51,13 +53,14 @@ def set_up_resource(
     prefix: str | None,
     tags: Sequence[str] | None,
 ) -> None:
-    """Check a resource subclass's body, store its prefix and tags, and apply them to its endpoints.
+    """Set up a new resource subclass: check it, and apply its prefix and tags.
 
-    ``base`` is ``Resource`` or ``AsyncResource``, whose names the endpoints can't use.
-    A subclass without its own ``prefix`` or ``tags`` keeps its parent's. The prefix
-    is joined to each endpoint's path now, so it's absolute: it doesn't depend on
-    where the resource is mounted. Each endpoint's request plan is worked out after the
-    join, because the prefix can add placeholders.
+    ``base`` is ``Resource`` or ``AsyncResource``, whose names the endpoints
+    can't use. A subclass without its own ``prefix`` or ``tags`` keeps its
+    parent's. The prefix is joined to each endpoint's path now, so it's
+    absolute: it doesn't depend on where the resource is mounted. Each
+    endpoint's request plan is worked out after the join, because the prefix can
+    add placeholders.
     """
     _check_one_kind(cls, _RESOURCE_BASES)
     _check_member_names(cls, base, fix="Rename it.")
@@ -73,11 +76,12 @@ def set_up_resource(
 
 
 def check_mount(resource_name: str, *, is_async: bool, owner: type) -> None:
-    """Raise ``DefinitionError`` unless a resource is mounted on a client or resource of its own kind.
+    """Raise ``DefinitionError`` unless a resource's owner is its own kind.
 
-    A resource's ``__set_name__`` calls it when an instance is assigned in ``owner``'s
-    body. A ``Resource``'s ``def`` endpoints need a ``ClientX`` to send through, and an
-    ``AsyncResource``'s ``async def`` endpoints an ``AsyncClientX``.
+    A resource's ``__set_name__`` calls it when an instance is assigned in
+    ``owner``'s body. A ``Resource``'s ``def`` endpoints need a ``ClientX`` to
+    send through, and an ``AsyncResource``'s ``async def`` endpoints an
+    ``AsyncClientX``.
     """
     owner_kind = getattr(owner, "__clientx_is_async__", None)
     if owner_kind is is_async:
@@ -94,10 +98,11 @@ def check_mount(resource_name: str, *, is_async: bool, owner: type) -> None:
 
 
 def _check_one_kind(cls: type, bases: tuple[str, str]) -> None:
-    """Raise ``DefinitionError`` if ``cls`` subclasses both a sync and an async base.
+    """Raise ``DefinitionError`` if ``cls`` has both a sync and an async base.
 
-    Each base, such as ``ClientX`` or ``AsyncClientX``, sets ``__clientx_is_async__`` in
-    its own body, so a class that inherits both has both values among the classes in its MRO.
+    Each base, such as ``ClientX`` or ``AsyncClientX``, sets
+    ``__clientx_is_async__`` in its own body, so a class that inherits both has
+    both values among the classes in its MRO.
     """
     kinds = {vars(class_)["__clientx_is_async__"] for class_ in cls.__mro__ if "__clientx_is_async__" in vars(class_)}
     if len(kinds) > 1:
@@ -105,11 +110,12 @@ def _check_one_kind(cls: type, bases: tuple[str, str]) -> None:
 
 
 def _check_endpoint_kinds(cls: type[ClientX | AsyncClientX | Resource | AsyncResource], bases: tuple[str, str]) -> None:
-    """Raise ``DefinitionError`` if an endpoint in ``cls``'s body is the wrong kind for it.
+    """Raise ``DefinitionError`` if an endpoint is the wrong kind for ``cls``.
 
-    ``ClientX`` and ``Resource`` send with a sync ``httpx2.Client``, so their endpoints are
-    ``def`` methods; ``AsyncClientX`` and ``AsyncResource`` endpoints are ``async def`` methods.
-    Endpoints inherited from a parent class were checked when it was defined.
+    ``ClientX`` and ``Resource`` send with a sync ``httpx2.Client``, so their
+    endpoints are ``def`` methods; ``AsyncClientX`` and ``AsyncResource``
+    endpoints are ``async def`` methods. Endpoints inherited from a parent class
+    were checked when it was defined.
     """
     is_async = cls.__clientx_is_async__
     for value in vars(cls).values():
@@ -124,11 +130,12 @@ def _check_endpoint_kinds(cls: type[ClientX | AsyncClientX | Resource | AsyncRes
 
 
 def _check_member_names(cls: type, base: type, *, fix: str) -> None:
-    """Raise ``DefinitionError`` if an endpoint or mounted resource in ``cls``'s body uses a name ``base`` uses.
+    """Raise ``DefinitionError`` if an endpoint or resource has a reserved name.
 
-    Overriding one breaks the client: an endpoint named ``send`` would replace the
-    ``httpx2.Client.send`` that every request goes through. Other members, such as the
-    subclass's own ``__init__``, may override ``base``'s names as usual.
+    Overriding one breaks the client: an endpoint named ``send`` would replace
+    the ``httpx2.Client.send`` that every request goes through. Other members,
+    such as the subclass's own ``__init__``, may override ``base``'s names as
+    usual.
     """
     reserved = _reserved_names(base)
     for name, value in vars(cls).items():
@@ -141,10 +148,11 @@ def _check_member_names(cls: type, base: type, *, fix: str) -> None:
 
 @cache
 def _reserved_names(base: type) -> frozenset[str]:
-    """Return the names an endpoint or mounted resource can't use on ``base``: everything it defines.
+    """Return the names endpoints and mounted resources can't use on ``base``.
 
-    That's ``dir(base)``, which for a client includes all of ``httpx2.Client``'s names,
-    plus the instance attributes ``base`` and its parents declare.
+    That's everything it defines: ``dir(base)``, which for a client includes all
+    of ``httpx2.Client``'s names, plus the instance attributes ``base`` and its
+    parents declare.
     """
     return frozenset(dir(base)).union(*(inspect.get_annotations(cls) for cls in base.__mro__))
 
@@ -152,19 +160,21 @@ def _reserved_names(base: type) -> frozenset[str]:
 def _is_resource(value: object) -> bool:
     """Return whether ``value`` is a mounted resource.
 
-    Only resource classes define ``__clientx_prefix__``, so this module needn't import them.
-    It's looked up on the type, so an object whose ``__getattr__`` answers any name doesn't count.
+    Only resource classes define ``__clientx_prefix__``, so this module needn't
+    import them. It's looked up on the type, so an object whose ``__getattr__``
+    answers any name doesn't count.
     """
     return hasattr(type(value), "__clientx_prefix__")
 
 
 def _claim_endpoints(cls: type) -> list[Endpoint]:
-    """Make ``cls`` the owner of the endpoints in its body, and return them, each once.
+    """Make ``cls`` the owner of the endpoints in its body, and return them.
 
-    A second name for an endpoint in the same body (an alias, ``QueryDevices = query_devices``) is the
-    same endpoint, so a resource joins its prefix once. An endpoint that another class's body already
-    has raises ``DefinitionError``: a resource would join its prefix onto that endpoint's path too, and
-    an endpoint has one path.
+    A second name for an endpoint in the same body (an alias,
+    ``QueryDevices = query_devices``) is the same endpoint, so a resource joins
+    its prefix once. An endpoint that another class's body already has raises
+    ``DefinitionError``: a resource would join its prefix onto that endpoint's
+    path too, and an endpoint has one path.
     """
     claimed: list[Endpoint] = []
     for value in vars(cls).values():

@@ -1,4 +1,4 @@
-"""Query parameters and headers: where a parameter goes, the name it's sent under, and how its value is sent."""
+"""Query parameters and headers: placement, names and value text."""
 
 import datetime
 import enum
@@ -37,7 +37,7 @@ def only_request(sent: list[httpx2.Request]) -> httpx2.Request:
 
 
 def header_names(request: httpx2.Request) -> list[str]:
-    """Return the request's header names as they were sent, in their own case."""
+    """Return the request's header names as sent, in their own case."""
     return [name.decode() for name, _ in request.headers.raw]
 
 
@@ -67,7 +67,8 @@ def test_a_plain_parameter_without_a_helper_goes_to_the_query(mock_transport: Mo
 
 
 def test_defaults_are_sent_and_none_is_left_out(mock_transport: MockTransport) -> None:
-    # Defaults are sent, as a Python call would use them (#135); `None` lets the server decide.
+    # Defaults are sent, as a Python call would use them (#135); `None` lets the
+    # server decide.
     class API(ClientX):
         @method.get("/items")
         def search(self, page: int = 1, q: str | None = None, opt: Optional[int] = None) -> None: ...  # noqa: UP045
@@ -234,7 +235,8 @@ def test_a_header_must_be_a_plain_value() -> None:
 @pytest.mark.parametrize(
     "annotation",
     [
-        # Python supports `|` on Annotated; pyright doesn't model it outside an annotation.
+        # Python supports `|` on Annotated; pyright doesn't model it outside an
+        # annotation.
         Annotated[str, Header()] | None,  # pyright: ignore[reportOperatorIssue]
         Optional[Annotated[int, Header()]],  # noqa: UP045
         list[Annotated[int, Query()]],

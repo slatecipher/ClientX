@@ -1,11 +1,12 @@
 """The ``Endpoint`` the verb decorators build for each endpoint method.
 
-The decorator in ``_method.py`` creates one ``Endpoint`` per decorated method when
-the class body runs, and registers it in ``_registry.py``. It holds the decorator's
-options and the analysed signature, and works out how the response is decoded, so the
-function isn't inspected again at call time. When the client or resource class is
-defined, ``_class_setup.py`` sets its ``owner``, joins a resource's prefix and tags onto
-``raw_path`` and ``tags``, and calls ``set_up_request``.
+The decorator in ``_method.py`` creates one ``Endpoint`` per decorated method
+when the class body runs, and registers it in ``_registry.py``. It holds the
+decorator's options and the analysed signature, and works out how the response
+is decoded, so the function isn't inspected again at call time. When the client
+or resource class is defined, ``_class_setup.py`` sets its ``owner``, joins a
+resource's prefix and tags onto ``raw_path`` and ``tags``, and calls
+``set_up_request``.
 """
 
 import functools
@@ -26,38 +27,42 @@ from clientx.exceptions import DefinitionError
 
 @dataclass(slots=True)
 class Endpoint:
-    """One endpoint: its HTTP method and path, the function that declares them, and its options.
+    """An endpoint's HTTP method and path, its function, and its options.
 
     Attributes:
         method: The HTTP method, such as ``"GET"``.
-        signature: The function's analysed signature, with every parameter as written.
-            The first one receives the client or resource; ``parameters()`` returns the rest.
-        tags: Tags that group endpoints, such as for ``clientx.tools``. A resource puts
-            its own tags in front when its class is defined.
-        raw_path: The path template, such as ``"/users/{user_id}"``. A resource joins its
-            prefix onto it when its class is defined.
-        decoder: Turns the ``httpx2.Response`` into the endpoint's return value. It's the
-            decorator's ``decoder=``, or else ``__post_init__`` sets the one the return
-            annotation implies. It stays ``None`` for ``-> None``: the endpoint returns nothing.
-        deprecated: The message of the ``DeprecationWarning`` each call emits, such as
-            ``"Use new() instead."``; ``None`` if the endpoint isn't deprecated.
-        timeout: The request timeout for this endpoint, passed to httpx2 as it is, so it
-            means what it does there: ``USE_CLIENT_DEFAULT`` (the default) uses the client's,
-            and ``None`` turns the timeout off.
-        raise_for_status: Whether a 4xx or 5xx response raises ``httpx2.HTTPStatusError``;
-            ``None`` uses the client's setting.
-        validate_arguments: Stored for argument validation, which isn't implemented
-            yet (#136).
-        stream_response: The decorator's ``stream=True``: the endpoint returns the open,
-            unread response, which the caller reads and closes. Only with ``-> Response``,
-            and without a ``decoder=``.
-        owner: The client or resource class whose body declares the endpoint, or ``None``
-            until that class is defined. An endpoint has one owner, so a resource joins
-            its prefix once.
-        request: How a call's arguments become the request, or ``None`` until the owner
-            class is defined and calls ``set_up_request``.
-        stream: Whether requests are sent in streaming mode: with ``stream_response``, or because
-            the return annotation is an ``Iterator`` (``AsyncIterator`` for ``async def``).
+        signature: The function's analysed signature, with every parameter as
+            written. The first one receives the client or resource;
+            ``parameters()`` returns the rest.
+        tags: Tags that group endpoints, such as for ``clientx.tools``. A
+            resource puts its own tags in front when its class is defined.
+        raw_path: The path template, such as ``"/users/{user_id}"``. A resource
+            joins its prefix onto it when its class is defined.
+        decoder: Turns the ``httpx2.Response`` into the endpoint's return value.
+            It's the decorator's ``decoder=``, or else ``__post_init__`` sets
+            the one the return annotation implies. It stays ``None`` for
+            ``-> None``: the endpoint returns nothing.
+        deprecated: The message of the ``DeprecationWarning`` each call emits,
+            such as ``"Use new() instead."``; ``None`` if the endpoint isn't
+            deprecated.
+        timeout: The request timeout for this endpoint, passed to httpx2 as it
+            is, so it means what it does there: ``USE_CLIENT_DEFAULT`` (the
+            default) uses the client's, and ``None`` turns the timeout off.
+        raise_for_status: Whether a 4xx or 5xx response raises
+            ``httpx2.HTTPStatusError``; ``None`` uses the client's setting.
+        validate_arguments: Stored for argument validation, which isn't
+            implemented yet (#136).
+        stream_response: The decorator's ``stream=True``: the endpoint returns
+            the open, unread response, which the caller reads and closes. Only
+            with ``-> Response``, and without a ``decoder=``.
+        owner: The client or resource class whose body declares the endpoint, or
+            ``None`` until that class is defined. An endpoint has one owner, so
+            a resource joins its prefix once.
+        request: How a call's arguments become the request, or ``None`` until
+            the owner class is defined and calls ``set_up_request``.
+        stream: Whether requests are sent in streaming mode: with
+            ``stream_response``, or because the return annotation is an
+            ``Iterator`` (``AsyncIterator`` for ``async def``).
             ``__post_init__`` sets it.
     """
 
@@ -76,11 +81,14 @@ class Endpoint:
     stream: bool = field(init=False)
 
     def __post_init__(self) -> None:
-        """Check the signature, and work out how the response is decoded, once, when the method is decorated.
+        """Check the signature and work out how to decode the response, once.
+
+        It runs when the method is decorated, before its class exists.
 
         Raises:
-            DefinitionError: If the parameters, the return annotation, ``stream=True`` or the
-                ``decoder=`` can't work; see the ``_check_*`` methods and ``default_decoder``.
+            DefinitionError: If the parameters, the return annotation,
+                ``stream=True`` or the ``decoder=`` can't work; see the
+                ``_check_*`` methods and ``default_decoder``.
         """
         self._check_parameters()
         self._check_return_annotation()
@@ -98,11 +106,12 @@ class Endpoint:
             raise DefinitionError(f"Endpoint '{name}': {error}") from error
 
     def _check_parameters(self) -> None:
-        """Raise ``DefinitionError`` unless the first parameter is positional and none is ``*args`` or ``**kwargs``.
+        """Raise ``DefinitionError`` unless the parameters fit an endpoint.
 
-        The first parameter receives the client or resource, so a call must be able to pass it
-        positionally. Every other parameter sends one value, which its annotation places in the
-        request, so a ``*args`` or ``**kwargs`` parameter has nowhere to go.
+        The first parameter receives the client or resource, so a call must be
+        able to pass it positionally. Every other parameter sends one value,
+        which its annotation places in the request, so a ``*args`` or
+        ``**kwargs`` parameter has nowhere to go.
         """
         name = self.signature.qualname
         first = self.signature.parameters[0] if self.signature.parameters else None
@@ -120,7 +129,7 @@ class Endpoint:
                 )
 
     def _check_return_annotation(self) -> None:
-        """Raise ``DefinitionError`` if there's no return annotation: it decides how the response is decoded."""
+        """Raise ``DefinitionError`` if the return annotation is missing."""
         if self.signature.returns.annotation is NO_VALUE:
             raise DefinitionError(
                 f"Endpoint '{self.signature.qualname}' needs a return annotation, such as `-> None` or "
@@ -128,10 +137,11 @@ class Endpoint:
             )
 
     def _check_stream_response(self) -> None:
-        """Raise ``DefinitionError`` unless ``stream=True`` comes with ``-> Response`` and no ``decoder=``.
+        """Raise ``DefinitionError`` if ``stream=True`` is misused.
 
-        The endpoint then returns the open response itself, so another return type has nothing
-        to say, and a decoder would leave nobody sure who closes the response.
+        It needs ``-> Response`` and no ``decoder=``: the endpoint then returns
+        the open response itself, so another return type has nothing to say, and
+        a decoder would leave nobody sure who closes the response.
         """
         if not self.stream_response:
             return
@@ -147,15 +157,17 @@ class Endpoint:
             )
 
     def _check_decoder(self) -> None:
-        """Raise ``DefinitionError`` if a ``decoder=`` can't return what the endpoint's annotation says.
+        """Raise ``DefinitionError`` if ``decoder=`` can't fit the annotation.
 
-        An endpoint annotated ``-> None`` returns nothing, so it takes no decoder. A decoder is
-        a plain function that gets the response: the body is already read, or, for an endpoint
-        annotated as a stream, the decoder returns the iterator. So it can't be ``async def``,
-        and a generator decoder streams: a plain generator for a ``def`` endpoint annotated
-        ``-> Iterator[...]``, an async generator for an ``async def`` one annotated
-        ``-> AsyncIterator[...]``. A decoder that returns an iterator without being a generator
-        can't be told apart here; type checkers check it against the annotation.
+        An endpoint annotated ``-> None`` returns nothing, so it takes no
+        decoder. A decoder is a plain function that gets the response: the body
+        is already read, or, for an endpoint annotated as a stream, the decoder
+        returns the iterator. So it can't be ``async def``, and a generator
+        decoder streams: a plain generator for a ``def`` endpoint annotated
+        ``-> Iterator[...]``, an async generator for an ``async def`` one
+        annotated ``-> AsyncIterator[...]``. A decoder that returns an iterator
+        without being a generator can't be told apart here; type checkers check
+        it against the annotation.
         """
         if self.decoder is None:
             return
@@ -193,31 +205,33 @@ class Endpoint:
             )
 
     def bind(self, owner: object, *args: Any, **kwargs: Any) -> dict[str, Any]:
-        """Return a call's arguments by parameter name, in signature order, with defaults filled in.
+        """Return a call's arguments by name, in order, with defaults filled in.
 
-        ``owner``, the client or resource the endpoint was called on, fills the first
-        parameter and is left out of the result.
+        ``owner``, the client or resource the endpoint was called on, fills the
+        first parameter and is left out of the result.
 
         Raises:
-            TypeError: If the arguments don't fit the signature, as in a normal call.
+            TypeError: If the arguments don't fit the signature, as in a normal
+                call.
         """
         arguments = self.signature.bind(owner, *args, **kwargs)
         del arguments[self.signature.parameters[0].name]
         return arguments
 
     def parameters(self) -> tuple[ParameterInfo, ...]:
-        """Return the endpoint's parameters, without the first one, which receives the client or resource."""
+        """Return all parameters but the first, which receives the owner."""
         return self.signature.parameters[1:]
 
     def set_up_request(self) -> None:
-        """Work out, once, how a call's arguments become the request, and check the path against the parameters.
+        """Work out how a call's arguments become the request, once.
 
-        ``_class_setup`` calls it when the owner class is defined, after joining a resource's
-        prefix onto ``raw_path``: the prefix can add placeholders.
+        It also checks the path against the parameters. ``_class_setup`` calls
+        it when the owner class is defined, after joining a resource's prefix
+        onto ``raw_path``: the prefix can add placeholders.
 
         Raises:
-            DefinitionError: If the path template and the parameters don't fit together; see
-                ``plan_request``.
+            DefinitionError: If the path template and the parameters don't fit
+                together; see ``plan_request``.
         """
         try:
             self.request = plan_request(self.raw_path, self.parameters())
@@ -225,16 +239,18 @@ class Endpoint:
             raise DefinitionError(f"Endpoint '{self.signature.qualname}': {error}") from error
 
     def request_arguments(self, arguments: dict[str, Any]) -> tuple[str, BuildRequestKwargs]:
-        """Return the URL path and the other ``build_request`` arguments for one call.
+        """Return a call's URL path and its other ``build_request`` arguments.
 
-        The plan supplies the parts that carry the call's arguments; the endpoint adds its ``timeout``.
+        The plan supplies the parts that carry the call's arguments; the
+        endpoint adds its ``timeout``.
 
         Args:
-            arguments: The call's arguments by parameter name, as ``bind`` returns them.
+            arguments: The call's arguments by parameter name, as ``bind``
+                returns them.
 
         Raises:
-            DefinitionError: If the endpoint isn't declared in the body of a client or resource
-                class, so it has no ``request`` plan.
+            DefinitionError: If the endpoint isn't declared in the body of a
+                client or resource class, so it has no ``request`` plan.
             ArgumentError: If an argument's value can't be sent.
         """
         if self.request is None:
@@ -248,10 +264,11 @@ class Endpoint:
 
 
 def _function_of(decoder: Decoder) -> object:
-    """Return the function a decoder runs: the decoder itself, or its class's ``__call__`` for an instance.
+    """Return the function a decoder runs: itself, or its class's ``__call__``.
 
-    ``inspect`` sees through functions, methods and ``functools.partial``, but not through a
-    callable instance, so a decoder class with an ``async def __call__`` is checked by its method.
+    ``inspect`` sees through functions, methods and ``functools.partial``, but
+    not through a callable instance, so a decoder class with an
+    ``async def __call__`` is checked by its method.
     """
     function: object = decoder
     if not (inspect.isroutine(decoder) or isinstance(decoder, functools.partial)):

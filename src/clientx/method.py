@@ -1,4 +1,7 @@
-"""The HTTP verb decorators that turn a client's methods into endpoints, as in ``@method.get("/users")``."""
+"""The HTTP verb decorators that turn a client's methods into endpoints.
+
+Use them as ``@method.get("/users")``.
+"""
 
 from clientx._method import Method
 

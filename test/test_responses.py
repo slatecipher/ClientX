@@ -1,4 +1,4 @@
-"""Responses: decoded as the return annotation says, streamed and closed, and raised for 4xx and 5xx."""
+"""Responses: decoding, streaming and closing, and raising for 4xx and 5xx."""
 
 import functools
 import re
@@ -54,7 +54,10 @@ class TrackedAsyncStream(httpx2.AsyncByteStream):
 
 
 def streaming(stream: httpx2.SyncByteStream | httpx2.AsyncByteStream, status: int = 200) -> httpx2.MockTransport:
-    """Return a transport that answers with ``stream`` as the body, so it's read only as it's iterated."""
+    """Return a transport that answers with ``stream`` as the body.
+
+    The body is read only as it's iterated.
+    """
     return httpx2.MockTransport(lambda request: httpx2.Response(status, stream=stream))
 
 
@@ -167,7 +170,8 @@ def test_a_stream_left_early_is_closed() -> None:
     stream = TrackedStream(b"first\n", b"second\n")
     for _line in API(BASE_URL, transport=streaming(stream)).logs():
         break
-    # The loop held the only reference, so the generator is closed when the loop ends.
+    # The loop held the only reference, so the generator is closed when the loop
+    # ends.
     assert stream.closed
 
 
@@ -417,7 +421,8 @@ def test_stream_true_needs_a_response_annotation_and_no_decoder(
 
 # Custom decoders
 #
-# Type checkers reject the mismatched decorators below too; the ignores let them reach the runtime checks.
+# Type checkers reject the mismatched decorators below too; the ignores let them
+# reach the runtime checks.
 
 
 class Event(BaseModel):
