@@ -2,16 +2,13 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from copy import copy
-from typing import TYPE_CHECKING, Any, ClassVar, Self, Unpack
+from typing import Any, ClassVar, Self, Unpack
 
 from httpx2 import URL, AsyncClient, Client, Headers
 
 from clientx._class_setup import check_mount, set_up_client, set_up_resource
-from clientx._types import AsyncHttpxClientOptions, HttpxClientOptions
+from clientx._types import AsyncHttpxClientOptions, HeaderTypes, HttpxClientOptions
 from clientx._version import __version__
-
-if TYPE_CHECKING:
-    from httpx2._types import HeaderTypes
 
 type EndpointOwner = ClientX | AsyncClientX | Resource | AsyncResource
 
