@@ -32,7 +32,7 @@ class Method:
         timeout: Timeout | float | None | UseClientDefault = USE_CLIENT_DEFAULT,
         raise_for_status: bool | None = None,
         validate_arguments: bool | None = None,
-    ):
+    ) -> Callable[[Callable[Concatenate[T, P], R]], Callable[Concatenate[T, P], R]]:
         def decorator(func: Callable[Concatenate[T, P], R]) -> Callable[Concatenate[T, P], R]:
             endpoint = Endpoint(
                 method=self.method,

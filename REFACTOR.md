@@ -70,7 +70,8 @@ Suggested order:
 9. [ ] Logging (old `_logging.py`): one DEBUG record per call, never values.
 10. [ ] Decorator typing (old `RawEndpointDecorator`/`DecodedEndpointDecorator` overloads): check a
     `decoder=` against the annotation; reject `async def` endpoints on sync classes for type checkers.
-    `Method.__call__` has no return annotation yet.
+    `Method.__call__` returns a plain generic decorator for now: pyright and mypy both keep the
+    endpoint's signature, but accept any `decoder=` and either kind of endpoint on any class.
 11. [ ] `clientx.tools` (old 314 lines), then `clientx.mcp` (old 210 lines).
 
 Open decoder decisions: `key=` unwrapping (old `TypeAdapterDecoder(key=...)`); a streamed open
