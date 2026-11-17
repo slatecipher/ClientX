@@ -27,6 +27,9 @@ pieces are ported one small step at a time. Delete this file and `pre/` when the
   with `stacklevel=2`, so it names the caller's line and is shown by Python's default filters.
   `DeprecatedMessage` and the "any callable" form are gone. The old `stacklevel=4` pointed into
   clientx's `_decorators.py`, so outside test runners the warning was hidden.
+- An endpoint's `timeout=` follows httpx2: it defaults to `USE_CLIENT_DEFAULT` (the client's timeout),
+  and `None` means no timeout. Unlike `raise_for_status=` and `validate_arguments=`, where `None` means
+  the client's setting. The old code read `timeout=None` as the client's.
 
 ## Done
 
@@ -38,7 +41,7 @@ pieces are ported one small step at a time. Delete this file and `pre/` when the
 | `_endpoint.py` | `Endpoint` dataclass; `__post_init__` checks the first parameter and the return annotation, sets `stream`, resolves `decoder`; `bind`, `parameters()` |
 | `_signature.py` | `inspect_signature`, `SignatureInfo`, `ParameterInfo`, `ReturnInfo`; expands PEP 695 `type` aliases; unresolvable hints raise |
 | `_decoding.py` | `is_stream`, `default_decoder`, `decode`/`adecode` (stream closing), `raise_status_error`/`araise_status_error` |
-| `_method.py` | the verb decorator and the sync/async wrappers: bind, send (`stream=`), raise for 4xx/5xx, decode |
+| `_method.py` | the verb decorator and the sync/async wrappers: warn if deprecated, bind, send (`timeout=`, `stream=`), raise for 4xx/5xx, decode |
 | `_types.py`, `arguments.py`, `_arguments.py` | option TypedDicts, shared aliases; the `Field`-based request-part helpers |
 
 ## Missing functionality (besides docs and tests)
@@ -55,7 +58,7 @@ Suggested order:
      `Body` = raw content, `Form`, `File`, `Json`); parameters named after a part; model expansion;
      merge rules; dropping `None`; header value formatting; what a helper's `alias` means on a parameter
    - the one-helper, outermost-`Annotated` rule (old `MisplacedHelperError`); `DumpConfig`
-3. [ ] Per-endpoint `timeout` (stored, never sent).
+3. [x] Per-endpoint `timeout`: passed to `build_request` as it is (see Decisions).
 4. [x] `deprecated=`: a message string; both wrappers warn before anything else (see Decisions).
 5. [ ] Argument validation (`validate_arguments` is stored on endpoint and client, never read).
 6. [ ] Exceptions module (`ClientXError` and subclasses; old ones also subclass `TypeError`/`ValueError`).
@@ -81,6 +84,8 @@ response (old `StreamResponseDecoder`).
 - `DeprecatedMessage(...)` becomes a plain string in `docs/endpoints.md` (drop "any callable"),
   `llms.txt:78`, `examples/beeceptor/beeceptor_client.py`, and `test/test_async.py`, `test_tools.py`,
   `test_endpoint_context.py`, `test_public_api.py`. A test can check the warning names the caller's file.
+- `docs/endpoints.md:31` and `llms.txt:78`: an endpoint's `timeout=None` now means no timeout; leaving
+  it out uses the client's.
 - Tests still import the old modules (`clientx.exceptions`, `clientx._client_types`, `clientx._compiler`, ...).
   Rename or move the tests that define `send`/`stream` endpoints on a `ClientX` (`test_decorators.py`).
   `test_unresolvable_hints_fall_back_to_the_raw_annotations` must expect a `NameError` now.

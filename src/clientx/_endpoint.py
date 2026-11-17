@@ -11,11 +11,11 @@ defined, ``_class_setup.py`` sets its
 from dataclasses import dataclass, field
 from typing import Any
 
-from httpx2 import Timeout
+from httpx2 import USE_CLIENT_DEFAULT, Timeout
 
 from clientx._decoding import default_decoder, is_stream
 from clientx._signature import NO_VALUE, ParameterInfo, ParameterKind, SignatureInfo
-from clientx._types import Decoder, MethodType
+from clientx._types import Decoder, MethodType, UseClientDefault
 
 
 @dataclass(slots=True)
@@ -35,7 +35,9 @@ class Endpoint:
             annotation implies. It stays ``None`` for ``-> None``: the endpoint returns nothing.
         deprecated: The message of the ``DeprecationWarning`` each call emits, such as
             ``"Use new() instead."``; ``None`` if the endpoint isn't deprecated.
-        timeout: The request timeout for this endpoint; ``None`` uses the client's.
+        timeout: The request timeout for this endpoint, passed to httpx2 as it is, so it
+            means what it does there: ``USE_CLIENT_DEFAULT`` (the default) uses the client's,
+            and ``None`` turns the timeout off.
         raise_for_status: Whether a 4xx or 5xx response raises ``httpx2.HTTPStatusError``;
             ``None`` uses the client's setting.
         validate_arguments: Whether arguments are checked against their annotations
@@ -53,7 +55,7 @@ class Endpoint:
     raw_path: str = field(default="")
     decoder: Decoder | None = field(default=None)
     deprecated: str | None = field(default=None)
-    timeout: Timeout | float | None = field(default=None)
+    timeout: Timeout | float | None | UseClientDefault = field(default=USE_CLIENT_DEFAULT)
     raise_for_status: bool | None = field(default=None)
     validate_arguments: bool | None = field(default=None)
     owner: type | None = field(default=None)

@@ -8,6 +8,10 @@ from enum import StrEnum
 from typing import Any, Literal, TypedDict
 
 from httpx2 import AsyncBaseTransport, BaseTransport, Limits, Request, Response
+
+# httpx2 exports the `USE_CLIENT_DEFAULT` value but not its class, so this is the one place that imports
+# the class from httpx2's private module. Other modules import it from here, so a move upstream is a
+# one-line fix.
 from httpx2._client import UseClientDefault
 
 # _types is private: import for type checking only, so an httpx2
