@@ -157,10 +157,10 @@ Rebuilt from scratch (agreed 2026-11-17); the old suite (25 files, 6,566 lines) 
   and `test_typing.py` checked by pyright and mypy in `make typecheck`.
 - Coverage leaves out `src/clientx/pre/`. A 95% `fail_under` gate goes in once the first wave lands.
 - Done: `conftest.py` (`mock_transport`), `test_public_api.py`, `test_typing.py`, `test_paths.py`,
-  `test_query_and_headers.py`, `test_bodies.py`, `test_spreading.py` (90% coverage; `_request.py` 100%).
+  `test_query_and_headers.py`, `test_bodies.py`, `test_spreading.py`, `test_responses.py` (94% coverage).
   `test_bodies.py` covers #128 and #129.
 - [ ] First wave:
-  `test_responses.py` (decoding, streaming, 4xx/5xx), `test_clients.py` (classes, resources, repr,
+  `test_clients.py` (classes, resources, repr,
   options), `test_signature.py`. Then the coverage gate.
 - Later: `test_typing.py` grows with item 10; tools, MCP and logging get tests when they're ported.
 - Streaming tests need an iterator or async-generator `MockTransport` body: `bytes` bodies are read
