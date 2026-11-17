@@ -14,6 +14,7 @@ from functools import cache
 from typing import TYPE_CHECKING
 
 from clientx._registry import endpoint_for
+from clientx.exceptions import DefinitionError
 
 if TYPE_CHECKING:
     from clientx._client import AsyncClientX, AsyncResource, ClientX, Resource
@@ -89,7 +90,7 @@ def check_mount(resource_name: str, *, is_async: bool, owner: type) -> None:
         owner: The class the resource is assigned in.
 
     Raises:
-        TypeError: If ``owner`` is the other kind, or isn't a client or resource at all.
+        DefinitionError: If ``owner`` is the other kind, or isn't a client or resource at all.
     """
     owner_kind = getattr(owner, "__clientx_is_async__", None)
     if owner_kind is is_async:
@@ -102,7 +103,7 @@ def check_mount(resource_name: str, *, is_async: bool, owner: type) -> None:
     if owner_kind is not None:
         other_client, other_resource = _CLIENT_BASES[not is_async], _RESOURCE_BASES[not is_async]
         message += f" For {'a' if is_async else 'an'} {other_client}, subclass {other_resource} instead."
-    raise TypeError(message)
+    raise DefinitionError(message)
 
 
 def _check_one_kind(cls: type, bases: tuple[str, str]) -> None:
@@ -112,11 +113,11 @@ def _check_one_kind(cls: type, bases: tuple[str, str]) -> None:
     has both values among the classes in its MRO.
 
     Raises:
-        TypeError: If ``cls`` mixes the two kinds.
+        DefinitionError: If ``cls`` mixes the two kinds.
     """
-    kinds = {vars(klass)["__clientx_is_async__"] for klass in cls.__mro__ if "__clientx_is_async__" in vars(klass)}
+    kinds = {vars(class_)["__clientx_is_async__"] for class_ in cls.__mro__ if "__clientx_is_async__" in vars(class_)}
     if len(kinds) > 1:
-        raise TypeError(f"'{cls.__qualname__}' can't subclass both {bases[0]} and {bases[1]}: choose one.")
+        raise DefinitionError(f"'{cls.__qualname__}' can't subclass both {bases[0]} and {bases[1]}: choose one.")
 
 
 def _check_endpoint_kinds(cls: type[ClientX | AsyncClientX | Resource | AsyncResource], bases: tuple[str, str]) -> None:
@@ -127,14 +128,14 @@ def _check_endpoint_kinds(cls: type[ClientX | AsyncClientX | Resource | AsyncRes
     Endpoints inherited from a parent class were checked when it was defined.
 
     Raises:
-        TypeError: If an endpoint is ``async def`` on a sync class, or ``def`` on an async one.
+        DefinitionError: If an endpoint is ``async def`` on a sync class, or ``def`` on an async one.
     """
     is_async = cls.__clientx_is_async__
     for value in vars(cls).values():
         endpoint = endpoint_for(value)
         if endpoint is not None and endpoint.signature.is_async != is_async:
             kind, fix = ("`async def`", "`def`") if endpoint.signature.is_async else ("a plain `def`", "`async def`")
-            raise TypeError(
+            raise DefinitionError(
                 f"Endpoint '{endpoint.signature.qualname}' is {kind}, so it can't be an endpoint of "
                 f"'{cls.__qualname__}', a{'n' if is_async else ''} {bases[is_async]} subclass. "
                 f"Define it with {fix}, or subclass {bases[not is_async]} instead."
@@ -149,12 +150,12 @@ def _check_member_names(cls: type, base: type, *, fix: str) -> None:
     subclass's own ``__init__``, may override ``base``'s names as usual.
 
     Raises:
-        TypeError: If an endpoint or mounted resource uses a reserved name.
+        DefinitionError: If an endpoint or mounted resource uses a reserved name.
     """
     reserved = _reserved_names(base)
     for name, value in vars(cls).items():
         if name in reserved and (endpoint_for(value) is not None or _is_resource(value)):
-            raise TypeError(
+            raise DefinitionError(
                 f"'{cls.__qualname__}.{name}' (defined in {cls.__module__}) can't be named '{name}': "
                 f"{base.__name__} already uses that name, and overriding it breaks the client. {fix}"
             )
@@ -188,7 +189,7 @@ def _claim_endpoints(cls: type) -> list[Endpoint]:
     one path.
 
     Raises:
-        TypeError: If an endpoint in ``cls``'s body belongs to another client or resource class.
+        DefinitionError: If an endpoint in ``cls``'s body belongs to another client or resource class.
     """
     claimed: list[Endpoint] = []
     for value in vars(cls).values():
@@ -196,7 +197,7 @@ def _claim_endpoints(cls: type) -> list[Endpoint]:
         if endpoint is None or endpoint.owner is cls:
             continue
         if endpoint.owner is not None:
-            raise TypeError(
+            raise DefinitionError(
                 f"Endpoint '{endpoint.signature.qualname}' belongs to '{endpoint.owner.__qualname__}', so it can't "
                 f"also be an endpoint of '{cls.__qualname__}': an endpoint has one path. Declare it in "
                 f"'{cls.__qualname__}' too."

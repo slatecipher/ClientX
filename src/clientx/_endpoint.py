@@ -16,6 +16,7 @@ from httpx2 import USE_CLIENT_DEFAULT, Timeout
 from clientx._decoding import default_decoder, is_stream
 from clientx._signature import NO_VALUE, ParameterInfo, ParameterKind, SignatureInfo
 from clientx._types import Decoder, MethodType, UseClientDefault
+from clientx.exceptions import DefinitionError
 
 
 @dataclass(slots=True)
@@ -65,21 +66,21 @@ class Endpoint:
         """Check the signature, and work out how the response is decoded, once, when the class is defined.
 
         Raises:
-            TypeError: If the function has no positional first parameter for the client or
+            DefinitionError: If the function has no positional first parameter for the client or
                 resource (it has none, or it's keyword-only, ``*args`` or ``**kwargs``), has no
                 return annotation, or has one that can't be decoded without a ``decoder=``.
         """
         name = self.signature.qualname
         first = self.signature.parameters[0] if self.signature.parameters else None
         if first is None or first.kind not in (ParameterKind.POSITIONAL_ONLY, ParameterKind.POSITIONAL_OR_KEYWORD):
-            raise TypeError(
+            raise DefinitionError(
                 f"Endpoint '{name}' needs a positional first parameter, such as `self`, "
                 "for the client or resource it's called on."
             )
 
         returns = self.signature.returns
         if returns.annotation is NO_VALUE:
-            raise TypeError(
+            raise DefinitionError(
                 f"Endpoint '{name}' needs a return annotation, such as `-> None` or `-> User`: "
                 "it decides what the endpoint returns."
             )
@@ -88,8 +89,8 @@ class Endpoint:
             self.stream = is_stream(returns, is_async=is_async)
             if self.decoder is None:
                 self.decoder = default_decoder(returns, is_async=is_async)
-        except TypeError as error:
-            raise TypeError(f"Endpoint '{name}': {error}") from error
+        except DefinitionError as error:
+            raise DefinitionError(f"Endpoint '{name}': {error}") from error
 
     def bind(self, owner: object, *args: Any, **kwargs: Any) -> dict[str, Any]:
         """Match a call's arguments to the endpoint's parameters, with defaults filled in.

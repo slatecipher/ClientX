@@ -22,7 +22,14 @@ pieces are ported one small step at a time. Delete this file and `pre/` when the
   The old decoder classes aren't ported (`decoder=Model.from_response` replaces `FromResponseDecoder`).
 - `inspect_signature` describes every parameter as written; `Endpoint` owns the rule that the first
   parameter receives the client or resource.
-- Errors are plain `TypeError` for now, with the old messages, until the exceptions module returns.
+- Three exception classes instead of the old twelve (`clientx/exceptions.py`): `ClientXError`, the base;
+  `DefinitionError(ClientXError, TypeError)` for every mistake in how a client, resource or endpoint is
+  written (nearly all raised when the class is defined; nobody catches them, so the message is what
+  matters); and `ArgumentError(ClientXError, ValueError)` for argument values that can't be sent (the old
+  `PathValueError` and `ArgumentValidationError`), with `.parameter`. Like Pydantic's `PydanticUserError`
+  and FastAPI's `FastAPIError`. HTTP errors stay httpx2's. Python's own `TypeError` for a call that
+  doesn't fit the signature, and its `NameError` for an annotation that can't be resolved, aren't wrapped
+  (wrapping the `NameError` with the endpoint's name was considered; revisit later).
 - `deprecated=` takes the warning's message, a `str`. The wrapper emits the `DeprecationWarning` itself
   with `stacklevel=2`, so it names the caller's line and is shown by Python's default filters.
   `DeprecatedMessage` and the "any callable" form are gone. The old `stacklevel=4` pointed into
@@ -43,6 +50,7 @@ pieces are ported one small step at a time. Delete this file and `pre/` when the
 | `_decoding.py` | `is_stream`, `default_decoder`, `decode`/`adecode` (stream closing), `raise_status_error`/`araise_status_error` |
 | `_method.py` | the verb decorator and the sync/async wrappers: warn if deprecated, bind, send (`timeout=`, `stream=`), raise for 4xx/5xx, decode |
 | `_types.py`, `arguments.py`, `_arguments.py` | option TypedDicts, shared aliases; the `Field`-based request-part helpers |
+| `exceptions.py` | `ClientXError`, `DefinitionError` (every check above raises it) |
 
 ## Missing functionality (besides docs and tests)
 
@@ -61,8 +69,10 @@ Suggested order:
 3. [x] Per-endpoint `timeout`: passed to `build_request` as it is (see Decisions).
 4. [x] `deprecated=`: a message string; both wrappers warn before anything else (see Decisions).
 5. [ ] Argument validation (`validate_arguments` is stored on endpoint and client, never read).
-6. [ ] Exceptions module (`ClientXError` and subclasses; old ones also subclass `TypeError`/`ValueError`).
-   `MissingDecoderError` is no longer needed.
+6. [ ] Exceptions (see Decisions). Done: `ClientXError`, `DefinitionError`. Still to do:
+   - `ArgumentError`, added with its first user: argument validation (item 5) or path values (item 2)
+   - reject `*args`/`**kwargs` endpoint parameters (old `EndpointSignatureError`; not ported yet)
+   - later, maybe: wrap an unresolvable annotation's `NameError` with the endpoint's name
 7. [ ] Public exports in `clientx/__init__.py`: `AsyncClientX`, `Resource`, `AsyncResource`,
    `ClientXError`, `__version__`, httpx2 re-exports (`Auth`, `Request`, `Response`, `Timeout`),
    `DumpConfig`; decide whether to re-export the `clientx.arguments` helpers.
@@ -87,7 +97,10 @@ response (old `StreamResponseDecoder`).
   `test_endpoint_context.py`, `test_public_api.py`. A test can check the warning names the caller's file.
 - `docs/endpoints.md:31` and `llms.txt:78`: an endpoint's `timeout=None` now means no timeout; leaving
   it out uses the client's.
-- Tests still import the old modules (`clientx.exceptions`, `clientx._client_types`, `clientx._compiler`, ...).
+- `docs/errors.md`, `llms.txt:103` and the tests' `pytest.raises(...)`: the old exception classes become
+  `DefinitionError` or `ArgumentError` (tests match on the message). `examples/jsonplaceholder_example.py`
+  catches `ArgumentValidationError`.
+- Tests still import the old modules (`clientx._client_types`, `clientx._compiler`, ...).
   Rename or move the tests that define `send`/`stream` endpoints on a `ClientX` (`test_decorators.py`).
   `test_unresolvable_hints_fall_back_to_the_raw_annotations` must expect a `NameError` now.
   Streaming tests need an iterator or async-generator `MockTransport` body: `bytes` bodies are read at once.

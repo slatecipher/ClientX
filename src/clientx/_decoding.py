@@ -29,6 +29,8 @@ from typing import TYPE_CHECKING, Any, cast, get_args, get_origin
 from httpx2 import Response
 from pydantic import PydanticSchemaGenerationError, TypeAdapter
 
+from clientx.exceptions import DefinitionError
+
 if TYPE_CHECKING:
     from clientx._signature import ReturnInfo
     from clientx._types import Decoder
@@ -42,13 +44,13 @@ def is_stream(returns: ReturnInfo, *, is_async: bool) -> bool:
         is_async: Whether the endpoint is ``async def``, which streams an ``AsyncIterator``.
 
     Raises:
-        TypeError: If the annotation is the other kind of endpoint's iterator.
+        DefinitionError: If the annotation is the other kind of endpoint's iterator.
     """
     origin = get_origin(returns.base_type)
     if is_async and origin is Iterator:
-        raise TypeError("An `async def` endpoint streams an AsyncIterator: annotate it -> AsyncIterator[...].")
+        raise DefinitionError("An `async def` endpoint streams an AsyncIterator: annotate it -> AsyncIterator[...].")
     if not is_async and origin is AsyncIterator:
-        raise TypeError("A plain `def` endpoint streams an Iterator: annotate it -> Iterator[...].")
+        raise DefinitionError("A plain `def` endpoint streams an Iterator: annotate it -> Iterator[...].")
     return origin is (AsyncIterator if is_async else Iterator)
 
 
@@ -68,7 +70,7 @@ def default_decoder(returns: ReturnInfo, *, is_async: bool) -> Decoder | None:
         The decoder, or ``None`` for ``-> None``: the endpoint returns nothing.
 
     Raises:
-        TypeError: If the annotation needs a ``decoder=``: it streams items other than ``str``
+        DefinitionError: If the annotation needs a ``decoder=``: it streams items other than ``str``
             or ``bytes``, or names a type Pydantic can't validate. Also if it's the other kind
             of endpoint's iterator.
     """
@@ -87,14 +89,14 @@ def default_decoder(returns: ReturnInfo, *, is_async: bool) -> Decoder | None:
             return _alines if is_async else _lines
         if item is bytes:
             return _achunks if is_async else _chunks
-        raise TypeError(
+        raise DefinitionError(
             f"Streaming {_type_name(item)} items needs a decoder=: ClientX streams str (lines) and bytes "
             "(chunks) by itself."
         )
     try:
         adapter = TypeAdapter[Any](returns.annotation)
     except PydanticSchemaGenerationError as error:
-        raise TypeError(
+        raise DefinitionError(
             f"Pydantic can't validate {_type_name(returns.annotation)}: annotate a type it supports, "
             "or pass a decoder=."
         ) from error

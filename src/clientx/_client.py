@@ -9,6 +9,7 @@ from httpx2 import URL, AsyncClient, Client, Headers
 from clientx._class_setup import check_mount, set_up_client, set_up_resource
 from clientx._types import AsyncHttpxClientOptions, HeaderTypes, HttpxClientOptions
 from clientx._version import __version__
+from clientx.exceptions import DefinitionError
 
 type EndpointOwner = ClientX | AsyncClientX | Resource | AsyncResource
 
@@ -190,14 +191,14 @@ def client_of[C: ClientX | AsyncClientX](owner: object, kind: type[C]) -> C:
             ``AsyncClientX`` for an ``async def`` one.
 
     Raises:
-        TypeError: If ``owner`` is a resource that isn't mounted on a client, or isn't
+        DefinitionError: If ``owner`` is a resource that isn't mounted on a client, or isn't
             a ``kind`` instance or a resource mounted on one.
     """
     current = owner
     while isinstance(current, _BaseResource):
         if current.__clientx_parent__ is None:
             name = type(current).__qualname__
-            raise TypeError(
+            raise DefinitionError(
                 f"Resource '{name}' isn't mounted on a client. Mount an instance as a class "
                 f"attribute of a ClientX subclass (for example, `items = {name}()`) and call "
                 "its endpoints through a client instance (`client.items.<endpoint>(...)`)."
@@ -205,7 +206,7 @@ def client_of[C: ClientX | AsyncClientX](owner: object, kind: type[C]) -> C:
         current = current.__clientx_parent__
     if isinstance(current, kind):
         return current
-    raise TypeError(
+    raise DefinitionError(
         f"The endpoint must be called on an instance of {kind.__name__} or a resource mounted on one, "
         f"not on {type(owner).__qualname__!r}."
     )
