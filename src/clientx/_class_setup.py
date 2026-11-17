@@ -28,10 +28,11 @@ _RESOURCE_BASES = ("Resource", "AsyncResource")
 def set_up_client(
     cls: type[ClientX | AsyncClientX], *, base: type[ClientX | AsyncClientX], user_agent: str | None
 ) -> None:
-    """Check a client subclass's body, store its default ``User-Agent``, and claim its endpoints.
+    """Check a client subclass's body, store its default ``User-Agent``, and claim and set up its endpoints.
 
     A subclass without its own ``user_agent`` keeps its parent's. Claiming the endpoints
-    stops a resource from taking one and joining its prefix onto the client's path.
+    stops a resource from taking one and joining its prefix onto the client's path. Each
+    endpoint's request plan is worked out once its path is final.
 
     Args:
         cls: The new client subclass.
@@ -43,7 +44,8 @@ def set_up_client(
     _check_endpoint_kinds(cls, _CLIENT_BASES)
     if user_agent is not None:
         cls.__clientx_user_agent__ = user_agent
-    _claim_endpoints(cls)
+    for endpoint in _claim_endpoints(cls):
+        endpoint.set_up_request()
 
 
 def set_up_resource(
@@ -57,7 +59,8 @@ def set_up_resource(
 
     A subclass without its own ``prefix`` or ``tags`` keeps its parent's. The prefix
     is joined to each endpoint's path now, so it's absolute: it doesn't depend on
-    where the resource is mounted.
+    where the resource is mounted. Each endpoint's request plan is worked out after the
+    join, because the prefix can add placeholders.
 
     Args:
         cls: The new resource subclass.
@@ -75,6 +78,7 @@ def set_up_resource(
     for endpoint in _claim_endpoints(cls):
         endpoint.raw_path = _join_path(cls.__clientx_prefix__, endpoint.raw_path)
         endpoint.tags = list(dict.fromkeys([*cls.__clientx_tags__, *(endpoint.tags or ())]))
+        endpoint.set_up_request()
 
 
 def check_mount(resource_name: str, *, is_async: bool, owner: type) -> None:

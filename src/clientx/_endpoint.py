@@ -4,8 +4,8 @@ The decorator in ``_method.py`` creates one ``Endpoint`` per decorated method wh
 the class body runs, and registers it in ``_registry.py``. It holds the decorator's
 options and the analysed signature, and works out how the response is decoded, so the
 function isn't inspected again at call time. When the client or resource class is
-defined, ``_class_setup.py`` sets its
-``owner`` and joins a resource's prefix and tags onto ``raw_path`` and ``tags``.
+defined, ``_class_setup.py`` sets its ``owner``, joins a resource's prefix and tags onto
+``raw_path`` and ``tags``, and calls ``set_up_request``.
 """
 
 from dataclasses import dataclass, field
@@ -14,8 +14,9 @@ from typing import Any
 from httpx2 import USE_CLIENT_DEFAULT, Timeout
 
 from clientx._decoding import default_decoder, is_stream
+from clientx._request import RequestPlan, plan_request
 from clientx._signature import NO_VALUE, ParameterInfo, ParameterKind, SignatureInfo
-from clientx._types import Decoder, MethodType, UseClientDefault
+from clientx._types import BuildRequestKwargs, Decoder, MethodType, UseClientDefault
 from clientx.exceptions import DefinitionError
 
 
@@ -46,6 +47,8 @@ class Endpoint:
         owner: The client or resource class whose body declares the endpoint, or ``None``
             until that class is defined. An endpoint has one owner, so a resource joins
             its prefix once.
+        request: How a call's arguments become the request, or ``None`` until the owner
+            class is defined and calls ``set_up_request``.
         stream: Whether requests are sent in streaming mode, because the return annotation
             is an ``Iterator`` (``AsyncIterator`` for ``async def``). ``__post_init__`` sets it.
     """
@@ -60,6 +63,7 @@ class Endpoint:
     raise_for_status: bool | None = field(default=None)
     validate_arguments: bool | None = field(default=None)
     owner: type | None = field(default=None)
+    request: RequestPlan | None = field(default=None, init=False)
     stream: bool = field(init=False)
 
     def __post_init__(self) -> None:
@@ -114,3 +118,40 @@ class Endpoint:
     def parameters(self) -> tuple[ParameterInfo, ...]:
         """Return the endpoint's parameters, without the first one, which receives the client or resource."""
         return self.signature.parameters[1:]
+
+    def set_up_request(self) -> None:
+        """Work out, once, how a call's arguments become the request, and check the path against the parameters.
+
+        ``_class_setup`` calls it when the owner class is defined, after joining a resource's
+        prefix onto ``raw_path``: the prefix can add placeholders.
+
+        Raises:
+            DefinitionError: If the path template and the parameters don't fit together; see
+                ``plan_request``.
+        """
+        try:
+            self.request = plan_request(self.raw_path, self.parameters())
+        except DefinitionError as error:
+            raise DefinitionError(f"Endpoint '{self.signature.qualname}': {error}") from error
+
+    def request_arguments(self, arguments: dict[str, Any]) -> tuple[str, BuildRequestKwargs]:
+        """Return the URL path and the other ``build_request`` arguments for one call.
+
+        The plan supplies the parts that carry the call's arguments; the endpoint adds its ``timeout``.
+
+        Args:
+            arguments: The call's arguments by parameter name, as ``bind`` returns them.
+
+        Raises:
+            DefinitionError: If the endpoint isn't declared in the body of a client or resource
+                class, so it has no ``request`` plan.
+            ArgumentError: If an argument's value can't be sent.
+        """
+        if self.request is None:
+            raise DefinitionError(
+                f"Endpoint '{self.signature.qualname}' can't be called: it isn't declared in the body of a "
+                "ClientX, AsyncClientX, Resource or AsyncResource subclass."
+            )
+        url, request_arguments = self.request.build(arguments)
+        request_arguments["timeout"] = self.timeout
+        return url, request_arguments

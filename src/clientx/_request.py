@@ -1,8 +1,13 @@
 """Build the request an endpoint call sends.
 
-An endpoint's path template, such as ``"/users/{user_id}"``, is split once, when its class is
-defined, into literal text and placeholders. Each call fills the placeholders with its
-arguments, encoded so that a value can't change which path is called.
+When the client or resource class that declares an endpoint is defined, ``plan_request``
+works out its ``RequestPlan`` from its path template and parameters, and checks that they fit
+together. On each call, ``RequestPlan.build`` turns the call's arguments into the URL path and
+the other ``build_request`` arguments, without reading annotations again.
+
+The path template, such as ``"/users/{user_id}"``, is split into literal text and placeholders
+in the plan. Each call fills the placeholders with its arguments, encoded so that a value
+can't change which path is called.
 
 A placeholder is ``{name}``, filled with one path segment, or ``{name:path}``, whose value
 keeps its slashes, for values such as file paths. ``{{`` and ``}}`` are literal braces. Any
@@ -11,13 +16,15 @@ sent as it's written.
 """
 
 import json
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from string import Formatter
 from urllib.parse import quote
 
 from pydantic_core import to_jsonable_python
 
+from clientx._signature import ParameterInfo
+from clientx._types import BuildRequestKwargs, HttpxArgument
 from clientx.exceptions import ArgumentError, DefinitionError
 
 # The end of each path template error message: how to write one that works.
@@ -46,6 +53,65 @@ class Placeholder:
     def __str__(self) -> str:
         """Return the placeholder as it's written in the template, for error messages."""
         return f"{{{self.name}:path}}" if self.keep_slashes else f"{{{self.name}}}"
+
+
+@dataclass(frozen=True, slots=True)
+class RequestPlan:
+    """How an endpoint call's arguments become its request, worked out once, when its class is defined.
+
+    Attributes:
+        path: The path template, split into literal text and placeholders.
+    """
+
+    path: tuple[str | Placeholder, ...]
+
+    def build(self, arguments: Mapping[str, object]) -> tuple[str, BuildRequestKwargs]:
+        """Return the URL path and the ``build_request`` arguments that carry one call's arguments.
+
+        Args:
+            arguments: The call's arguments by parameter name, as ``Endpoint.bind`` returns them.
+
+        Raises:
+            ArgumentError: If a value would change which path is called; see ``_encode_path_value``.
+        """
+        return _render_path(self.path, arguments), {}
+
+
+def plan_request(template: str, parameters: Sequence[ParameterInfo]) -> RequestPlan:
+    """Work out an endpoint's ``RequestPlan`` from its full path template and its parameters.
+
+    Args:
+        template: The path template, with any resource prefix joined on.
+        parameters: The parameters that take the call's arguments: all but the first one,
+            which receives the client or resource.
+
+    Raises:
+        DefinitionError: If the template is malformed, a placeholder names no parameter, a
+            parameter marked ``Url()`` has no placeholder, or a placeholder's parameter has a
+            helper for another part of the request.
+    """
+    path = _parse_path(template)
+    placeholders = {part.name: part for part in path if isinstance(part, Placeholder)}
+    names = {parameter.name for parameter in parameters}
+    for name, placeholder in placeholders.items():
+        if name not in names:
+            raise DefinitionError(
+                f"Path {template!r} has the placeholder {placeholder}, but no parameter is named {name!r}. "
+                "Add the parameter, or remove the placeholder."
+            )
+    for parameter in parameters:
+        name, part = parameter.name, parameter.httpx_argument
+        if name in placeholders and part not in {None, HttpxArgument.URL}:
+            raise DefinitionError(
+                f"Parameter {name!r} fills {placeholders[name]} in the path {template!r}, so it can't also "
+                f"go to the request's {part}. Remove its helper, or rename the parameter or the placeholder."
+            )
+        if name not in placeholders and part is HttpxArgument.URL:
+            raise DefinitionError(
+                f"Parameter {name!r} is marked Url(), but the path {template!r} has no placeholder {{{name}}}. "
+                "Add the placeholder, or remove Url()."
+            )
+    return RequestPlan(path)
 
 
 def _parse_path(template: str) -> tuple[str | Placeholder, ...]:

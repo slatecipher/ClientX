@@ -53,8 +53,8 @@ class Method:
                     warnings.warn(endpoint.deprecated, DeprecationWarning, stacklevel=2)
                 client = client_of(_self, ClientX)
                 arguments = endpoint.bind(_self, *args, **kwargs)
-
-                request = client.build_request(endpoint.method, "", timeout=endpoint.timeout)
+                url, request_arguments = endpoint.request_arguments(arguments)
+                request = client.build_request(endpoint.method, url, **request_arguments)
                 response = client.send(request, stream=endpoint.stream)
                 if response.is_error and _raises_for_status(endpoint, client):
                     raise_status_error(response)
@@ -67,7 +67,8 @@ class Method:
                     warnings.warn(endpoint.deprecated, DeprecationWarning, stacklevel=2)
                 client = client_of(_self, AsyncClientX)
                 arguments = endpoint.bind(_self, *args, **kwargs)
-                request = client.build_request(endpoint.method, "", timeout=endpoint.timeout)
+                url, request_arguments = endpoint.request_arguments(arguments)
+                request = client.build_request(endpoint.method, url, **request_arguments)
                 response = await client.send(request, stream=endpoint.stream)
                 if response.is_error and _raises_for_status(endpoint, client):
                     await araise_status_error(response)
