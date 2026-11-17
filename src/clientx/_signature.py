@@ -7,7 +7,7 @@ so nothing reads annotations again at call time.
 """
 
 import inspect
-from collections.abc import Callable, Iterable, Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from typing import Annotated, Any, TypeAliasType, get_args, get_origin, get_type_hints
 
@@ -40,12 +40,15 @@ class ParameterInfo:
             ``NO_VALUE`` if there's no annotation.
         httpx_argument: The request part the parameter goes to, read from
             ``httpx_argument_spec``; ``None`` without one.
-        httpx_argument_spec: The mark a ``clientx.arguments`` helper adds to its
-            ``FieldInfo``; ``None`` without one.
-        field_info: The first ``pydantic.fields.FieldInfo`` in the ``Annotated`` metadata,
-            such as ``Field(gt=0)`` or a ``clientx.arguments`` helper. Only the annotation
-            is read, by design: a ``FieldInfo`` given as the default value isn't found, so
-            there's no annotation and default to reconcile.
+        httpx_argument_spec: The mark the helper adds to ``clientx_field_info``; ``None``
+            without one.
+        clientx_field_info: The ``FieldInfo`` of the parameter's ``clientx.arguments`` helper,
+            such as ``Query()``, from the ``Annotated`` metadata; ``None`` without one. If
+            there are several helpers, the last one wins. A plain ``Field(gt=0)`` isn't a
+            helper, so it's skipped. A helper nested inside another type, such as
+            ``Annotated[int, Query()] | None``, isn't found. Only the annotation is read, by
+            design: a helper given as the default value isn't found, so there's no annotation
+            and default to reconcile.
         annotation: The resolved annotation, with ``Annotated`` kept, or ``NO_VALUE`` if
             there's none.
         default: The default value, or ``NO_VALUE`` if there's none.
@@ -57,30 +60,39 @@ class ParameterInfo:
     base_type: Any = field(init=False)
     httpx_argument: HttpxArgument | None = field(default=None, init=False)
     httpx_argument_spec: HttpxArgumentSpec | None = field(default=None, init=False)
-    field_info: FieldInfo | None = field(default=None, init=False)
+    clientx_field_info: FieldInfo | None = field(default=None, init=False)
     annotation: Any = NO_VALUE
     default: Any = NO_VALUE
 
     def __post_init__(self) -> None:
-        """Derive ``base_type``, ``field_info``, ``httpx_argument_spec`` and ``httpx_argument`` from ``annotation``."""
+        """Derive ``base_type``, and the attributes that come from the helper, from ``annotation``."""
         base_type, metadata = _unwrap_annotated(self.annotation)
         self.base_type = base_type
-        self.field_info = self.extract_field_info(metadata)
+        self._set_clientx_field_info(metadata)
 
-        if self.field_info is not None:
-            self.httpx_argument_spec = self.extract_httpx_argument_spec(self.field_info.metadata)
-            if self.httpx_argument_spec is not None:
-                self.httpx_argument = self.httpx_argument_spec.in_
+    def _set_clientx_field_info(self, metadata: tuple[Any, ...]) -> None:
+        """Set ``clientx_field_info``, ``httpx_argument_spec`` and ``httpx_argument`` from the parameter's helper.
+
+        The helper is the last ``FieldInfo`` in ``metadata`` that a ``clientx.arguments`` helper
+        marked, so in ``Annotated[int, Query(), Header()]``, ``Header()`` wins. A plain ``FieldInfo``,
+        such as ``Field(gt=0)``, is skipped. Without a helper, the three stay ``None``.
+
+        Args:
+            metadata: The ``Annotated`` metadata, in the order ``_unwrap_annotated`` returns it:
+                inner first, so a helper on the parameter wins over one from a ``type`` alias.
+        """
+        for meta in reversed(metadata):
+            if isinstance(meta, FieldInfo):
+                if httpx_meta := self._extract_httpx_argument_spec(meta.metadata):
+                    self.httpx_argument = httpx_meta.in_
+                    self.httpx_argument_spec = httpx_meta
+                    self.clientx_field_info = meta
+                    break
 
     @staticmethod
-    def extract_field_info(metadata: Iterable[Any]) -> FieldInfo | None:
-        """Return the first ``FieldInfo`` in ``metadata``, or ``None``."""
-        return next((meta for meta in metadata if isinstance(meta, FieldInfo)), None)
-
-    @staticmethod
-    def extract_httpx_argument_spec(metadata: Iterable[Any]) -> HttpxArgumentSpec | None:
-        """Return the first ``HttpxArgumentSpec`` in ``metadata``, or ``None``."""
-        return next((meta for meta in metadata if isinstance(meta, HttpxArgumentSpec)), None)
+    def _extract_httpx_argument_spec(metadata: list[Any]) -> HttpxArgumentSpec | None:
+        """Return the last ``HttpxArgumentSpec`` in a ``FieldInfo``'s ``metadata``, or ``None``."""
+        return next((meta for meta in reversed(metadata) if isinstance(meta, HttpxArgumentSpec)), None)
 
 
 @dataclass(frozen=True)
