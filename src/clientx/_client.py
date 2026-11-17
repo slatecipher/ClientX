@@ -17,7 +17,6 @@ type EndpointOwner = ClientX | AsyncClientX | Resource | AsyncResource
 class _BaseClientX:
     __clientx_user_agent__: ClassVar[str] = f"ClientX/{__version__}"
     __clientx_raise_for_status__: bool = True
-    __clientx_validate_arguments__: bool = False
 
     def __repr__(self) -> str:
         client = cast("ClientX | AsyncClientX", self)
@@ -63,7 +62,6 @@ class ClientX(_BaseClientX, Client):
         *,
         user_agent: str | None = None,
         raise_for_status: bool | None = None,
-        validate_arguments: bool | None = None,
         **kwargs: Unpack[HttpxClientOptions],
     ) -> None:
         """Initialize with a base URL and ``httpx2.Client`` options.
@@ -77,7 +75,6 @@ class ClientX(_BaseClientX, Client):
             raise_for_status: Raise ``httpx2.HTTPStatusError`` when an endpoint
                 gets a 4xx or 5xx response, before any decoder runs. On when
                 ``None``. An endpoint's own ``raise_for_status=`` overrides it.
-            validate_arguments: Not implemented yet, so it has no effect (#136).
             **kwargs: Additional keyword arguments passed directly to
                 ``httpx2.Client``.
         """
@@ -87,7 +84,6 @@ class ClientX(_BaseClientX, Client):
             user_agent=user_agent,
             headers=kwargs.get("headers"),
             raise_for_status=raise_for_status,
-            validate_arguments=validate_arguments,
         )
 
     def __init_subclass__(cls, *, user_agent: str | None = None, **kwargs: Any) -> None:
@@ -122,7 +118,6 @@ class AsyncClientX(_BaseClientX, AsyncClient):
         *,
         user_agent: str | None = None,
         raise_for_status: bool | None = None,
-        validate_arguments: bool | None = None,
         **kwargs: Unpack[AsyncHttpxClientOptions],
     ) -> None:
         """Initialize with a base URL and ``httpx2.AsyncClient`` options.
@@ -137,7 +132,6 @@ class AsyncClientX(_BaseClientX, AsyncClient):
             user_agent=user_agent,
             headers=kwargs.get("headers"),
             raise_for_status=raise_for_status,
-            validate_arguments=validate_arguments,
         )
 
     def __init_subclass__(cls, *, user_agent: str | None = None, **kwargs: Any) -> None:
@@ -152,7 +146,6 @@ def _configure(
     user_agent: str | None,
     headers: HeaderTypes | None,
     raise_for_status: bool | None,
-    validate_arguments: bool | None,
 ) -> None:
     # httpx2 always sets its own User-Agent, so read the caller's from
     # `headers=`, not from `client.headers`.
@@ -161,8 +154,6 @@ def _configure(
     )
     if raise_for_status is not None:
         client.__clientx_raise_for_status__ = raise_for_status
-    if validate_arguments is not None:
-        client.__clientx_validate_arguments__ = validate_arguments
 
 
 class _BaseResource:

@@ -85,7 +85,6 @@ class Method:
         tags: list[str] | None = None,
         timeout: Timeout | float | None | UseClientDefault = USE_CLIENT_DEFAULT,
         raise_for_status: bool | None = None,
-        validate_arguments: bool | None = None,
     ) -> EndpointDecorator: ...
     @overload
     def __call__[D](
@@ -98,7 +97,6 @@ class Method:
         tags: list[str] | None = None,
         timeout: Timeout | float | None | UseClientDefault = USE_CLIENT_DEFAULT,
         raise_for_status: bool | None = None,
-        validate_arguments: bool | None = None,
     ) -> DecodedEndpointDecorator[D]: ...
     def __call__(
         self,
@@ -110,7 +108,6 @@ class Method:
         tags: list[str] | None = None,
         timeout: Timeout | float | None | UseClientDefault = USE_CLIENT_DEFAULT,
         raise_for_status: bool | None = None,
-        validate_arguments: bool | None = None,
     ) -> Any:
         """Return the decorator that turns a method into an endpoint.
 
@@ -133,7 +130,6 @@ class Method:
                 the client's, and ``None`` turns it off.
             raise_for_status: Whether a 4xx or 5xx response raises
                 ``httpx2.HTTPStatusError``; ``None`` uses the client's setting.
-            validate_arguments: Not implemented yet, so it has no effect (#136).
         """
 
         def decorator[T: EndpointOwner, **P, R](func: Callable[Concatenate[T, P], R]) -> Callable[Concatenate[T, P], R]:
@@ -144,7 +140,6 @@ class Method:
                 tags=tags,
                 timeout=timeout,
                 raise_for_status=raise_for_status,
-                validate_arguments=validate_arguments,
                 decoder=decoder,
                 stream_response=stream,
                 deprecated=deprecated,

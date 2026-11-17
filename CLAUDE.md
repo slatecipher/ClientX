@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ClientX turns typed method declarations into HTTP API clients, the way FastAPI turns them into server endpoints. A subclass of `ClientX` declares each endpoint as a method with an empty body and a verb decorator (`@method.get("/users/{user_id}")`). ClientX reads the signature once, then builds and sends an `httpx2` request on each call. Python 3.12+, on [httpx2](https://github.com/pydantic/httpx2) and [Pydantic v2](https://github.com/pydantic/pydantic). Pre-1.0.
 
-The code is mid-rewrite: read `REFACTOR.md` first for the decisions, what's done and the plan for what's left. Argument validation (`validate_arguments=`, #136), `clientx.tools` and `clientx.mcp` aren't ported yet, and `docs/`, `README.md` and `llms.txt` still describe the old API. The old code is on `mainline`: `git show mainline:src/clientx/tools.py`. (Drop this paragraph when `REFACTOR.md` is deleted.)
+The code is mid-rewrite: read `REFACTOR.md` first for the decisions, what's done and the plan for what's left. `clientx.tools` and `clientx.mcp` aren't ported yet, argument validation (#136) waits until after the 0.1.0 release, and `docs/`, `README.md` and `llms.txt` still describe the old API. The old code is on `mainline`: `git show mainline:src/clientx/tools.py`. (Drop this paragraph when `REFACTOR.md` is deleted.)
 
 ## Commands
 

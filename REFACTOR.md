@@ -6,7 +6,8 @@ the port is done.
 
 The old code is on `mainline`; `src/clientx/pre/`, which kept a copy for reference, was deleted on
 2026-11-17. Read an old module with `git show mainline:src/clientx/<module>.py`: `tools.py` and
-`mcp.py` for item 11, and `_endpoint_context.py` (`Endpoint._validate`) for argument validation (#136).
+`mcp.py` for item 11, and `_endpoint_context.py` (`Endpoint._validate`) for argument validation (#136,
+after the release).
 
 ## Decisions so far
 
@@ -17,7 +18,7 @@ The old code is on `mainline`; `src/clientx/pre/`, which kept a copy for referen
 - `base_url` is a required `__init__` argument; the `base_url=` class argument is dropped for now.
   `user_agent=` is still a class argument.
 - Each client has a real `__init__` (no `if TYPE_CHECKING` signatures). `HttpxClientOptions` holds
-  only httpx2's options; `_configure()` applies `user_agent`, `raise_for_status`, `validate_arguments`.
+  only httpx2's options; `_configure()` applies `user_agent` and `raise_for_status`.
 - Class-definition rules live in `_class_setup.py`, apart from the classes in `_client.py`.
   `_registry.py` stays a plain lookup. `__init_subclass__` sits on each of the four concrete bases.
 - Request-part helpers (`clientx.arguments`) count only inside `Annotated` on endpoint parameters,
@@ -39,8 +40,7 @@ The old code is on `mainline`; `src/clientx/pre/`, which kept a copy for referen
   `DeprecatedMessage` and the "any callable" form are gone. The old `stacklevel=4` pointed into
   clientx's `_decorators.py`, so outside test runners the warning was hidden.
 - An endpoint's `timeout=` follows httpx2: it defaults to `USE_CLIENT_DEFAULT` (the client's timeout),
-  and `None` means no timeout. Unlike `raise_for_status=` and `validate_arguments=`, where `None` means
-  the client's setting. The old code read `timeout=None` as the client's.
+  and `None` means no timeout. Unlike `raise_for_status=`, where `None` means the client's setting. The old code read `timeout=None` as the client's.
 - Request building follows FastAPI's rules, run the other way (agreed 2026-11-17):
   - A parameter without a helper goes to the path if a placeholder names it; to the JSON body if it's
     a model, mapping, list or dataclass; otherwise to the query string. Decided when the class is defined.
@@ -118,8 +118,9 @@ Suggested order:
      `DefinitionError`. The `arguments.py` docstrings now describe parameter-level helpers only
 3. [x] Per-endpoint `timeout`: passed to `build_request` as it is (see Decisions).
 4. [x] `deprecated=`: a message string; both wrappers warn before anything else (see Decisions).
-5. [ ] Argument validation (`validate_arguments` is stored on endpoint and client, never read): #136,
-   before v0.1.0. Off by default; one `TypeAdapter` per parameter from its full annotation, so helper
+5. [ ] Argument validation: #136, shelved until after the 0.1.0 release (2026-11-17). The
+   `validate_arguments=` option was removed until then, from `ClientX`, `AsyncClientX`, the verb
+   decorators and `Endpoint`; adding it back is backward compatible. Planned: off by default; one `TypeAdapter` per parameter from its full annotation, so helper
    constraints such as `Query(ge=1)` apply; strict; only passed arguments; `ArgumentError` with the
    Pydantic error as its cause. Model instances aren't validated again (Pydantic's default).
 6. [x] Exceptions (see Decisions): `ClientXError`, `DefinitionError`, `ArgumentError` (raised for path
@@ -184,8 +185,9 @@ Rebuilt from scratch (agreed 2026-11-17); the old suite (25 files, 6,566 lines) 
 
 1. `CLAUDE.md`: rewrite it from the code as it is now (modules, tests, commands), keeping its
    "Conventions and releasing" section and the `@CONTRIBUTING.md` import.
-2. Finish the code before the docs, so each page is written once against the final API: argument
-   validation (#136), then `clientx.tools` and `clientx.mcp` (item 11).
+2. Finish the code before the docs, so each page is written once against the final API:
+   `clientx.tools` and `clientx.mcp` (item 11). Argument validation (#136) waits until after the
+   release, so the docs leave it out.
 3. Before the first page, add a test that type-checks every `python` code block in `docs/`,
    `README.md` and `llms.txt` with pyright, so snippets can't drift from the API again. Pages stay
    plain Markdown.

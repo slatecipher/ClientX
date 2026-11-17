@@ -50,8 +50,6 @@ class Endpoint:
             default) uses the client's, and ``None`` turns the timeout off.
         raise_for_status: Whether a 4xx or 5xx response raises
             ``httpx2.HTTPStatusError``; ``None`` uses the client's setting.
-        validate_arguments: Stored for argument validation, which isn't
-            implemented yet (#136).
         stream_response: The decorator's ``stream=True``: the endpoint returns
             the open, unread response, which the caller reads and closes. Only
             with ``-> Response``, and without a ``decoder=``.
@@ -74,7 +72,6 @@ class Endpoint:
     deprecated: str | None = field(default=None)
     timeout: Timeout | float | None | UseClientDefault = field(default=USE_CLIENT_DEFAULT)
     raise_for_status: bool | None = field(default=None)
-    validate_arguments: bool | None = field(default=None)
     stream_response: bool = field(default=False)
     owner: type | None = field(default=None)
     request: RequestPlan | None = field(default=None, init=False)
