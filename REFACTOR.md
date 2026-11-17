@@ -37,6 +37,14 @@ pieces are ported one small step at a time. Delete this file and `pre/` when the
 - An endpoint's `timeout=` follows httpx2: it defaults to `USE_CLIENT_DEFAULT` (the client's timeout),
   and `None` means no timeout. Unlike `raise_for_status=` and `validate_arguments=`, where `None` means
   the client's setting. The old code read `timeout=None` as the client's.
+- Request building follows FastAPI's rules, run the other way (agreed 2026-11-17):
+  - A parameter without a helper goes to the path if a placeholder names it; to the JSON body if it's
+    a model, mapping, list or dataclass; otherwise to the query string. Decided when the class is defined.
+  - A helper on a model parameter sends all its fields to that part. Helpers on model fields aren't
+    supported (`DefinitionError`).
+  - One JSON parameter is the whole body; several are keyed by parameter name.
+  - With several helpers on one parameter, the last one wins. A helper nested inside another type,
+    such as `Annotated[str, Header()] | None`, raises `DefinitionError`.
 
 ## Done
 
@@ -46,11 +54,12 @@ pieces are ported one small step at a time. Delete this file and `pre/` when the
 | `_class_setup.py` | `set_up_client`, `set_up_resource`: one-kind check, reserved-name check, endpoint-kind check, claiming endpoints (`owner`), resource prefix and tags; `check_mount` |
 | `_registry.py` | `register_endpoint_function`, `endpoint_for` (stores `(wrapper, endpoint)` pairs) |
 | `_endpoint.py` | `Endpoint` dataclass; `__post_init__` checks the first parameter and the return annotation, sets `stream`, resolves `decoder`; `bind`, `parameters()` |
-| `_signature.py` | `inspect_signature`, `SignatureInfo`, `ParameterInfo`, `ReturnInfo`; expands PEP 695 `type` aliases; unresolvable hints raise |
+| `_signature.py` | `inspect_signature`, `SignatureInfo`, `ParameterInfo`, `ReturnInfo`; expands PEP 695 `type` aliases; unresolvable hints raise; a parameter's last helper wins |
 | `_decoding.py` | `is_stream`, `default_decoder`, `decode`/`adecode` (stream closing), `raise_status_error`/`araise_status_error` |
 | `_method.py` | the verb decorator and the sync/async wrappers: warn if deprecated, bind, send (`timeout=`, `stream=`), raise for 4xx/5xx, decode |
 | `_types.py`, `arguments.py`, `_arguments.py` | option TypedDicts, shared aliases; the `Field`-based request-part helpers |
-| `exceptions.py` | `ClientXError`, `DefinitionError` (every check above raises it) |
+| `exceptions.py` | `ClientXError`, `DefinitionError` (every check above raises it), `ArgumentError` (path values) |
+| `_request.py` | path templates: `Placeholder`, `_parse_path` (`string.Formatter`; a bad template raises `DefinitionError`), `_render_path` (percent-encoding; a bad value raises `ArgumentError`). Not used yet |
 
 ## Missing functionality (besides docs and tests)
 
@@ -59,18 +68,24 @@ Suggested order:
 1. [x] `src/clientx/py.typed`: back in place, and the built wheel includes it. (The wheel also
    includes `clientx/pre/`: delete it before any release.)
 2. [ ] Request building (old `_request_factory.py` + `_annotation_extractor.py`, ~650 lines). The
-   wrappers send `build_request(endpoint.method, "")` and ignore `arguments`. Needs a design talk first:
-   - path templates (`{name}`, `{name:path}`, `{{ }}`), encoding, `PathValueError`; class-definition
-     checks for unknown placeholders (rerun after a resource prefix) and bad converters
-   - mapping parameters to request parts with the new helpers (`Url`, `Query`, `Header`, `Cookie`,
-     `Body` = raw content, `Form`, `File`, `Json`); parameters named after a part; model expansion;
-     merge rules; dropping `None`; header value formatting; what a helper's `alias` means on a parameter
-   - the one-helper, outermost-`Annotated` rule (old `MisplacedHelperError`); `DumpConfig`
+   wrappers send `build_request(endpoint.method, "")` and ignore `arguments`. Rules agreed (see
+   Decisions). Build one plan per endpoint at class setup, after the resource prefix is joined. Steps:
+   - path templates (`{name}`, `{name:path}`, `{{ }}`): parsing and encoding done (`_request.py`).
+     Next: `RequestPlan` and `plan_request` with the path rules (each placeholder names a parameter;
+     `Url()` needs a placeholder; a placeholder parameter has no other helper), `Endpoint.request` set
+     at class setup, and the wrappers send the rendered path
+   - query and headers: inference, the key sent (alias; `_` to `-` for headers), dropping `None`,
+     header value formatting; `DefinitionError` for a helper nested inside another type
+   - bodies (`json`, `content`, `data`, `files`). Open: an `embed` option for a lone JSON value;
+     parameters named after a part; keeping `Cookie` (httpx2 is deprecating per-request cookies);
+     rejecting `default=` inside a helper
+   - models with a helper, spread into that part; `DumpConfig`. Drop the model-field examples from the
+     `arguments.py` docstring.
 3. [x] Per-endpoint `timeout`: passed to `build_request` as it is (see Decisions).
 4. [x] `deprecated=`: a message string; both wrappers warn before anything else (see Decisions).
 5. [ ] Argument validation (`validate_arguments` is stored on endpoint and client, never read).
-6. [ ] Exceptions (see Decisions). Done: `ClientXError`, `DefinitionError`. Still to do:
-   - `ArgumentError`, added with its first user: argument validation (item 5) or path values (item 2)
+6. [ ] Exceptions (see Decisions). Done: `ClientXError`, `DefinitionError`, `ArgumentError` (raised for
+   path values; argument validation, item 5, will raise it too). Still to do:
    - reject `*args`/`**kwargs` endpoint parameters (old `EndpointSignatureError`; not ported yet)
    - later, maybe: wrap an unresolvable annotation's `NameError` with the endpoint's name
 7. [ ] Public exports in `clientx/__init__.py`: `AsyncClientX`, `Resource`, `AsyncResource`,
@@ -107,8 +122,8 @@ response (old `StreamResponseDecoder`).
 
 ## Known lint items
 
-- `_method.py`: unused `arguments` in both wrappers (until request building); trailing whitespace after
-  the `Endpoint(...)` call.
+- `_method.py`: unused `arguments` in both wrappers (until request building).
+- `_request.py`: pyright flags `_parse_path` and `_render_path` as unused until `RequestPlan` uses them.
 - `_arguments.py`: ruff UP047 on `bind_argument`.
 
 ## Trying it
