@@ -143,8 +143,18 @@ Suggested order:
     endpoint's signature, but accept any `decoder=` and either kind of endpoint on any class.
 11. [ ] `clientx.tools` (old 314 lines), then `clientx.mcp` (old 210 lines).
 
-Open decoder decisions: `key=` unwrapping (old `TypeAdapterDecoder(key=...)`); a streamed open
-response (old `StreamResponseDecoder`).
+Decoder decisions (agreed 2026-11-17):
+- No `key=` unwrapping (old `TypeAdapterDecoder(key=...)`): for a wrapped body such as
+  `{"count": 2, "results": [...]}`, return a model of the wrapper, or pass a `decoder=`. Can be
+  added later as a decorator option if it's missed.
+- [x] A `stream=True` decorator option: with `-> Response`, the endpoint returns the open, unread
+  response, which the caller reads and closes (replaces `StreamResponseDecoder`). Only with
+  `-> Response` and without a `decoder=`; anything else raises `DefinitionError`. `-> Iterator[...]`
+  keeps streaming and closing by itself.
+- Open: whether to drop `decoder=` altogether (the user is undecided, 2026-11-17). Without it,
+  non-JSON bodies, `Model.from_response` and typed SSE/NDJSON streams go through `-> Response`,
+  `-> str` or `-> Iterator[str]`; item 10 would no longer need to check a decoder against the
+  annotation.
 
 ## Tests
 

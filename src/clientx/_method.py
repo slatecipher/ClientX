@@ -27,6 +27,7 @@ class Method:
         path: str = "",
         *,
         decoder: Decoder | None = None,
+        stream: bool = False,
         deprecated: str | None = None,
         tags: list[str] | None = None,
         timeout: Timeout | float | None | UseClientDefault = USE_CLIENT_DEFAULT,
@@ -43,6 +44,7 @@ class Method:
                 raise_for_status=raise_for_status,
                 validate_arguments=validate_arguments,
                 decoder=decoder,
+                stream_response=stream,
                 deprecated=deprecated,
             )
 
@@ -58,7 +60,8 @@ class Method:
                 response = client.send(request, stream=endpoint.stream)
                 if response.is_error and _raises_for_status(endpoint, client):
                     raise_status_error(response)
-
+                if endpoint.stream_response:
+                    return cast(R, response)  # Open and unread: the caller reads and closes it.
                 return cast(R, decode(endpoint.decoder, response, stream=endpoint.stream))
 
             @wraps(func)
@@ -72,7 +75,8 @@ class Method:
                 response = await client.send(request, stream=endpoint.stream)
                 if response.is_error and _raises_for_status(endpoint, client):
                     await araise_status_error(response)
-
+                if endpoint.stream_response:
+                    return response  # Open and unread: the caller reads and closes it.
                 return await adecode(endpoint.decoder, response, stream=endpoint.stream)
 
             endpoint_function = (

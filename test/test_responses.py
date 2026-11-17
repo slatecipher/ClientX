@@ -338,3 +338,77 @@ def test_an_endpoint_needs_a_return_annotation() -> None:
         class API(ClientX):
             @method.get("/items")
             def items(self): ...
+
+
+# An open streamed response: stream=True
+
+
+def test_stream_true_returns_the_open_unread_response() -> None:
+    class API(ClientX):
+        @method.get("/files/{file_id}", stream=True)
+        def download(self, file_id: str) -> Response: ...
+
+    stream = TrackedStream(b"ab", b"cd")
+    response = API(BASE_URL, transport=streaming(stream)).download("f1")
+    assert not stream.closed
+    assert list(response.iter_bytes()) == [b"ab", b"cd"]
+    response.close()
+    assert stream.closed
+
+
+@pytest.mark.anyio
+async def test_stream_true_returns_the_open_response_for_async_endpoints_too() -> None:
+    class API(AsyncClientX):
+        @method.get("/files/{file_id}", stream=True)
+        async def download(self, file_id: str) -> Response: ...
+
+    stream = TrackedAsyncStream(b"ab", b"cd")
+    response = await API(BASE_URL, transport=streaming(stream)).download("f1")
+    assert not stream.closed
+    assert [chunk async for chunk in response.aiter_bytes()] == [b"ab", b"cd"]
+    await response.aclose()
+    assert stream.closed
+
+
+def test_stream_true_still_raises_for_an_error_status() -> None:
+    class API(ClientX):
+        @method.get("/files/{file_id}", stream=True)
+        def download(self, file_id: str) -> Response: ...
+
+        @method.get("/raw/{file_id}", stream=True, raise_for_status=False)
+        def raw(self, file_id: str) -> Response: ...
+
+    error_stream = TrackedStream(b"gone")
+    with pytest.raises(httpx2.HTTPStatusError) as caught:
+        API(BASE_URL, transport=streaming(error_stream, status=410)).download("f1")
+    assert (caught.value.response.text, error_stream.closed) == ("gone", True)
+
+    open_stream = TrackedStream(b"gone")
+    response = API(BASE_URL, transport=streaming(open_stream, status=410)).raw("f1")
+    assert (response.status_code, open_stream.closed) == (410, False)
+    response.close()
+
+
+@pytest.mark.parametrize(
+    ("returns", "decoder", "message"),
+    [
+        pytest.param(
+            list[User], None, "has stream=True, which returns the open response, so annotate it -> Response", id="model"
+        ),
+        pytest.param(
+            Iterator[bytes],
+            None,
+            "An Iterator annotation, such as -> Iterator[bytes], streams the body by itself",
+            id="Iterator",
+        ),
+        pytest.param(Response, lambda response: response, "so it can't also take a decoder=", id="decoder="),
+    ],
+)
+def test_stream_true_needs_a_response_annotation_and_no_decoder(
+    returns: Any, decoder: Callable[[httpx2.Response], object] | None, message: str
+) -> None:
+    with pytest.raises(DefinitionError, match=re.escape(message)):
+
+        class API(ClientX):
+            @method.get("/files", stream=True, decoder=decoder)
+            def files(self) -> returns: ...  # pyright: ignore[reportInvalidTypeForm]

@@ -11,7 +11,7 @@ defined, ``_class_setup.py`` sets its ``owner``, joins a resource's prefix and t
 from dataclasses import dataclass, field
 from typing import Any
 
-from httpx2 import USE_CLIENT_DEFAULT, Timeout
+from httpx2 import USE_CLIENT_DEFAULT, Response, Timeout
 
 from clientx._decoding import default_decoder, is_stream
 from clientx._request import RequestPlan, plan_request
@@ -44,13 +44,17 @@ class Endpoint:
             ``None`` uses the client's setting.
         validate_arguments: Whether arguments are checked against their annotations
             before sending; ``None`` uses the client's setting.
+        stream_response: The decorator's ``stream=True``: the endpoint returns the open,
+            unread response, which the caller reads and closes. Only with ``-> Response``,
+            and without a ``decoder=``.
         owner: The client or resource class whose body declares the endpoint, or ``None``
             until that class is defined. An endpoint has one owner, so a resource joins
             its prefix once.
         request: How a call's arguments become the request, or ``None`` until the owner
             class is defined and calls ``set_up_request``.
-        stream: Whether requests are sent in streaming mode, because the return annotation
-            is an ``Iterator`` (``AsyncIterator`` for ``async def``). ``__post_init__`` sets it.
+        stream: Whether requests are sent in streaming mode: with ``stream_response``, or because
+            the return annotation is an ``Iterator`` (``AsyncIterator`` for ``async def``).
+            ``__post_init__`` sets it.
     """
 
     method: MethodType
@@ -62,6 +66,7 @@ class Endpoint:
     timeout: Timeout | float | None | UseClientDefault = field(default=USE_CLIENT_DEFAULT)
     raise_for_status: bool | None = field(default=None)
     validate_arguments: bool | None = field(default=None)
+    stream_response: bool = field(default=False)
     owner: type | None = field(default=None)
     request: RequestPlan | None = field(default=None, init=False)
     stream: bool = field(init=False)
@@ -73,16 +78,18 @@ class Endpoint:
             DefinitionError: If the function has no positional first parameter for the client or
                 resource (it has none, or it's keyword-only, ``*args`` or ``**kwargs``), has a
                 ``*args`` or ``**kwargs`` parameter after it, has no return annotation, or has one
-                that can't be decoded without a ``decoder=``.
+                that can't be decoded without a ``decoder=``, or uses ``stream=True`` other than
+                with ``-> Response`` and no ``decoder=``.
         """
         self._check_parameters()
         self._check_return_annotation()
+        self._check_stream_response()
 
         name = self.signature.qualname
         returns = self.signature.returns
         is_async = self.signature.is_async
         try:
-            self.stream = is_stream(returns, is_async=is_async)
+            self.stream = self.stream_response or is_stream(returns, is_async=is_async)
             if self.decoder is None:
                 self.decoder = default_decoder(returns, is_async=is_async)
         except DefinitionError as error:
@@ -123,6 +130,28 @@ class Endpoint:
             raise DefinitionError(
                 f"Endpoint '{self.signature.qualname}' needs a return annotation, such as `-> None` or "
                 "`-> User`: it decides what the endpoint returns."
+            )
+
+    def _check_stream_response(self) -> None:
+        """Check that ``stream=True`` comes with ``-> Response`` and without a ``decoder=``.
+
+        The endpoint then returns the open response itself, so another return type has nothing
+        to say, and a decoder would leave nobody sure who closes the response.
+
+        Raises:
+            DefinitionError: If either is broken.
+        """
+        if not self.stream_response:
+            return
+        name = self.signature.qualname
+        if self.signature.returns.base_type is not Response:
+            raise DefinitionError(
+                f"Endpoint '{name}' has stream=True, which returns the open response, so annotate it "
+                "-> Response. An Iterator annotation, such as -> Iterator[bytes], streams the body by itself."
+            )
+        if self.decoder is not None:
+            raise DefinitionError(
+                f"Endpoint '{name}' has stream=True, which returns the open response, so it can't also take a decoder=."
             )
 
     def bind(self, owner: object, *args: Any, **kwargs: Any) -> dict[str, Any]:
