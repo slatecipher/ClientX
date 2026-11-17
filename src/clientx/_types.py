@@ -46,9 +46,10 @@ class HttpxArgument(StrEnum):
 
 @dataclass(frozen=True)
 class HttpxArgumentSpec:
-    """Field metadata that says which part of the request a model field goes to.
+    """Field metadata that says which part of the request an endpoint parameter goes to.
 
-    The helpers in ``clientx.arguments`` add it to ``FieldInfo.metadata``, and ``get_argument_location`` reads it.
+    The helpers in ``clientx.arguments`` add it to ``FieldInfo.metadata``, and ``get_argument_spec`` in
+    ``_arguments.py`` reads it.
 
     Attributes:
         in_: The request part. Named like OpenAPI's ``in``, with an underscore because ``in`` is a keyword.

@@ -13,6 +13,7 @@ from typing import Annotated, Any, TypeAliasType, get_args, get_origin, get_type
 
 from pydantic.fields import FieldInfo
 
+from clientx._arguments import get_argument_spec
 from clientx._types import HttpxArgument, HttpxArgumentSpec
 
 ParameterKind = inspect._ParameterKind  # pyright: ignore[reportPrivateUsage]
@@ -83,16 +84,11 @@ class ParameterInfo:
         """
         for meta in reversed(metadata):
             if isinstance(meta, FieldInfo):
-                if httpx_meta := self._extract_httpx_argument_spec(meta.metadata):
+                if httpx_meta := get_argument_spec(meta):
                     self.httpx_argument = httpx_meta.in_
                     self.httpx_argument_spec = httpx_meta
                     self.clientx_field_info = meta
                     break
-
-    @staticmethod
-    def _extract_httpx_argument_spec(metadata: list[Any]) -> HttpxArgumentSpec | None:
-        """Return the last ``HttpxArgumentSpec`` in a ``FieldInfo``'s ``metadata``, or ``None``."""
-        return next((meta for meta in reversed(metadata) if isinstance(meta, HttpxArgumentSpec)), None)
 
 
 @dataclass(frozen=True)

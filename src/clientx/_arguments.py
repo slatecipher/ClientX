@@ -1,8 +1,9 @@
 """The machinery behind the experimental ``clientx.arguments`` helpers.
 
 ``clientx.arguments`` builds its helpers with ``bind_argument`` and re-exports ``HttpxArgument`` and
-``get_argument_location``. ``HttpxArgumentLocation``, the mark a helper adds to a field, stays here, so how a
-field is marked can change without breaking users.
+``get_argument_location``. ``HttpxArgumentSpec``, the mark a helper adds to its ``FieldInfo``, isn't public,
+so how a helper marks its ``FieldInfo`` can change without breaking users. ``get_argument_spec`` reads the
+mark for the rest of ClientX.
 """
 
 import functools
@@ -16,11 +17,21 @@ from clientx._types import HttpxArgument, HttpxArgumentSpec
 P = ParamSpec("P")
 
 
-def get_argument_location(field_info: object) -> HttpxArgument | None:
-    """The request argument a field is marked for, or ``None`` if it's not a ``FieldInfo`` or has no mark."""
+def get_argument_spec(field_info: object) -> HttpxArgumentSpec | None:
+    """Return the mark a helper added to ``field_info``, or ``None`` if it's not a ``FieldInfo`` or has no mark.
+
+    A helper adds one mark. If there are several, the last one wins, as the last helper in an
+    ``Annotated`` does.
+    """
     if not isinstance(field_info, FieldInfo):
         return None
-    return next((meta.in_ for meta in field_info.metadata if isinstance(meta, HttpxArgumentSpec)), None)
+    return next((meta for meta in reversed(field_info.metadata) if isinstance(meta, HttpxArgumentSpec)), None)
+
+
+def get_argument_location(field_info: object) -> HttpxArgument | None:
+    """The request argument a field is marked for, or ``None`` if it's not a ``FieldInfo`` or has no mark."""
+    spec = get_argument_spec(field_info)
+    return None if spec is None else spec.in_
 
 
 def bind_argument(
@@ -41,7 +52,7 @@ def bind_argument(
         field_fn: The function that creates the ``FieldInfo``, normally ``pydantic.Field``.
 
     Returns:
-        A function that calls ``field_fn`` with its arguments and adds an ``HttpxArgumentLocation`` for
+        A function that calls ``field_fn`` with its arguments and adds an ``HttpxArgumentSpec`` for
         ``location`` to the returned field's metadata.
     """
 
