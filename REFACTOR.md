@@ -45,6 +45,11 @@ pieces are ported one small step at a time. Delete this file and `pre/` when the
   - One JSON parameter is the whole body; several are keyed by parameter name.
   - With several helpers on one parameter, the last one wins. A helper nested inside another type,
     such as `Annotated[str, Header()] | None`, raises `DefinitionError`.
+  - A query parameter is a plain value or a list of plain values (a repeated key); a header is a plain
+    value (agreed 2026-11-17). Values become text the same way everywhere: an enum's value, ISO 8601
+    for a datetime, JSON text for a number or bool. `None` is left out of the query and headers.
+  - No `Cookie` helper (agreed 2026-11-17): httpx2 is deprecating per-request cookies, so cookies go
+    on the client.
 
 ## Done
 
@@ -54,12 +59,12 @@ pieces are ported one small step at a time. Delete this file and `pre/` when the
 | `_class_setup.py` | `set_up_client`, `set_up_resource`: one-kind check, reserved-name check, endpoint-kind check, claiming endpoints (`owner`), resource prefix and tags, then each endpoint's `set_up_request()`; `check_mount` |
 | `_registry.py` | `register_endpoint_function`, `endpoint_for` (stores `(wrapper, endpoint)` pairs) |
 | `_endpoint.py` | `Endpoint` dataclass; `__post_init__` checks the first parameter and the return annotation, sets `stream`, resolves `decoder`; `bind`, `parameters()`; `request` (the `RequestPlan`), `set_up_request()`, `request_arguments()` (adds `timeout`) |
-| `_signature.py` | `inspect_signature`, `SignatureInfo`, `ParameterInfo`, `ReturnInfo`; expands PEP 695 `type` aliases; unresolvable hints raise; a parameter's last helper wins |
+| `_signature.py` | `inspect_signature`, `SignatureInfo`, `ParameterInfo`, `ReturnInfo`; expands PEP 695 `type` aliases; unresolvable hints raise; a parameter's last helper wins; `unwrap_annotated` |
 | `_decoding.py` | `is_stream`, `default_decoder`, `decode`/`adecode` (stream closing), `raise_status_error`/`araise_status_error` |
 | `_method.py` | the verb decorator and the sync/async wrappers: warn if deprecated, bind, build the request from `endpoint.request_arguments()` (path, `timeout`), send (`stream=`), raise for 4xx/5xx, decode |
-| `_types.py`, `arguments.py`, `_arguments.py` | option TypedDicts, shared aliases; the `Field`-based request-part helpers |
+| `_types.py`, `arguments.py`, `_arguments.py` | option TypedDicts, shared aliases; the `Field`-based request-part helpers (no `Cookie`) |
 | `exceptions.py` | `ClientXError`, `DefinitionError` (every check above raises it), `ArgumentError` (path values) |
-| `_request.py` | `plan_request(template, parameters)` checks the path rules and returns a `RequestPlan` (the parsed path, for now); `RequestPlan.build(arguments)` renders the path. Path templates: `Placeholder`, `_parse_path` (`string.Formatter`; a bad template raises `DefinitionError`), `_render_path` (percent-encoding; a bad value raises `ArgumentError`) |
+| `_request.py` | `plan_request(template, parameters)` places each parameter (path, helper, or inferred) and checks the rules, returning a `RequestPlan` (the parsed path, and a `PlannedParameter` per query parameter or header); `RequestPlan.build(arguments)` renders the path and fills `params` and `headers` (`_to_text`). Path templates: `Placeholder`, `_parse_path` (`string.Formatter`; a bad template raises `DefinitionError`), `_render_path` (percent-encoding; a bad value raises `ArgumentError`) |
 
 ## Missing functionality (besides docs and tests)
 
@@ -73,11 +78,13 @@ Suggested order:
    - [x] path templates (`{name}`, `{name:path}`, `{{ }}`), sent by the wrappers. Checked at class
      setup: each placeholder names a parameter; `Url()` needs a placeholder; a placeholder's parameter
      has no other helper. Left for the next step: path parameters must be plain values
-   - query and headers: inference, the key sent (alias; `_` to `-` for headers), dropping `None`,
-     header value formatting; `DefinitionError` for a helper nested inside another type
+   - [x] query and headers: inference, the key sent (alias; `_` to `-` for headers), dropping `None`,
+     value conversion; `DefinitionError` for a nested helper, a non-plain path parameter, a header
+     list, or a query type that isn't a plain value or a list of them. Parameters for the parts below
+     are planned as not sent yet, and ignored. Open: a non-ASCII header value fails in httpx2 with
+     `UnicodeEncodeError` at call time (could be an `ArgumentError`)
    - bodies (`json`, `content`, `data`, `files`). Open: an `embed` option for a lone JSON value;
-     parameters named after a part; keeping `Cookie` (httpx2 is deprecating per-request cookies);
-     rejecting `default=` inside a helper
+     parameters named after a part; rejecting `default=` inside a helper
    - models with a helper, spread into that part; `DumpConfig`. Drop the model-field examples from the
      `arguments.py` docstring.
 3. [x] Per-endpoint `timeout`: passed to `build_request` as it is (see Decisions).

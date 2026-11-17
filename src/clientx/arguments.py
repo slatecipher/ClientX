@@ -23,13 +23,13 @@ reads the mark back::
     # <HttpxArgument.PARAMS: 'params'>
 
 The helpers align one-to-one with the arguments of ``httpx2.Client.build_request`` that carry request data
-(every argument except ``method``, ``timeout``, and ``extensions``), so ``Body`` is httpx's raw ``content``
-and ``Json`` its ``json``. Each helper, and the argument it marks:
+(every argument except ``method``, ``timeout``, ``extensions`` and ``cookies``), so ``Body`` is httpx's raw
+``content`` and ``Json`` its ``json``. There's no ``Cookie`` helper: httpx2 is deprecating per-request cookies,
+so set cookies on the client instead. Each helper, and the argument it marks:
 
     ``Url``     ``url``
     ``Query``   ``params``
     ``Header``  ``headers``
-    ``Cookie``  ``cookies``
     ``Body``    ``content``, the raw body
     ``Form``    ``data``
     ``File``    ``files``
@@ -51,10 +51,9 @@ from clientx._arguments import HttpxArgument, bind_argument, get_argument_locati
 Url = bind_argument("Url", HttpxArgument.URL, Field)
 Query = bind_argument("Query", HttpxArgument.PARAMS, Field)
 Header = bind_argument("Header", HttpxArgument.HEADERS, Field)
-Cookie = bind_argument("Cookie", HttpxArgument.COOKIES, Field)
 Body = bind_argument("Body", HttpxArgument.CONTENT, Field)
 Form = bind_argument("Form", HttpxArgument.DATA, Field)
 File = bind_argument("File", HttpxArgument.FILES, Field)
 Json = bind_argument("Json", HttpxArgument.JSON, Field)
 
-__all__ = ["Body", "Cookie", "File", "Form", "Header", "HttpxArgument", "Json", "Query", "Url", "get_argument_location"]
+__all__ = ["Body", "File", "Form", "Header", "HttpxArgument", "Json", "Query", "Url", "get_argument_location"]

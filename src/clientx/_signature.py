@@ -66,7 +66,7 @@ class ParameterInfo:
 
     def __post_init__(self) -> None:
         """Derive ``base_type``, and the attributes that come from the helper, from ``annotation``."""
-        base_type, metadata = _unwrap_annotated(self.annotation)
+        base_type, metadata = unwrap_annotated(self.annotation)
         self.base_type = base_type
         self._set_clientx_field_info(metadata)
 
@@ -78,7 +78,7 @@ class ParameterInfo:
         such as ``Field(gt=0)``, is skipped. Without a helper, the three stay ``None``.
 
         Args:
-            metadata: The ``Annotated`` metadata, in the order ``_unwrap_annotated`` returns it:
+            metadata: The ``Annotated`` metadata, in the order ``unwrap_annotated`` returns it:
                 inner first, so a helper on the parameter wins over one from a ``type`` alias.
         """
         for meta in reversed(metadata):
@@ -184,7 +184,7 @@ class SignatureInfo:
         return bound.arguments
 
 
-def _unwrap_annotated(type_hint: Any) -> tuple[Any, tuple[Any, ...]]:
+def unwrap_annotated(type_hint: Any) -> tuple[Any, tuple[Any, ...]]:
     """Split an ``Annotated`` type hint into its underlying type and its metadata.
 
     A ``type`` alias is expanded, whether it's the whole hint or the type inside an
@@ -192,11 +192,11 @@ def _unwrap_annotated(type_hint: Any) -> tuple[Any, tuple[Any, ...]]:
     hints are flattened into one tuple, inner metadata first, the order Python uses when
     it flattens them itself. A hint that isn't ``Annotated`` comes back with empty metadata::
 
-        _unwrap_annotated(Annotated[int, Range(1, 10), Doc("id")])
+        unwrap_annotated(Annotated[int, Range(1, 10), Doc("id")])
             -> (int, (Range(1, 10), Doc("id")))
-        _unwrap_annotated(UserId)  # type UserId = Annotated[int, Doc("id")]
+        unwrap_annotated(UserId)  # type UserId = Annotated[int, Doc("id")]
             -> (int, (Doc("id"),))
-        _unwrap_annotated(str)
+        unwrap_annotated(str)
             -> (str, ())
     """
     collected_metadata: tuple[Any, ...] = ()
@@ -282,7 +282,7 @@ def inspect_signature(func: Callable[..., Any]) -> SignatureInfo:
     ]
 
     return_annotation = resolved_type_hints.get("return", signature.return_annotation)
-    return_base_type, return_metadata = _unwrap_annotated(return_annotation)
+    return_base_type, return_metadata = unwrap_annotated(return_annotation)
 
     original_function = inspect.unwrap(func)
 
