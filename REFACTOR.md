@@ -41,7 +41,8 @@ pieces are ported one small step at a time. Delete this file and `pre/` when the
 
 Suggested order:
 
-1. [ ] `src/clientx/py.typed`: deleted; without it type checkers treat the package as untyped.
+1. [x] `src/clientx/py.typed`: back in place, and the built wheel includes it. (The wheel also
+   includes `clientx/pre/`: delete it before any release.)
 2. [ ] Request building (old `_request_factory.py` + `_annotation_extractor.py`, ~650 lines). The
    wrappers send `build_request(endpoint.method, "")` and ignore `arguments`. Needs a design talk first:
    - path templates (`{name}`, `{name:path}`, `{{ }}`), encoding, `PathValueError`; class-definition
