@@ -1,3 +1,5 @@
+"""The HTTP verb decorators that turn a client's methods into endpoints, as in ``@method.get("/users")``."""
+
 from clientx._method import Method
 
 get = Method("GET")

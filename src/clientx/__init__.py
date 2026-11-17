@@ -1,3 +1,5 @@
+"""A typed, declarative HTTP API client framework for Python."""
+
 from httpx2 import Auth, Request, Response, Timeout
 
 from clientx import method

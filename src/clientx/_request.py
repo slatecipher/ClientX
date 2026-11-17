@@ -273,6 +273,10 @@ def _check_helper(parameter: ParameterInfo) -> None:
 
     Also check that no field of a model parameter has a helper: the parameter's helper, or its
     inferred part, decides where the model goes.
+
+    Raises:
+        DefinitionError: If a model field has a helper, the helper is nested inside the parameter's
+            type, or the helper has a default.
     """
     for arm in _arms(parameter.annotation):
         cls = _class_of(arm)
@@ -300,7 +304,11 @@ def _check_helper(parameter: ParameterInfo) -> None:
 
 
 def _check_path_parameter(parameter: ParameterInfo, placeholder: Placeholder, template: str) -> None:
-    """Check that a parameter that fills a placeholder has no other helper, and is a plain value."""
+    """Check that a parameter that fills a placeholder has no other helper, and is a plain value.
+
+    Raises:
+        DefinitionError: If the parameter has a helper other than ``Url()``, or isn't a plain value.
+    """
     name, part = parameter.name, parameter.httpx_argument
     if part not in {None, HttpxArgument.URL}:
         raise DefinitionError(
@@ -337,6 +345,9 @@ def _check_one_body(placed: list[tuple[ParameterInfo, HttpxArgument]]) -> None:
     """Check that the parameters make one kind of body, and that at most one is the raw content.
 
     httpx2 sends only one body: given several, it silently drops the others.
+
+    Raises:
+        DefinitionError: If the parameters make more than one kind of body, or several are marked ``Body()``.
     """
     body_parameters = [(parameter.name, _BODY_KINDS[part]) for parameter, part in placed if part in _BODY_KINDS]
     if len({kind for _, kind in body_parameters}) > 1:

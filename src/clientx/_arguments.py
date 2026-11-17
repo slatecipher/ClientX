@@ -7,13 +7,11 @@ to its ``FieldInfo``, isn't public, so how a helper marks its ``FieldInfo`` can 
 
 import functools
 from collections.abc import Callable
-from typing import Any, ParamSpec
+from typing import Any
 
 from pydantic.fields import FieldInfo
 
 from clientx._types import HttpxArgument, HttpxArgumentSpec
-
-P = ParamSpec("P")
 
 
 def get_argument_spec(field_info: object) -> HttpxArgumentSpec | None:
@@ -33,7 +31,7 @@ def get_argument_location(field_info: object) -> HttpxArgument | None:
     return None if spec is None else spec.in_
 
 
-def bind_argument(
+def bind_argument[**P](
     name: str,
     location: HttpxArgument,
     field_fn: Callable[P, Any],
