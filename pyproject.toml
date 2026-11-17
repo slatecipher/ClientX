@@ -58,11 +58,6 @@ addopts = ["--import-mode=importlib", "-vv", "--cov=clientx", "--cov-report=term
 # so a new one shows up in the Dependabot PR that upgrades pytest, not on mainline.
 strict = true
 
-[tool.coverage.run]
-# The old code kept for reference during the rewrite (see REFACTOR.md) isn't imported, so
-# coverage would count it as 0%.
-omit = ["*/clientx/pre/*"]
-
 [tool.pyright]
 # Editors check both trees. CI splits them: `make typecheck` passes `src` on the
 # command line (which overrides this list) and gates the build, while

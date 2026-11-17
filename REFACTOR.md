@@ -1,13 +1,12 @@
 # Client refactor: status
 
 Branch `experiment/signature-info`, last updated 2026-11-16. A rewrite of `src/clientx` that's
-simpler and easier to read. The old code is kept in `src/clientx/pre/` for reference while
-pieces are ported one small step at a time. Delete this file and `pre/` when the port is done.
+simpler and easier to read, ported from the old code one small step at a time. Delete this file when
+the port is done.
 
-What's left in `pre/` (2026-11-17), each kept until its item is done: `tools.py` and `mcp.py` (item 11),
-and `_endpoint_context.py` (argument validation, #136). The ported modules were deleted. The
-old modules are also on `mainline` (`git show mainline:src/clientx/tools.py`). The `pre/` files import
-`clientx._client` and so on, which are the new modules now, so they're for reading, not running.
+The old code is on `mainline`; `src/clientx/pre/`, which kept a copy for reference, was deleted on
+2026-11-17. Read an old module with `git show mainline:src/clientx/<module>.py`: `tools.py` and
+`mcp.py` for item 11, and `_endpoint_context.py` (`Endpoint._validate`) for argument validation (#136).
 
 ## Decisions so far
 
@@ -97,8 +96,7 @@ old modules are also on `mainline` (`git show mainline:src/clientx/tools.py`). T
 
 Suggested order:
 
-1. [x] `src/clientx/py.typed`: back in place, and the built wheel includes it. (The wheel also
-   includes `clientx/pre/`: delete it before any release.)
+1. [x] `src/clientx/py.typed`: back in place, and the built wheel includes it.
 2. [x] Request building, in `_request.py` (replaces the old `_request_factory.py` and
    `_annotation_extractor.py`, ~650 lines). One plan per endpoint, built at class setup after the
    resource prefix is joined; the rules are in Decisions. The open items are listed under each step:
@@ -172,7 +170,6 @@ Rebuilt from scratch (agreed 2026-11-17); the old suite (25 files, 6,566 lines) 
   error. Internals are tested directly only where that's simpler (`ParameterInfo`, path parsing).
 - Conventions kept: `importlib` import mode, fixtures that return factories, anyio for async tests,
   and `test_typing.py` checked by pyright and mypy in `make typecheck`.
-- Coverage leaves out `src/clientx/pre/`.
 - Done: `conftest.py` (`mock_transport`), `test_public_api.py`, `test_typing.py`, `test_paths.py`,
   `test_query_and_headers.py`, `test_bodies.py`, `test_spreading.py`, `test_responses.py`, `test_clients.py`,
   `test_endpoints.py`, `test_signature.py`: the first wave (207 tests, 98% coverage).
@@ -181,8 +178,7 @@ Rebuilt from scratch (agreed 2026-11-17); the old suite (25 files, 6,566 lines) 
   in `[tool.coverage]`, so running one test file locally doesn't fail it.
 - Later: `test_typing.py` grows with item 10; tools, MCP and logging get tests when they're ported.
 - Streaming tests need an iterator or async-generator `MockTransport` body: `bytes` bodies are read
-  at once. `make typecheck` still fails until `examples/` is updated and `pre/` is gone, since it runs
-  pyright on `src` and `examples`.
+  at once. `make typecheck` and `make lint-ci` still fail until `examples/` is updated.
 
 ## Follow-ups for docs and examples
 
