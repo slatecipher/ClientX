@@ -62,10 +62,10 @@ type MethodType = Literal["GET", "PUT", "POST", "PATCH", "DELETE", "HEAD", "OPTI
 
 type Decoder = Callable[[Response], object]
 
-EventHook = Callable[[Request], object] | Callable[[Response], object]
+type EventHook = Callable[[Request], object] | Callable[[Response], object]
 """A sync hook: called with the request (``"request"``) or response (``"response"``)."""
 
-AsyncEventHook = Callable[[Request], Awaitable[object]] | Callable[[Response], Awaitable[object]]
+type AsyncEventHook = Callable[[Request], Awaitable[object]] | Callable[[Response], Awaitable[object]]
 """An async hook: like ``EventHook`` but must be an ``async def``."""
 
 

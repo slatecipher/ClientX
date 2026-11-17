@@ -2,7 +2,7 @@ import warnings
 from collections.abc import Callable, Coroutine
 from dataclasses import dataclass
 from functools import wraps
-from typing import Any, Concatenate, ParamSpec, Protocol, TypeVar, cast, overload
+from typing import Any, Concatenate, Protocol, cast, overload
 
 from httpx2 import USE_CLIENT_DEFAULT, Response, Timeout
 
@@ -12,14 +12,6 @@ from clientx._endpoint import Endpoint
 from clientx._registry import register_endpoint_function
 from clientx._signature import inspect_signature
 from clientx._types import Decoder, MethodType, UseClientDefault
-
-P = ParamSpec("P")
-T = TypeVar("T", bound=EndpointOwner)
-R = TypeVar("R")
-D = TypeVar("D")
-# The object a `def` endpoint and an `async def` endpoint are called on.
-SyncOwner = TypeVar("SyncOwner", bound=ClientX | Resource)
-AsyncOwner = TypeVar("AsyncOwner", bound=AsyncClientX | AsyncResource)
 
 
 class EndpointDecorator(Protocol):
@@ -33,16 +25,20 @@ class EndpointDecorator(Protocol):
     """
 
     @overload
-    def __call__(self, func: Callable[Concatenate[SyncOwner, P], R], /) -> Callable[Concatenate[SyncOwner, P], R]: ...
+    def __call__[Owner: ClientX | Resource, **P, R](
+        self, func: Callable[Concatenate[Owner, P], R], /
+    ) -> Callable[Concatenate[Owner, P], R]: ...
     @overload
-    def __call__(
-        self, func: Callable[Concatenate[AsyncOwner, P], Coroutine[Any, Any, R]], /
-    ) -> Callable[Concatenate[AsyncOwner, P], Coroutine[Any, Any, R]]: ...
+    def __call__[Owner: AsyncClientX | AsyncResource, **P, R](
+        self, func: Callable[Concatenate[Owner, P], Coroutine[Any, Any, R]], /
+    ) -> Callable[Concatenate[Owner, P], Coroutine[Any, Any, R]]: ...
     @overload
-    def __call__(self, func: Callable[Concatenate[SyncOwner, P], R], /) -> Callable[Concatenate[SyncOwner, P], R]: ...
+    def __call__[Owner: ClientX | Resource, **P, R](
+        self, func: Callable[Concatenate[Owner, P], R], /
+    ) -> Callable[Concatenate[Owner, P], R]: ...
 
 
-class DecodedEndpointDecorator(Protocol[D]):
+class DecodedEndpointDecorator[D](Protocol):
     """The decorator a verb returns with ``decoder=``: it takes an endpoint that returns what the decoder does.
 
     A ``def`` endpoint must return ``D``, the decoder's return type, and an ``async def`` endpoint's
@@ -55,13 +51,17 @@ class DecodedEndpointDecorator(Protocol[D]):
     """
 
     @overload
-    def __call__(self, func: Callable[Concatenate[SyncOwner, P], D], /) -> Callable[Concatenate[SyncOwner, P], D]: ...
+    def __call__[Owner: ClientX | Resource, **P](
+        self, func: Callable[Concatenate[Owner, P], D], /
+    ) -> Callable[Concatenate[Owner, P], D]: ...
     @overload
-    def __call__(
-        self, func: Callable[Concatenate[AsyncOwner, P], Coroutine[Any, Any, D]], /
-    ) -> Callable[Concatenate[AsyncOwner, P], Coroutine[Any, Any, D]]: ...
+    def __call__[Owner: AsyncClientX | AsyncResource, **P](
+        self, func: Callable[Concatenate[Owner, P], Coroutine[Any, Any, D]], /
+    ) -> Callable[Concatenate[Owner, P], Coroutine[Any, Any, D]]: ...
     @overload
-    def __call__(self, func: Callable[Concatenate[SyncOwner, P], D], /) -> Callable[Concatenate[SyncOwner, P], D]: ...
+    def __call__[Owner: ClientX | Resource, **P](
+        self, func: Callable[Concatenate[Owner, P], D], /
+    ) -> Callable[Concatenate[Owner, P], D]: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,7 +82,7 @@ class Method:
         validate_arguments: bool | None = None,
     ) -> EndpointDecorator: ...
     @overload
-    def __call__(
+    def __call__[D](
         self,
         path: str = "",
         *,
@@ -112,7 +112,7 @@ class Method:
         the decoder returns: type checkers report a mismatch at the decorator.
         """
 
-        def decorator(func: Callable[Concatenate[T, P], R]) -> Callable[Concatenate[T, P], R]:
+        def decorator[T: EndpointOwner, **P, R](func: Callable[Concatenate[T, P], R]) -> Callable[Concatenate[T, P], R]:
             endpoint = Endpoint(
                 method=self.method,
                 raw_path=path,
