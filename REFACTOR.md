@@ -42,7 +42,9 @@ pieces are ported one small step at a time. Delete this file and `pre/` when the
     a model, mapping, list or dataclass; otherwise to the query string. Decided when the class is defined.
   - A helper on a model parameter sends all its fields to that part. Helpers on model fields aren't
     supported (`DefinitionError`).
-  - One JSON parameter is the whole body; several are keyed by parameter name.
+  - One JSON parameter is the whole body; several are keyed by parameter name. A lone plain value is
+    keyed by its name too (agreed 2026-11-17): `title: Annotated[str, Json()]` sends `{"title": ...}`.
+    No `embed` option.
   - With several helpers on one parameter, the last one wins. A helper nested inside another type,
     such as `Annotated[str, Header()] | None`, raises `DefinitionError`.
   - A query parameter is a plain value or a list of plain values (a repeated key); a header is a plain
@@ -50,6 +52,18 @@ pieces are ported one small step at a time. Delete this file and `pre/` when the
     for a datetime, JSON text for a number or bool. `None` is left out of the query and headers.
   - No `Cookie` helper (agreed 2026-11-17): httpx2 is deprecating per-request cookies, so cookies go
     on the client.
+  - A parameter's name never picks its part (agreed 2026-11-17): the old rule that `headers`, `params`,
+    `json`... send that whole part is gone. A mapping with a helper is spread into its part instead.
+  - A default inside a helper, such as `Query(default=1)` or `default_factory=`, raises
+    `DefinitionError` (agreed 2026-11-17): defaults go after `=`, where `bind` and type checkers see them.
+  - A keyed JSON value that's `None` is left out, as in the query, headers and forms (agreed
+    2026-11-17), so optional PATCH fields aren't sent as `null`. A lone model or dict is sent whole,
+    `null`s included. Open: a way to send an explicit `null` for a keyed parameter (JSON Merge Patch,
+    RFC 7396, uses `null` to delete a field).
+  - An endpoint sends one kind of body: JSON, raw content (one `Body()`), or a form (`Form()`, plus
+    `File()` for multipart). Any other mix raises `DefinitionError` (agreed 2026-11-17): httpx2 sends
+    only one and silently drops the rest. Open: a JSON part inside a multipart form, as in Discord's
+    `payload_json` (httpx2 sends one from a `files` entry `(None, json_text, "application/json")`).
 
 ## Done
 
@@ -64,7 +78,7 @@ pieces are ported one small step at a time. Delete this file and `pre/` when the
 | `_method.py` | the verb decorator and the sync/async wrappers: warn if deprecated, bind, build the request from `endpoint.request_arguments()` (path, `timeout`), send (`stream=`), raise for 4xx/5xx, decode |
 | `_types.py`, `arguments.py`, `_arguments.py` | option TypedDicts, shared aliases; the `Field`-based request-part helpers (no `Cookie`) |
 | `exceptions.py` | `ClientXError`, `DefinitionError` (every check above raises it), `ArgumentError` (path values) |
-| `_request.py` | `plan_request(template, parameters)` places each parameter (path, helper, or inferred) and checks the rules, returning a `RequestPlan` (the parsed path, and a `PlannedParameter` per query parameter or header); `RequestPlan.build(arguments)` renders the path and fills `params` and `headers` (`_to_text`). Path templates: `Placeholder`, `_parse_path` (`string.Formatter`; a bad template raises `DefinitionError`), `_render_path` (percent-encoding; a bad value raises `ArgumentError`) |
+| `_request.py` | `plan_request(template, parameters)` places each parameter (path, helper, or inferred), checks the rules (one kind of body, no default inside a helper...), and returns a `RequestPlan`: the parsed path, a `PlannedParameter` per value sent under a name (query, headers, form, files, JSON fields), and the `body` parameter, if one is the whole body (raw content, or a lone JSON model, mapping or list). `RequestPlan.build(arguments)` renders the path and fills the parts (`PlannedParameter.encode`, `_to_text`) |
 
 ## Missing functionality (besides docs and tests)
 
@@ -83,8 +97,10 @@ Suggested order:
      list, or a query type that isn't a plain value or a list of them. Parameters for the parts below
      are planned as not sent yet, and ignored. Open: a non-ASCII header value fails in httpx2 with
      `UnicodeEncodeError` at call time (could be an `ArgumentError`)
-   - bodies (`json`, `content`, `data`, `files`). Open: an `embed` option for a lone JSON value;
-     parameters named after a part; rejecting `default=` inside a helper
+   - [x] bodies (`json`, `content`, `data`, `files`), the one-kind-of-body check, and the
+     `default=`-inside-a-helper check. JSON is serialized by the value's own type, with aliases. Open:
+     several files under one name (a `File()` parameter takes one file); drop
+     `ParameterInfo.httpx_argument_spec`, which nothing reads now that there's no `embed`
    - models with a helper, spread into that part; `DumpConfig`. Drop the model-field examples from the
      `arguments.py` docstring.
 3. [x] Per-endpoint `timeout`: passed to `build_request` as it is (see Decisions).

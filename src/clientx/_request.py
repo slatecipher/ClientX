@@ -14,11 +14,16 @@ Where each parameter goes is decided once, the way FastAPI decides it:
 3. Any other parameter goes to the JSON body if its type is a model, mapping, collection or
    dataclass, or a union with one of those, and to the query string otherwise.
 
-A query parameter is a plain value, or a list of plain values, which repeats the key
-(``?tag=a&tag=b``). A header is a plain value. Each is sent under its helper's alias, or else
-under the parameter's name, with ``_`` turned into ``-`` for a header. A ``None`` value is left
-out. ``_to_text`` turns values into text. JSON, raw bodies, forms, files, and models or mappings
-with a helper aren't sent yet.
+A query parameter or form field is a plain value, or a list of plain values, which repeats
+the key (``?tag=a&tag=b``). A header is a plain value. A file is passed to httpx2 as it is.
+Each is sent under its helper's alias, or else under the parameter's name, with ``_`` turned
+into ``-`` for a header. ``_to_text`` turns values into text.
+
+The body is one kind: JSON, raw content (one ``Body()`` parameter), or a form (``Form()``
+parameters, and ``File()`` ones for a multipart form). A lone JSON parameter that's a model,
+mapping or list is the whole JSON body; any other JSON parameter is a field of a JSON object,
+under its alias or name. A ``None`` value is left out everywhere, so an optional parameter
+that isn't passed isn't sent. Models or mappings with a helper for another part aren't sent yet.
 
 The path template, such as ``"/users/{user_id}"``, is split into literal text and placeholders
 in the plan. Each call fills the placeholders with its arguments, encoded so that a value
@@ -39,11 +44,11 @@ from typing import Any, TypeAliasType, Union, cast, get_args, get_origin
 from urllib.parse import quote
 
 from pydantic import BaseModel
-from pydantic_core import to_jsonable_python
+from pydantic_core import PydanticUndefined, to_jsonable_python
 
 from clientx._arguments import get_argument_location
 from clientx._signature import ParameterInfo, unwrap_annotated
-from clientx._types import BuildRequestKwargs, HttpxArgument
+from clientx._types import BuildRequestKwargs, HttpxArgument, RequestContent
 from clientx.exceptions import ArgumentError, DefinitionError
 
 # The end of each path template error message: how to write one that works.
@@ -57,6 +62,15 @@ _DOT_SEGMENTS = {".": "%2E", "..": "%2E%2E"}
 
 # How deep `_arms` follows a union inside a union: a stop for a `type` alias that contains itself.
 _MAX_UNION_DEPTH = 100
+
+# The kind of body each part makes, for the one-kind-of-body check. A form's fields and files
+# make one multipart body together.
+_BODY_KINDS = {
+    HttpxArgument.JSON: "JSON",
+    HttpxArgument.CONTENT: "raw content",
+    HttpxArgument.DATA: "a form",
+    HttpxArgument.FILES: "a form",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -83,15 +97,31 @@ class PlannedParameter:
 
     Attributes:
         name: The parameter's name, and its key in the call's arguments.
-        part: The ``build_request`` argument it goes to: ``params`` or ``headers``, for now.
-        key: The name it's sent under: the query parameter's or the header's name.
-        many: Whether the value is a list of values, sent as a repeated query parameter.
+        part: The ``build_request`` argument it goes to, such as ``params`` or ``json``.
+        key: The name it's sent under: the query parameter's, header's, form field's, file's,
+            or JSON field's name.
+        many: Whether the value is a list of values, sent as a repeated query parameter or
+            form field.
     """
 
     name: str
     part: HttpxArgument
     key: str
     many: bool = False
+
+    def encode(self, value: object) -> object:
+        """Return ``value`` as httpx2 takes it for this parameter's part.
+
+        A file is passed as it is, and a JSON field becomes JSON-ready data, by the value's own
+        type and with aliases. Anything else becomes text, or a list of texts for a list.
+        """
+        if self.part is HttpxArgument.FILES:
+            return value
+        if self.part is HttpxArgument.JSON:
+            return to_jsonable_python(value, by_alias=True)
+        if self.many:
+            return [_to_text(item) for item in cast("Iterable[object]", value)]
+        return _to_text(value)
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,15 +130,21 @@ class RequestPlan:
 
     Attributes:
         path: The path template, split into literal text and placeholders.
-        parameters: Where the parameters that aren't in the path go: the query parameters
-            and headers, for now.
+        parameters: The parameters sent under a name: query parameters, headers, form
+            fields, files, and the fields of a JSON object.
+        body: The parameter that's the whole body, or ``None``: the raw content, or a lone
+            JSON parameter that's a model, mapping or list. Its ``key`` isn't used.
     """
 
     path: tuple[str | Placeholder, ...]
     parameters: tuple[PlannedParameter, ...] = ()
+    body: PlannedParameter | None = None
 
     def build(self, arguments: Mapping[str, object]) -> tuple[str, BuildRequestKwargs]:
         """Return the URL path and the ``build_request`` arguments that carry one call's arguments.
+
+        A ``None`` value is left out: httpx2 would send ``?key=`` or an empty form field, and
+        rejects ``None`` as a header. A ``None`` body means no body.
 
         Args:
             arguments: The call's arguments by parameter name, as ``Endpoint.bind`` returns them.
@@ -116,24 +152,18 @@ class RequestPlan:
         Raises:
             ArgumentError: If a value would change which path is called; see ``_encode_path_value``.
         """
-        params: dict[str, str | list[str]] = {}
-        headers: dict[str, str] = {}
+        fields: dict[HttpxArgument, dict[str, object]] = {}
         for parameter in self.parameters:
             value = arguments[parameter.name]
-            if value is None:
-                # Left out: httpx2 would send `?key=`, and rejects None as a header value.
-                continue
-            if parameter.part is HttpxArgument.HEADERS:
-                headers[parameter.key] = _to_text(value)
-            elif parameter.many:
-                params[parameter.key] = [_to_text(item) for item in cast("Iterable[object]", value)]
+            if value is not None:
+                fields.setdefault(parameter.part, {})[parameter.key] = parameter.encode(value)
+        # Each part's value is build_request's argument name: "params", "headers", "data", "files" or "json".
+        request_arguments = cast("BuildRequestKwargs", {part.value: values for part, values in fields.items()})
+        if self.body is not None and (value := arguments[self.body.name]) is not None:
+            if self.body.part is HttpxArgument.CONTENT:
+                request_arguments["content"] = cast("RequestContent", value)
             else:
-                params[parameter.key] = _to_text(value)
-        request_arguments: BuildRequestKwargs = {}
-        if params:
-            request_arguments["params"] = params
-        if headers:
-            request_arguments["headers"] = headers
+                request_arguments["json"] = to_jsonable_python(value, by_alias=True)
         return _render_path(self.path, arguments), request_arguments
 
 
@@ -147,8 +177,9 @@ def plan_request(template: str, parameters: Sequence[ParameterInfo]) -> RequestP
 
     Raises:
         DefinitionError: If the template is malformed or doesn't fit the parameters, a
-            helper is nested inside a parameter's type, or a parameter's type can't go
-            where it would be sent.
+            helper is nested inside a parameter's type or has a default, the parameters
+            make more than one kind of body, or a parameter's type can't go where it
+            would be sent.
     """
     path = _parse_path(template)
     placeholders = {part.name: part for part in path if isinstance(part, Placeholder)}
@@ -159,20 +190,45 @@ def plan_request(template: str, parameters: Sequence[ParameterInfo]) -> RequestP
                 f"Path {template!r} has the placeholder {placeholder}, but no parameter is named {name!r}. "
                 "Add the parameter, or remove the placeholder."
             )
-    planned: list[PlannedParameter] = []
+
+    # First, which part each parameter that isn't in the path goes to.
+    placed: list[tuple[ParameterInfo, HttpxArgument]] = []
     for parameter in parameters:
-        if _has_nested_helper(parameter):
-            raise DefinitionError(
-                f"Parameter {parameter.name!r} has a helper inside its type. ClientX reads a helper only "
-                "in the outermost Annotated, so move it there: for example, Annotated[str | None, Header()] "
-                "rather than Annotated[str, Header()] | None."
-            )
+        _check_helper(parameter)
         placeholder = placeholders.get(parameter.name)
         if placeholder is not None:
             _check_path_parameter(parameter, placeholder, template)
-        elif (planned_parameter := _plan_parameter(parameter, template)) is not None:
+        else:
+            placed.append((parameter, _part_of(parameter, template)))
+    _check_one_body(placed)
+
+    # Then how each is sent: as the whole body, or under a name.
+    json_parameters = [parameter for parameter, part in placed if part is HttpxArgument.JSON]
+    lone_json = json_parameters[0] if len(json_parameters) == 1 else None
+    body: PlannedParameter | None = None
+    planned: list[PlannedParameter] = []
+    for parameter, part in placed:
+        if part is HttpxArgument.CONTENT or (parameter is lone_json and not _all_plain(parameter.annotation)):
+            body = PlannedParameter(parameter.name, part, parameter.name)
+        elif (planned_parameter := _plan_keyed(parameter, part)) is not None:
             planned.append(planned_parameter)
-    return RequestPlan(path, tuple(planned))
+    return RequestPlan(path, tuple(planned), body)
+
+
+def _check_helper(parameter: ParameterInfo) -> None:
+    """Check that a parameter's helper is in its outermost ``Annotated``, and has no default of its own."""
+    if _has_nested_helper(parameter):
+        raise DefinitionError(
+            f"Parameter {parameter.name!r} has a helper inside its type. ClientX reads a helper only "
+            "in the outermost Annotated, so move it there: for example, Annotated[str | None, Header()] "
+            "rather than Annotated[str, Header()] | None."
+        )
+    field_info = parameter.clientx_field_info
+    if field_info is not None and (field_info.default is not PydanticUndefined or field_info.default_factory):
+        raise DefinitionError(
+            f"Parameter {parameter.name!r} has a default inside its helper, where ClientX doesn't read it. "
+            "Put the default after = instead, as in page: Annotated[int, Query()] = 1."
+        )
 
 
 def _check_path_parameter(parameter: ParameterInfo, placeholder: Placeholder, template: str) -> None:
@@ -183,19 +239,20 @@ def _check_path_parameter(parameter: ParameterInfo, placeholder: Placeholder, te
             f"Parameter {name!r} fills {placeholder} in the path {template!r}, so it can't also go to the "
             f"request's {part}. Remove its helper, or rename the parameter or the placeholder."
         )
-    if not all(_is_plain(arm) for arm in _arms(parameter.annotation)):
+    if not _all_plain(parameter.annotation):
         raise DefinitionError(
             f"Parameter {name!r} fills {placeholder} in the path {template!r}, so it must be a plain value, "
             "such as str or int, not a model, mapping or collection."
         )
 
 
-def _plan_parameter(parameter: ParameterInfo, template: str) -> PlannedParameter | None:
-    """Work out where a parameter that isn't in the path goes, or return ``None`` if that part isn't sent yet.
+def _part_of(parameter: ParameterInfo, template: str) -> HttpxArgument:
+    """Return the part a parameter that isn't in the path goes to: its helper's, or else the inferred one.
+
+    Without a helper, a plain value goes to the query string, and anything else to JSON.
 
     Raises:
-        DefinitionError: If the parameter is marked ``Url()``, or its type can't go to the
-            query string or the headers, where it would be sent.
+        DefinitionError: If the parameter is marked ``Url()``: it has no placeholder.
     """
     name, part = parameter.name, parameter.httpx_argument
     if part is HttpxArgument.URL:
@@ -203,28 +260,59 @@ def _plan_parameter(parameter: ParameterInfo, template: str) -> PlannedParameter
             f"Parameter {name!r} is marked Url(), but the path {template!r} has no placeholder {{{name}}}. "
             "Add the placeholder, or remove Url()."
         )
+    if part is not None:
+        return part
+    return HttpxArgument.PARAMS if _all_plain(parameter.annotation) else HttpxArgument.JSON
+
+
+def _check_one_body(placed: list[tuple[ParameterInfo, HttpxArgument]]) -> None:
+    """Check that the parameters make one kind of body, and that at most one is the raw content.
+
+    httpx2 sends only one body: given several, it silently drops the others.
+    """
+    body_parameters = [(parameter.name, _BODY_KINDS[part]) for parameter, part in placed if part in _BODY_KINDS]
+    if len({kind for _, kind in body_parameters}) > 1:
+        listed = ", ".join(f"{name!r} ({kind})" for name, kind in body_parameters)
+        raise DefinitionError(
+            f"The parameters make more than one kind of body: {listed}. A request has one body: JSON, "
+            "the raw content of one Body() parameter, or a form of Form() and File() parameters."
+        )
+    content = [repr(name) for name, kind in body_parameters if kind == _BODY_KINDS[HttpxArgument.CONTENT]]
+    if len(content) > 1:
+        raise DefinitionError(f"Parameters {', '.join(content)} are all marked Body(), but a request has one body.")
+
+
+def _plan_keyed(parameter: ParameterInfo, part: HttpxArgument) -> PlannedParameter | None:
+    """Plan a parameter that's sent under a name, or return ``None`` if that isn't sent yet.
+
+    A JSON field or a file can be any value. A query parameter or form field is a plain value
+    or a list of them, and a header a plain value. A model or mapping with a helper for one of
+    those is spread into it, which isn't built yet.
+
+    Raises:
+        DefinitionError: If the parameter's type can't go to its part.
+    """
+    name, key = parameter.name, _key(parameter, part)
+    if part in {HttpxArgument.JSON, HttpxArgument.FILES}:
+        return PlannedParameter(name, part, key)
     arms = _arms(parameter.annotation)
-    if part is None:
-        if not all(_is_plain(arm) for arm in arms):
-            return None  # Inferred as JSON, which isn't sent yet.
-        part = HttpxArgument.PARAMS
-    if part not in {HttpxArgument.PARAMS, HttpxArgument.HEADERS}:
-        return None  # Bodies, forms and files aren't sent yet.
     if all(_is_plain(arm) for arm in arms):
-        return PlannedParameter(name, part, _key(parameter, part))
-    if part is HttpxArgument.PARAMS and all(_is_plain_list(arm) for arm in arms):
-        return PlannedParameter(name, part, _key(parameter, part), many=True)
+        return PlannedParameter(name, part, key)
+    if part is not HttpxArgument.HEADERS and all(_is_plain_list(arm) for arm in arms):
+        return PlannedParameter(name, part, key, many=True)
     if len(arms) == 1 and _has_fields(arms[0]):
         return None  # A model or mapping, spread into the part, which isn't sent yet.
-    if part is HttpxArgument.PARAMS:
-        expected = "the query string, which takes a plain value, such as str or int, or a list of them"
-    else:
+    if part is HttpxArgument.HEADERS:
         expected = "the headers, which take a plain value, such as str or int"
+    elif part is HttpxArgument.DATA:
+        expected = "the form, which takes a plain value, such as str or int, or a list of them"
+    else:
+        expected = "the query string, which takes a plain value, such as str or int, or a list of them"
     raise DefinitionError(f"Parameter {name!r} goes to {expected}.")
 
 
 def _key(parameter: ParameterInfo, part: HttpxArgument) -> str:
-    """Return the name a query parameter or header is sent under.
+    """Return the name a value is sent under: a query parameter's, header's, form field's, file's or JSON field's.
 
     It's the helper's alias (``Query(alias="q")`` sets ``serialization_alias`` too), or else the
     parameter's name, with ``_`` turned into ``-`` for a header, as FastAPI's ``Header()`` does.
@@ -272,6 +360,11 @@ def _arms(annotation: Any, depth: int = 0) -> list[Any]:
     if get_origin(base) not in {Union, UnionType} or depth > _MAX_UNION_DEPTH:
         return [base]
     return [arm for member in get_args(base) for arm in _arms(member, depth + 1)]
+
+
+def _all_plain(annotation: Any) -> bool:
+    """Return whether every type a value of ``annotation`` can have is plain; see ``_is_plain``."""
+    return all(_is_plain(arm) for arm in _arms(annotation))
 
 
 def _is_plain(annotation: Any) -> bool:
