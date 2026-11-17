@@ -21,6 +21,7 @@ ROOT = Path(__file__).parent.parent
 # that rewrites it. Once every page is rewritten, the list goes, and every
 # Markdown file in docs/, README.md and llms.txt is checked.
 CHECKED: list[str] = [
+    "README.md",
     "docs/README.md",
     "docs/endpoints.md",
     "docs/requests.md",
