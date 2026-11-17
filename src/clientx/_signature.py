@@ -7,7 +7,7 @@ so nothing reads annotations again at call time.
 """
 
 import inspect
-from collections.abc import Callable, Iterator
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Annotated, Any, TypeAliasType, get_args, get_origin, get_type_hints
 
@@ -112,9 +112,6 @@ class ReturnInfo:
 class SignatureInfo:
     """What ClientX needs from a callable's signature, read once.
 
-    It also works as a read-only container of its ``parameters``: iterate over it, take its
-    ``len``, test ``"name" in info``, or look one up with ``info["name"]`` or ``info[0]``.
-
     Attributes:
         func: The inspected callable, as given.
         name: Its ``__name__``, or its ``repr`` if it has none.
@@ -137,33 +134,6 @@ class SignatureInfo:
     parameters: tuple[ParameterInfo, ...]
     returns: ReturnInfo
     signature: inspect.Signature = field(repr=False)
-
-    # --- container behaviour ---
-    def __iter__(self) -> Iterator[ParameterInfo]:
-        """Iterate over ``parameters``."""
-        return iter(self.parameters)
-
-    def __len__(self) -> int:
-        """Return the number of ``parameters``."""
-        return len(self.parameters)
-
-    def __contains__(self, parameter_name: str) -> bool:
-        """Return whether one of ``parameters`` is named ``parameter_name``."""
-        return any(parameter.name == parameter_name for parameter in self.parameters)
-
-    def __getitem__(self, name_or_position: str | int) -> ParameterInfo:
-        """Look up a parameter by name (``str``) or by zero-based position (``int``).
-
-        Raises:
-            KeyError: If no parameter has that name.
-            IndexError: If there's no parameter at that position.
-        """
-        if isinstance(name_or_position, int):
-            return self.parameters[name_or_position]
-        for parameter in self.parameters:
-            if parameter.name == name_or_position:
-                return parameter
-        raise KeyError(name_or_position)
 
     def bind(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
         """Bind a call's arguments to the signature, with defaults filled in.
@@ -230,19 +200,16 @@ def _unwrap_type_alias(annotation: Any) -> Any:
 def _resolve_type_hints(func: Callable[..., Any]) -> dict[str, Any]:
     """Return the callable's type hints, with string annotations evaluated and ``Annotated`` kept.
 
-    It reads the hints of the function ``func`` wraps (following ``__wrapped__``), or of
-    ``__init__`` for a class. ``include_extras=True`` keeps the ``Annotated`` wrappers that
-    ``typing.get_type_hints`` would otherwise strip.
+    It reads the hints of the function ``func`` wraps, following ``__wrapped__``.
+    ``include_extras=True`` keeps the ``Annotated`` wrappers that ``typing.get_type_hints``
+    would otherwise strip.
 
     Raises:
         NameError: If an annotation names something that isn't defined yet. For an endpoint
             that's checked when its class body runs, so a model defined further down the
             module isn't found. Other errors from ``typing.get_type_hints`` propagate too.
     """
-    target = inspect.unwrap(func)
-    if inspect.isclass(target):
-        target = target.__init__
-    return get_type_hints(target, include_extras=True)
+    return get_type_hints(inspect.unwrap(func), include_extras=True)
 
 
 def inspect_signature(func: Callable[..., Any]) -> SignatureInfo:
