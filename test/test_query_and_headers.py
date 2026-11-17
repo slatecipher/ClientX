@@ -27,6 +27,7 @@ class Filters(BaseModel):
 
 
 type HeaderValue = Annotated[str, Header()]
+type HeaderParam[T] = Annotated[T, Header()]
 type JsonValue = dict[str, JsonValue] | list[JsonValue] | str | int
 
 
@@ -206,6 +207,17 @@ def test_the_clients_own_headers_are_kept(mock_transport: MockTransport) -> None
     API(BASE_URL, transport=mock_transport(sent), headers={"X-Client": "1"}).search("t")
     request = only_request(sent)
     assert (request.headers["X-Client"], request.headers["x-trace"]) == ("1", "t")
+
+
+def test_a_generic_type_alias_carries_its_helper(mock_transport: MockTransport) -> None:
+    class API(ClientX):
+        @method.get("/items")
+        def search(self, trace_id: HeaderParam[str], attempt: HeaderParam[int] = 1) -> None: ...
+
+    sent: list[httpx2.Request] = []
+    API(BASE_URL, transport=mock_transport(sent)).search("t-1")
+    request = only_request(sent)
+    assert (request.headers["trace-id"], request.headers["attempt"], request.url.query) == ("t-1", "1", b"")
 
 
 def test_a_header_must_be_a_plain_value() -> None:

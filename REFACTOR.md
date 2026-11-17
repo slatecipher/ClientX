@@ -158,10 +158,9 @@ Rebuilt from scratch (agreed 2026-11-17); the old suite (25 files, 6,566 lines) 
 - Coverage leaves out `src/clientx/pre/`. A 95% `fail_under` gate goes in once the first wave lands.
 - Done: `conftest.py` (`mock_transport`), `test_public_api.py`, `test_typing.py`, `test_paths.py`,
   `test_query_and_headers.py`, `test_bodies.py`, `test_spreading.py`, `test_responses.py`, `test_clients.py`,
-  `test_endpoints.py` (98% coverage).
+  `test_endpoints.py`, `test_signature.py`: the first wave (207 tests, 98% coverage).
   `test_bodies.py` covers #128 and #129.
-- [ ] First wave:
-  `test_signature.py`. Then the coverage gate.
+- [ ] The coverage gate.
 - Later: `test_typing.py` grows with item 10; tools, MCP and logging get tests when they're ported.
 - Streaming tests need an iterator or async-generator `MockTransport` body: `bytes` bodies are read
   at once. `make typecheck` still fails until `examples/` is updated and `pre/` is gone, since it runs
