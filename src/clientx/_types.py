@@ -57,8 +57,6 @@ type MethodType = Literal["GET", "PUT", "POST", "PATCH", "DELETE", "HEAD", "OPTI
 
 type Decoder = Callable[[Response], object]
 
-type DeprecatedType = Callable[..., None]
-
 EventHook = Callable[[Request], object] | Callable[[Response], object]
 """A sync hook: called with the request (``"request"``) or response (``"response"``)."""
 

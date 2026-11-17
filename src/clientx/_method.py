@@ -1,3 +1,4 @@
+import warnings
 from collections.abc import Callable
 from dataclasses import dataclass
 from functools import wraps
@@ -10,7 +11,7 @@ from clientx._decoding import adecode, araise_status_error, decode, raise_status
 from clientx._endpoint import Endpoint
 from clientx._registry import register_endpoint_function
 from clientx._signature import inspect_signature
-from clientx._types import Decoder, DeprecatedType, MethodType
+from clientx._types import Decoder, MethodType
 
 P = ParamSpec("P")
 T = TypeVar("T", bound=EndpointOwner)
@@ -26,7 +27,7 @@ class Method:
         path: str = "",
         *,
         decoder: Decoder | None = None,
-        deprecated: DeprecatedType | None = None,
+        deprecated: str | None = None,
         tags: list[str] | None = None,
         timeout: Timeout | float | None = None,
         raise_for_status: bool | None = None,
@@ -47,6 +48,9 @@ class Method:
             
             @wraps(func)
             def wrapper(_self: T, /, *args: P.args, **kwargs: P.kwargs) -> R:
+                if endpoint.deprecated is not None:
+                    # `stacklevel=2` names the caller's line. The warning must stay in the wrapper's own frame.
+                    warnings.warn(endpoint.deprecated, DeprecationWarning, stacklevel=2)
                 client = client_of(_self, ClientX)
                 arguments = endpoint.bind(_self, *args, **kwargs)
 
@@ -59,6 +63,8 @@ class Method:
 
             @wraps(func)
             async def async_wrapper(_self: T, /, *args: P.args, **kwargs: P.kwargs) -> object:
+                if endpoint.deprecated is not None:
+                    warnings.warn(endpoint.deprecated, DeprecationWarning, stacklevel=2)
                 client = client_of(_self, AsyncClientX)
                 arguments = endpoint.bind(_self, *args, **kwargs)
                 request = client.build_request(endpoint.method, "")

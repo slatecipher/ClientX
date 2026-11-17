@@ -23,6 +23,10 @@ pieces are ported one small step at a time. Delete this file and `pre/` when the
 - `inspect_signature` describes every parameter as written; `Endpoint` owns the rule that the first
   parameter receives the client or resource.
 - Errors are plain `TypeError` for now, with the old messages, until the exceptions module returns.
+- `deprecated=` takes the warning's message, a `str`. The wrapper emits the `DeprecationWarning` itself
+  with `stacklevel=2`, so it names the caller's line and is shown by Python's default filters.
+  `DeprecatedMessage` and the "any callable" form are gone. The old `stacklevel=4` pointed into
+  clientx's `_decorators.py`, so outside test runners the warning was hidden.
 
 ## Done
 
@@ -52,13 +56,13 @@ Suggested order:
      merge rules; dropping `None`; header value formatting; what a helper's `alias` means on a parameter
    - the one-helper, outermost-`Annotated` rule (old `MisplacedHelperError`); `DumpConfig`
 3. [ ] Per-endpoint `timeout` (stored, never sent).
-4. [ ] `deprecated=` (stored, never called) and the old public `DeprecatedMessage`.
+4. [x] `deprecated=`: a message string; both wrappers warn before anything else (see Decisions).
 5. [ ] Argument validation (`validate_arguments` is stored on endpoint and client, never read).
 6. [ ] Exceptions module (`ClientXError` and subclasses; old ones also subclass `TypeError`/`ValueError`).
    `MissingDecoderError` is no longer needed.
 7. [ ] Public exports in `clientx/__init__.py`: `AsyncClientX`, `Resource`, `AsyncResource`,
    `ClientXError`, `__version__`, httpx2 re-exports (`Auth`, `Request`, `Response`, `Timeout`),
-   `DeprecatedMessage`, `DumpConfig`; decide whether to re-export the `clientx.arguments` helpers.
+   `DumpConfig`; decide whether to re-export the `clientx.arguments` helpers.
 8. [ ] The client's `__repr__` (old: class name, base URL, User-Agent).
 9. [ ] Logging (old `_logging.py`): one DEBUG record per call, never values.
 10. [ ] Decorator typing (old `RawEndpointDecorator`/`DecodedEndpointDecorator` overloads): check a
@@ -74,6 +78,9 @@ response (old `StreamResponseDecoder`).
 - `llms.txt:92` and `docs/errors.md:7`: httpx2's names are reserved on clients, free on resources.
 - `docs/decoders.md`: rewrite for annotation-driven decoding.
 - Docs and `examples/` still use the `base_url=` class argument and the old decoder classes.
+- `DeprecatedMessage(...)` becomes a plain string in `docs/endpoints.md` (drop "any callable"),
+  `llms.txt:78`, `examples/beeceptor/beeceptor_client.py`, and `test/test_async.py`, `test_tools.py`,
+  `test_endpoint_context.py`, `test_public_api.py`. A test can check the warning names the caller's file.
 - Tests still import the old modules (`clientx.exceptions`, `clientx._client_types`, `clientx._compiler`, ...).
   Rename or move the tests that define `send`/`stream` endpoints on a `ClientX` (`test_decorators.py`).
   `test_unresolvable_hints_fall_back_to_the_raw_annotations` must expect a `NameError` now.

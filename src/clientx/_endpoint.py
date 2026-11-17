@@ -15,7 +15,7 @@ from httpx2 import Timeout
 
 from clientx._decoding import default_decoder, is_stream
 from clientx._signature import NO_VALUE, ParameterInfo, ParameterKind, SignatureInfo
-from clientx._types import Decoder, DeprecatedType, MethodType
+from clientx._types import Decoder, MethodType
 
 
 @dataclass(slots=True)
@@ -33,8 +33,8 @@ class Endpoint:
         decoder: Turns the ``httpx2.Response`` into the endpoint's return value. It's the
             decorator's ``decoder=``, or else ``__post_init__`` sets the one the return
             annotation implies. It stays ``None`` for ``-> None``: the endpoint returns nothing.
-        deprecated: Called on each call of a deprecated endpoint, for example to emit a
-            ``DeprecationWarning``; ``None`` if the endpoint isn't deprecated.
+        deprecated: The message of the ``DeprecationWarning`` each call emits, such as
+            ``"Use new() instead."``; ``None`` if the endpoint isn't deprecated.
         timeout: The request timeout for this endpoint; ``None`` uses the client's.
         raise_for_status: Whether a 4xx or 5xx response raises ``httpx2.HTTPStatusError``;
             ``None`` uses the client's setting.
@@ -52,7 +52,7 @@ class Endpoint:
     tags: list[str] | None = field(default=None)
     raw_path: str = field(default="")
     decoder: Decoder | None = field(default=None)
-    deprecated: DeprecatedType | None = field(default=None)
+    deprecated: str | None = field(default=None)
     timeout: Timeout | float | None = field(default=None)
     raise_for_status: bool | None = field(default=None)
     validate_arguments: bool | None = field(default=None)
