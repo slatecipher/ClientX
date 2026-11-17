@@ -156,9 +156,9 @@ Rebuilt from scratch (agreed 2026-11-17); the old suite (25 files, 6,566 lines) 
 - Conventions kept: `importlib` import mode, fixtures that return factories, anyio for async tests,
   and `test_typing.py` checked by pyright and mypy in `make typecheck`.
 - Coverage leaves out `src/clientx/pre/`. A 95% `fail_under` gate goes in once the first wave lands.
-- Done: `conftest.py` (`mock_transport`), `test_public_api.py`, `test_typing.py`, `test_paths.py` (83%
-  coverage).
-- [ ] First wave: `test_query_and_headers.py`, `test_bodies.py`, `test_spreading.py`,
+- Done: `conftest.py` (`mock_transport`), `test_public_api.py`, `test_typing.py`, `test_paths.py`,
+  `test_query_and_headers.py` (86% coverage).
+- [ ] First wave: `test_bodies.py`, `test_spreading.py`,
   `test_responses.py` (decoding, streaming, 4xx/5xx), `test_clients.py` (classes, resources, repr,
   options), `test_signature.py`. Then the coverage gate.
 - Later: `test_typing.py` grows with item 10; tools, MCP and logging get tests when they're ported.
