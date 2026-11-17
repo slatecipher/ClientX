@@ -24,7 +24,9 @@ typecheck-tests:
 test:
 	uv run pytest
 
+# CI fails below 95% line coverage, so new code arrives with its tests. Only here: local runs of
+# a single test file would always fall short.
 test-ci:
-	uv run pytest --cov=clientx --cov-report=term-missing
+	uv run pytest --cov=clientx --cov-report=term-missing --cov-fail-under=95
 
 check: lint typecheck test
