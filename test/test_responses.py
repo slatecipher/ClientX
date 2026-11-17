@@ -1,5 +1,6 @@
 """Responses: decoded as the return annotation says, streamed and closed, and raised for 4xx and 5xx."""
 
+import functools
 import re
 from collections.abc import AsyncIterator, Callable, Iterator
 from typing import Annotated, Any
@@ -412,3 +413,119 @@ def test_stream_true_needs_a_response_annotation_and_no_decoder(
         class API(ClientX):
             @method.get("/files", stream=True, decoder=decoder)
             def files(self) -> returns: ...  # pyright: ignore[reportInvalidTypeForm]
+
+
+# Custom decoders
+
+
+class Event(BaseModel):
+    id: int
+
+
+def ndjson_events(response: httpx2.Response) -> Iterator[Event]:
+    for line in response.iter_lines():
+        yield Event.model_validate_json(line)
+
+
+async def async_ndjson_events(response: httpx2.Response) -> AsyncIterator[Event]:
+    async for line in response.aiter_lines():
+        yield Event.model_validate_json(line)
+
+
+async def coroutine_decoder(response: httpx2.Response) -> Event:
+    return Event(id=1)
+
+
+class AsyncDecoder:
+    async def __call__(self, response: httpx2.Response) -> Event:
+        return Event(id=1)
+
+
+def test_a_generator_decoder_streams_typed_items() -> None:
+    class API(ClientX):
+        @method.get("/events", decoder=ndjson_events)
+        def events(self) -> Iterator[Event]: ...
+
+    stream = TrackedStream(b'{"id": 1}\n{"id"', b": 2}\n")
+    assert list(API(BASE_URL, transport=streaming(stream)).events()) == [Event(id=1), Event(id=2)]
+    assert stream.closed
+
+
+@pytest.mark.anyio
+async def test_an_async_generator_decoder_streams_typed_items() -> None:
+    class API(AsyncClientX):
+        @method.get("/events", decoder=async_ndjson_events)
+        async def events(self) -> AsyncIterator[Event]: ...
+
+    stream = TrackedAsyncStream(b'{"id": 1}\n{"id"', b": 2}\n")
+    events = await API(BASE_URL, transport=streaming(stream)).events()
+    assert [event async for event in events] == [Event(id=1), Event(id=2)]
+    assert stream.closed
+
+
+@pytest.mark.anyio
+async def test_an_async_stream_is_closed_if_its_decoder_fails() -> None:
+    def broken(response: httpx2.Response) -> AsyncIterator[Event]:
+        raise RuntimeError("decoder failed")
+
+    class API(AsyncClientX):
+        @method.get("/events", decoder=broken)
+        async def events(self) -> AsyncIterator[Event]: ...
+
+    stream = TrackedAsyncStream(b'{"id": 1}\n')
+    with pytest.raises(RuntimeError, match="decoder failed"):
+        await API(BASE_URL, transport=streaming(stream)).events()
+    assert stream.closed
+
+
+def test_a_decoder_cant_go_with_none() -> None:
+    with pytest.raises(DefinitionError, match=re.escape("is annotated -> None, so it returns nothing and can't take")):
+
+        class API(ClientX):
+            @method.get("/jobs", decoder=lambda response: "surprise")
+            def submit(self) -> None: ...
+
+
+@pytest.mark.parametrize(
+    "decoder",
+    [coroutine_decoder, functools.partial(coroutine_decoder), AsyncDecoder()],
+    ids=["async def", "partial of an async def", "class with an async __call__"],
+)
+def test_an_async_def_decoder_fails(decoder: Callable[[httpx2.Response], object]) -> None:
+    with pytest.raises(DefinitionError, match=re.escape("decoder= must be a plain function, not `async def`")):
+
+        class API(AsyncClientX):
+            @method.get("/event", decoder=decoder)
+            async def event(self) -> Event: ...
+
+
+def test_a_def_endpoint_cant_have_an_async_generator_decoder() -> None:
+    with pytest.raises(
+        DefinitionError, match=re.escape("is a plain `def`, so its decoder can't be an async generator")
+    ):
+
+        class API(ClientX):
+            @method.get("/events", decoder=async_ndjson_events)
+            def events(self) -> Iterator[Event]: ...
+
+
+def test_an_async_def_endpoint_cant_have_a_plain_generator_decoder() -> None:
+    with pytest.raises(DefinitionError, match=re.escape("so its stream decoder must be an async generator")):
+
+        class API(AsyncClientX):
+            @method.get("/events", decoder=ndjson_events)
+            async def events(self) -> AsyncIterator[Event]: ...
+
+
+def test_a_generator_decoder_needs_a_stream_annotation() -> None:
+    with pytest.raises(DefinitionError, match=re.escape("so annotate the endpoint -> Iterator[...]")):
+
+        class API(ClientX):
+            @method.get("/events", decoder=ndjson_events)
+            def events(self) -> list[Event]: ...
+
+    with pytest.raises(DefinitionError, match=re.escape("so annotate the endpoint -> AsyncIterator[...]")):
+
+        class AsyncAPI(AsyncClientX):
+            @method.get("/events", decoder=async_ndjson_events)
+            async def events(self) -> list[Event]: ...

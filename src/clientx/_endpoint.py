@@ -8,8 +8,12 @@ defined, ``_class_setup.py`` sets its ``owner``, joins a resource's prefix and t
 ``raw_path`` and ``tags``, and calls ``set_up_request``.
 """
 
+import functools
+import inspect
+from collections.abc import AsyncIterator, Iterator
 from dataclasses import dataclass, field
-from typing import Any
+from types import NoneType
+from typing import Any, get_origin
 
 from httpx2 import USE_CLIENT_DEFAULT, Response, Timeout
 
@@ -78,12 +82,14 @@ class Endpoint:
             DefinitionError: If the function has no positional first parameter for the client or
                 resource (it has none, or it's keyword-only, ``*args`` or ``**kwargs``), has a
                 ``*args`` or ``**kwargs`` parameter after it, has no return annotation, or has one
-                that can't be decoded without a ``decoder=``, or uses ``stream=True`` other than
-                with ``-> Response`` and no ``decoder=``.
+                that can't be decoded without a ``decoder=``, uses ``stream=True`` other than
+                with ``-> Response`` and no ``decoder=``, or has a ``decoder=`` that can't work
+                (see ``_check_decoder``).
         """
         self._check_parameters()
         self._check_return_annotation()
         self._check_stream_response()
+        self._check_decoder()
 
         name = self.signature.qualname
         returns = self.signature.returns
@@ -154,6 +160,56 @@ class Endpoint:
                 f"Endpoint '{name}' has stream=True, which returns the open response, so it can't also take a decoder=."
             )
 
+    def _check_decoder(self) -> None:
+        """Check that a ``decoder=`` can return what the endpoint's annotation says.
+
+        A decoder is a plain function that gets the response: the body is already read, or,
+        for an endpoint annotated as a stream, the decoder returns the iterator. So it can't be
+        ``async def``, and a generator decoder streams: a plain generator for a ``def``
+        endpoint annotated ``-> Iterator[...]``, an async generator for an ``async def`` one
+        annotated ``-> AsyncIterator[...]``. A decoder that returns an iterator without being a
+        generator can't be told apart here; type checkers check it against the annotation.
+
+        Raises:
+            DefinitionError: If the endpoint is annotated ``-> None``, or the decoder is
+                ``async def``, or a generator of the wrong kind or for an endpoint that isn't
+                annotated as a stream.
+        """
+        if self.decoder is None:
+            return
+        name = self.signature.qualname
+        returns = self.signature.returns.base_type
+        if returns is None or returns is NoneType:
+            raise DefinitionError(
+                f"Endpoint '{name}' is annotated -> None, so it returns nothing and can't take a decoder=. "
+                "Annotate what the decoder returns."
+            )
+        function = _function_of(self.decoder)
+        if inspect.iscoroutinefunction(function):
+            raise DefinitionError(
+                f"Endpoint '{name}': decoder= must be a plain function, not `async def`: the response is read "
+                "before the decoder runs. To stream an `async def` endpoint, use an async generator, an "
+                "`async def` with `yield`."
+            )
+        is_async = self.signature.is_async
+        if inspect.isasyncgenfunction(function) and not is_async:
+            raise DefinitionError(
+                f"Endpoint '{name}' is a plain `def`, so its decoder can't be an async generator: use a "
+                "generator, a `def` with `yield`."
+            )
+        if inspect.isgeneratorfunction(function) and is_async:
+            raise DefinitionError(
+                f"Endpoint '{name}' is `async def`, so its stream decoder must be an async generator, an "
+                "`async def` with `yield`, not a plain generator."
+            )
+        streams = get_origin(returns) is (AsyncIterator if is_async else Iterator)
+        if (inspect.isgeneratorfunction(function) or inspect.isasyncgenfunction(function)) and not streams:
+            iterator = "AsyncIterator" if is_async else "Iterator"
+            raise DefinitionError(
+                f"Endpoint '{name}': a generator decoder streams the response, so annotate the endpoint "
+                f"-> {iterator}[...]."
+            )
+
     def bind(self, owner: object, *args: Any, **kwargs: Any) -> dict[str, Any]:
         """Match a call's arguments to the endpoint's parameters, with defaults filled in.
 
@@ -213,3 +269,15 @@ class Endpoint:
         url, request_arguments = self.request.build(arguments)
         request_arguments["timeout"] = self.timeout
         return url, request_arguments
+
+
+def _function_of(decoder: Decoder) -> object:
+    """Return the function a decoder runs: the decoder itself, or its class's ``__call__`` for an instance.
+
+    ``inspect`` sees through functions, methods and ``functools.partial``, but not through a
+    callable instance, so a decoder class with an ``async def __call__`` is checked by its method.
+    """
+    function: object = decoder
+    if not (inspect.isroutine(decoder) or isinstance(decoder, functools.partial)):
+        function = type(decoder).__call__
+    return function

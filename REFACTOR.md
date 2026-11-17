@@ -151,10 +151,14 @@ Decoder decisions (agreed 2026-11-17):
   response, which the caller reads and closes (replaces `StreamResponseDecoder`). Only with
   `-> Response` and without a `decoder=`; anything else raises `DefinitionError`. `-> Iterator[...]`
   keeps streaming and closing by itself.
-- Open: whether to drop `decoder=` altogether (the user is undecided, 2026-11-17). Without it,
-  non-JSON bodies, `Model.from_response` and typed SSE/NDJSON streams go through `-> Response`,
-  `-> str` or `-> Iterator[str]`; item 10 would no longer need to check a decoder against the
-  annotation.
+- `decoder=` stays (agreed 2026-11-17): typed streams such as SSE or NDJSON events
+  (`-> Iterator[Event]` with a generator decoder) need it. To make it safe:
+  - [x] `DefinitionError` when the class is defined for a decoder with `-> None`, an `async def`
+    (coroutine) decoder, a generator decoder of the wrong kind (an async generator on a `def`
+    endpoint, a plain one on an `async def` one), and a generator decoder on an endpoint that isn't
+    annotated as a stream
+  - [ ] typing: type checkers check the decoder's return type against the annotation, for `def` and
+    `async def` endpoints, pinned in `test_typing.py` (the decoder half of item 10)
 
 ## Tests
 
