@@ -1,9 +1,8 @@
-"""The machinery behind the experimental ``clientx.arguments`` helpers.
+"""The machinery behind the ``clientx.arguments`` helpers.
 
-``clientx.arguments`` builds its helpers with ``bind_argument`` and re-exports ``HttpxArgument`` and
-``get_argument_location``. ``HttpxArgumentSpec``, the mark a helper adds to its ``FieldInfo``, isn't public,
-so how a helper marks its ``FieldInfo`` can change without breaking users. ``get_argument_spec`` reads the
-mark for the rest of ClientX.
+``clientx.arguments`` builds its helpers with ``bind_argument``. ``HttpxArgumentSpec``, the mark a helper adds
+to its ``FieldInfo``, isn't public, so how a helper marks its ``FieldInfo`` can change without breaking users.
+``get_argument_spec`` and ``get_argument_location`` read the mark for the rest of ClientX.
 """
 
 import functools

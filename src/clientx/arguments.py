@@ -1,4 +1,4 @@
-"""Experimental: request-part helpers built on ``pydantic.Field``.
+"""Request-part helpers built on ``pydantic.Field``, also exported by ``clientx``.
 
 Each helper takes exactly the arguments of ``pydantic.Field`` and returns its ``FieldInfo``, marked with the
 part of the request it goes to. On an endpoint parameter, put the helper inside ``Annotated``. ClientX reads
@@ -19,7 +19,6 @@ model, mapping, collection or dataclass to JSON, and anything else to the query 
 A helper on a model, dataclass or mapping parameter sends each of its fields to that part: with
 ``filters: Annotated[Filters, Query()]``, each field of ``Filters`` is a query parameter. A helper on a
 model's own field raises ``DefinitionError``, because the parameter decides where all of its fields go.
-``get_argument_location`` returns the part a helper's ``FieldInfo`` is marked for.
 
 The helpers align one-to-one with the arguments of ``httpx2.Client.build_request`` that carry request data
 (every argument except ``method``, ``timeout``, ``extensions`` and ``cookies``), so ``Body`` is httpx's raw
@@ -37,7 +36,8 @@ so set cookies on the client instead. Each helper, and the argument it marks:
 
 from pydantic import Field
 
-from clientx._arguments import HttpxArgument, bind_argument, get_argument_location
+from clientx._arguments import bind_argument
+from clientx._types import HttpxArgument
 
 Url = bind_argument("Url", HttpxArgument.URL, Field)
 Query = bind_argument("Query", HttpxArgument.PARAMS, Field)
@@ -47,4 +47,4 @@ Form = bind_argument("Form", HttpxArgument.DATA, Field)
 File = bind_argument("File", HttpxArgument.FILES, Field)
 Json = bind_argument("Json", HttpxArgument.JSON, Field)
 
-__all__ = ["Body", "File", "Form", "Header", "HttpxArgument", "Json", "Query", "Url", "get_argument_location"]
+__all__ = ["Body", "File", "Form", "Header", "Json", "Query", "Url"]
