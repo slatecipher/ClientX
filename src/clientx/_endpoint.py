@@ -46,8 +46,8 @@ class Endpoint:
             and ``None`` turns the timeout off.
         raise_for_status: Whether a 4xx or 5xx response raises ``httpx2.HTTPStatusError``;
             ``None`` uses the client's setting.
-        validate_arguments: Whether arguments are checked against their annotations
-            before sending; ``None`` uses the client's setting.
+        validate_arguments: Stored for argument validation, which isn't implemented
+            yet (#136).
         stream_response: The decorator's ``stream=True``: the endpoint returns the open,
             unread response, which the caller reads and closes. Only with ``-> Response``,
             and without a ``decoder=``.
@@ -76,15 +76,11 @@ class Endpoint:
     stream: bool = field(init=False)
 
     def __post_init__(self) -> None:
-        """Check the signature, and work out how the response is decoded, once, when the class is defined.
+        """Check the signature, and work out how the response is decoded, once, when the method is decorated.
 
         Raises:
-            DefinitionError: If the function has no positional first parameter for the client or
-                resource (it has none, or it's keyword-only, ``*args`` or ``**kwargs``), has a
-                ``*args`` or ``**kwargs`` parameter after it, has no return annotation, or has one
-                that can't be decoded without a ``decoder=``, uses ``stream=True`` other than
-                with ``-> Response`` and no ``decoder=``, or has a ``decoder=`` that can't work
-                (see ``_check_decoder``).
+            DefinitionError: If the parameters, the return annotation, ``stream=True`` or the
+                ``decoder=`` can't work; see the ``_check_*`` methods and ``default_decoder``.
         """
         self._check_parameters()
         self._check_return_annotation()
@@ -102,14 +98,11 @@ class Endpoint:
             raise DefinitionError(f"Endpoint '{name}': {error}") from error
 
     def _check_parameters(self) -> None:
-        """Check that the first parameter is positional, and that no parameter is ``*args`` or ``**kwargs``.
+        """Raise ``DefinitionError`` unless the first parameter is positional and none is ``*args`` or ``**kwargs``.
 
         The first parameter receives the client or resource, so a call must be able to pass it
         positionally. Every other parameter sends one value, which its annotation places in the
         request, so a ``*args`` or ``**kwargs`` parameter has nowhere to go.
-
-        Raises:
-            DefinitionError: If either rule is broken.
         """
         name = self.signature.qualname
         first = self.signature.parameters[0] if self.signature.parameters else None
@@ -127,11 +120,7 @@ class Endpoint:
                 )
 
     def _check_return_annotation(self) -> None:
-        """Check that the function has a return annotation: it decides how the response is decoded.
-
-        Raises:
-            DefinitionError: If there's none.
-        """
+        """Raise ``DefinitionError`` if there's no return annotation: it decides how the response is decoded."""
         if self.signature.returns.annotation is NO_VALUE:
             raise DefinitionError(
                 f"Endpoint '{self.signature.qualname}' needs a return annotation, such as `-> None` or "
@@ -139,13 +128,10 @@ class Endpoint:
             )
 
     def _check_stream_response(self) -> None:
-        """Check that ``stream=True`` comes with ``-> Response`` and without a ``decoder=``.
+        """Raise ``DefinitionError`` unless ``stream=True`` comes with ``-> Response`` and no ``decoder=``.
 
         The endpoint then returns the open response itself, so another return type has nothing
         to say, and a decoder would leave nobody sure who closes the response.
-
-        Raises:
-            DefinitionError: If either is broken.
         """
         if not self.stream_response:
             return
@@ -161,19 +147,15 @@ class Endpoint:
             )
 
     def _check_decoder(self) -> None:
-        """Check that a ``decoder=`` can return what the endpoint's annotation says.
+        """Raise ``DefinitionError`` if a ``decoder=`` can't return what the endpoint's annotation says.
 
-        A decoder is a plain function that gets the response: the body is already read, or,
-        for an endpoint annotated as a stream, the decoder returns the iterator. So it can't be
-        ``async def``, and a generator decoder streams: a plain generator for a ``def``
-        endpoint annotated ``-> Iterator[...]``, an async generator for an ``async def`` one
-        annotated ``-> AsyncIterator[...]``. A decoder that returns an iterator without being a
-        generator can't be told apart here; type checkers check it against the annotation.
-
-        Raises:
-            DefinitionError: If the endpoint is annotated ``-> None``, or the decoder is
-                ``async def``, or a generator of the wrong kind or for an endpoint that isn't
-                annotated as a stream.
+        An endpoint annotated ``-> None`` returns nothing, so it takes no decoder. A decoder is
+        a plain function that gets the response: the body is already read, or, for an endpoint
+        annotated as a stream, the decoder returns the iterator. So it can't be ``async def``,
+        and a generator decoder streams: a plain generator for a ``def`` endpoint annotated
+        ``-> Iterator[...]``, an async generator for an ``async def`` one annotated
+        ``-> AsyncIterator[...]``. A decoder that returns an iterator without being a generator
+        can't be told apart here; type checkers check it against the annotation.
         """
         if self.decoder is None:
             return
@@ -211,16 +193,10 @@ class Endpoint:
             )
 
     def bind(self, owner: object, *args: Any, **kwargs: Any) -> dict[str, Any]:
-        """Match a call's arguments to the endpoint's parameters, with defaults filled in.
+        """Return a call's arguments by parameter name, in signature order, with defaults filled in.
 
-        Args:
-            owner: The object the endpoint was called on: a client, or a resource
-                mounted on one. It fills the first parameter and is left out of the result.
-            *args: The call's positional arguments.
-            **kwargs: The call's keyword arguments.
-
-        Returns:
-            Each remaining parameter's value by name, in signature order.
+        ``owner``, the client or resource the endpoint was called on, fills the first
+        parameter and is left out of the result.
 
         Raises:
             TypeError: If the arguments don't fit the signature, as in a normal call.

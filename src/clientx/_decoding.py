@@ -3,12 +3,15 @@
 The return annotation decides how a response becomes the value an endpoint returns,
 so most endpoints need no ``decoder=``:
 
-    -> None                       nothing
-    -> Response                   the response itself, already read
-    -> str / -> bytes             the body as text / as bytes
-    -> Iterator[str]              the body streamed as lines (``AsyncIterator[str]`` for ``async def``)
-    -> Iterator[bytes]            the body streamed as chunks (``AsyncIterator[bytes]`` for ``async def``)
-    -> anything else              the JSON body, validated against the annotation by a ``TypeAdapter``
+    -> None             nothing
+    -> Response         the response, read (unread with ``stream=True``)
+    -> str / -> bytes   the body as text / as bytes
+    -> Iterator[str]    the body streamed as lines
+    -> Iterator[bytes]  the body streamed as chunks
+    -> anything else    the JSON body, validated by a ``TypeAdapter``
+
+An ``async def`` endpoint streams with ``AsyncIterator[str]`` and
+``AsyncIterator[bytes]`` instead.
 
 An endpoint's own ``decoder=``, any callable that takes an ``httpx2.Response``, replaces
 the decoder the annotation implies. An ``Iterator`` or ``AsyncIterator`` annotation streams
@@ -37,11 +40,10 @@ if TYPE_CHECKING:
 
 
 def is_stream(returns: ReturnInfo, *, is_async: bool) -> bool:
-    """Return whether the endpoint streams its response: it's annotated ``-> Iterator[T]``, or ``-> AsyncIterator[T]``.
+    """Return whether an endpoint's return annotation makes it stream its response.
 
-    Args:
-        returns: The endpoint's return annotation.
-        is_async: Whether the endpoint is ``async def``, which streams an ``AsyncIterator``.
+    A ``def`` endpoint streams with ``-> Iterator[T]``, an ``async def`` one with
+    ``-> AsyncIterator[T]``.
 
     Raises:
         DefinitionError: If the annotation is the other kind of endpoint's iterator.
@@ -55,19 +57,12 @@ def is_stream(returns: ReturnInfo, *, is_async: bool) -> bool:
 
 
 def default_decoder(returns: ReturnInfo, *, is_async: bool) -> Decoder | None:
-    """Return the decoder an endpoint's return annotation implies, for an endpoint without ``decoder=``.
+    """Return the decoder an endpoint's return annotation implies, or ``None`` for ``-> None``.
 
-    It dispatches on ``returns.base_type``, so ``Annotated`` and ``type`` aliases don't hide
-    the type. The ``TypeAdapter`` gets the full ``returns.annotation``, so ``Annotated``
-    constraints are validated too. It's built here, once, so a type Pydantic can't validate
-    fails now rather than on the first call.
-
-    Args:
-        returns: The endpoint's return annotation.
-        is_async: Whether the endpoint is ``async def``.
-
-    Returns:
-        The decoder, or ``None`` for ``-> None``: the endpoint returns nothing.
+    It's for an endpoint without ``decoder=``, and dispatches on ``returns.base_type``, so
+    ``Annotated`` and ``type`` aliases don't hide the type. The ``TypeAdapter`` gets the full
+    ``returns.annotation``, so ``Annotated`` constraints are validated too. It's built here,
+    once, so a type Pydantic can't validate fails now rather than on the first call.
 
     Raises:
         DefinitionError: If the annotation needs a ``decoder=``: it streams items other than ``str``
@@ -104,7 +99,6 @@ def default_decoder(returns: ReturnInfo, *, is_async: bool) -> Decoder | None:
 
 
 def _type_name(annotation: Any) -> str:
-    """Name a type for an error message: ``User`` for a class, ``list[User]`` for anything else."""
     return annotation.__qualname__ if isinstance(annotation, type) else repr(annotation)
 
 
@@ -153,7 +147,10 @@ def raise_status_error(response: Response) -> None:
 
 
 async def araise_status_error(response: Response) -> None:
-    """The ``async`` counterpart of ``raise_status_error``, for responses from an ``httpx2.AsyncClient``."""
+    """Raise ``httpx2.HTTPStatusError`` for a 4xx or 5xx response from an ``httpx2.AsyncClient``.
+
+    See ``raise_status_error``.
+    """
     try:
         await response.aread()
     finally:
@@ -198,7 +195,7 @@ def _close_when_done(items: Iterable[object], response: Response) -> Iterator[ob
 
 
 async def adecode(decoder: Decoder | None, response: Response, *, stream: bool) -> object:
-    """The ``async`` counterpart of ``decode``, for ``async def`` endpoints: a stream is an async iterator."""
+    """Return what an ``async def`` endpoint returns, as ``decode`` does; a stream is an async iterator."""
     if decoder is None:
         return None
     if not stream:

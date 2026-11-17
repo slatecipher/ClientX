@@ -66,6 +66,8 @@ class DecodedEndpointDecorator[D](Protocol):
 
 @dataclass(frozen=True, slots=True)
 class Method:
+    """An HTTP verb's endpoint decorator, such as ``method.get``: one per verb in ``clientx.method``."""
+
     method: MethodType
 
     @overload
@@ -106,10 +108,27 @@ class Method:
         raise_for_status: bool | None = None,
         validate_arguments: bool | None = None,
     ) -> Any:
-        """Return the decorator that turns a method into an endpoint; see the overloads for its types.
+        """Return the decorator that turns a method into an endpoint.
 
         Without ``decoder=``, the endpoint keeps its own signature. With one, it must return what
         the decoder returns: type checkers report a mismatch at the decorator.
+
+        Args:
+            path: The path template, such as ``"/users/{user_id}"``, relative to the client's
+                base URL. A resource joins its prefix onto it.
+            decoder: Turns the ``httpx2.Response`` into the return value, in place of the
+                decoding the return annotation implies. A generator decoder streams, for an
+                endpoint annotated ``-> Iterator[...]`` (an async generator for
+                ``-> AsyncIterator[...]``).
+            stream: Return the open, unread response, which the caller reads and closes.
+                Only with ``-> Response`` and no ``decoder=``.
+            deprecated: The message of a ``DeprecationWarning`` each call emits.
+            tags: Tags that group endpoints. A resource's tags go in front.
+            timeout: The request timeout, as httpx2 takes it: the default uses the client's,
+                and ``None`` turns it off.
+            raise_for_status: Whether a 4xx or 5xx response raises ``httpx2.HTTPStatusError``;
+                ``None`` uses the client's setting.
+            validate_arguments: Not implemented yet, so it has no effect (#136).
         """
 
         def decorator[T: EndpointOwner, **P, R](func: Callable[Concatenate[T, P], R]) -> Callable[Concatenate[T, P], R]:

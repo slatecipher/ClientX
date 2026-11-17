@@ -26,7 +26,7 @@ def get_argument_spec(field_info: object) -> HttpxArgumentSpec | None:
 
 
 def get_argument_location(field_info: object) -> HttpxArgument | None:
-    """The request argument a field is marked for, or ``None`` if it's not a ``FieldInfo`` or has no mark."""
+    """Return the request part a field is marked for, or ``None`` if it's not a ``FieldInfo`` or has no mark."""
     spec = get_argument_spec(field_info)
     return None if spec is None else spec.in_
 
@@ -47,10 +47,6 @@ def bind_argument[**P](
         name: The helper's name, for its ``__name__`` and ``__qualname__``.
         location: The request part to mark each field for.
         field_fn: The function that creates the ``FieldInfo``, normally ``pydantic.Field``.
-
-    Returns:
-        A function that calls ``field_fn`` with its arguments and adds an ``HttpxArgumentSpec`` for
-        ``location`` to the returned field's metadata.
     """
 
     @functools.wraps(field_fn)

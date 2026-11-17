@@ -1,6 +1,3 @@
-# Required: the httpx2 aliases below are imported only under TYPE_CHECKING.
-from __future__ import annotations
-
 import ssl
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
@@ -14,8 +11,8 @@ from httpx2 import AsyncBaseTransport, BaseTransport, Limits, Request, Response
 # one-line fix.
 from httpx2._client import UseClientDefault
 
-# _types is private: import for type checking only, so an httpx2
-# refactor can break type checks but never runtime imports.
+# httpx2's aliases are in its private `_types` module. Other modules import them from here, so a move
+# upstream is a fix in one place.
 from httpx2._types import (
     AuthTypes,
     CertTypes,
@@ -77,8 +74,8 @@ class _HttpxClientOptions(TypedDict, total=False):
     ``AsyncHttpxClientOptions``.
 
     Every constructor parameter except ``base_url`` is included, deprecated ones
-    too, so subclasses of ``Client`` / ``AsyncClient`` can forward ``**options``
-    unchanged. ``ClientX`` takes ``base_url`` as a parameter of its own.
+    too, so ``ClientX`` and ``AsyncClientX`` can forward ``**kwargs`` to httpx2
+    unchanged. They take ``base_url`` as a parameter of their own.
     """
 
     auth: AuthTypes | None
@@ -117,7 +114,7 @@ class _HttpxClientOptions(TypedDict, total=False):
     """A proxy URL or configuration where all traffic should be routed."""
 
     timeout: TimeoutTypes
-    """Timeouts: seconds, ``None`` for none, a (connect, read, write, pool) tuple, or an ``Timeout``."""
+    """Timeouts: seconds, ``None`` for none, a (connect, read, write, pool) tuple, or a ``Timeout``."""
 
     follow_redirects: bool
     """Whether to follow HTTP redirect responses."""
@@ -136,10 +133,7 @@ class _HttpxClientOptions(TypedDict, total=False):
 
 
 class HttpxClientOptions(_HttpxClientOptions, total=False):
-    """Keyword arguments of ``Client.__init__``.
-
-    Use as ``**options: Unpack[HttpxClientOptions]`` in a subclass ``__init__``.
-    """
+    """Keyword arguments of ``Client.__init__``, which ``ClientX.__init__`` takes as ``**kwargs``."""
 
     mounts: Mapping[str, BaseTransport | None] | None
     """Transports to use for requests matching URL patterns, keyed by pattern."""
@@ -151,8 +145,8 @@ class HttpxClientOptions(_HttpxClientOptions, total=False):
     """Optional event hooks to invoke during request and response processing.
 
     Supported hook types:
-    - "request": called with an ``Request`` immediately before it is sent.
-    - "response": called with an ``Response`` as soon as the response
+    - "request": called with a ``Request`` immediately before it is sent.
+    - "response": called with a ``Response`` as soon as the response
       headers are received.
 
     Each value is a list of callables, invoked in list order.
@@ -180,8 +174,8 @@ class AsyncHttpxClientOptions(_HttpxClientOptions, total=False):
     """Optional async event hooks to invoke during request and response processing.
 
     Supported hook types:
-    - "request": called with an ``Request`` immediately before it is sent.
-    - "response": called with an ``Response`` as soon as the response
+    - "request": called with a ``Request`` immediately before it is sent.
+    - "response": called with a ``Response`` as soon as the response
       headers are received.
 
     Each value is a list of ``async`` callables, invoked in list order.

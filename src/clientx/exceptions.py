@@ -18,8 +18,9 @@ class DefinitionError(ClientXError, TypeError):
 
     Almost all are raised when the class is defined, so a mistake fails when its module
     is imported, not on the first call. The message names the class or endpoint, and the
-    fix. An endpoint called on a resource that isn't mounted on a client, or on an object
-    that isn't a client, raises it at call time.
+    fix. It's raised at call time for an endpoint declared outside a client or resource
+    class, or called on a resource that isn't mounted on a client, or on an object that
+    isn't a client.
     """
 
 
@@ -34,7 +35,6 @@ class ArgumentError(ClientXError, ValueError):
     """
 
     def __init__(self, message: str, *, parameter: str) -> None:
-        """Store the message and the parameter's name."""
         super().__init__(message)
         self.parameter = parameter
 

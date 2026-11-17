@@ -16,7 +16,8 @@ helper raises ``DefinitionError``, so put it after ``=``::
 A parameter without a helper is placed as FastAPI places it: a path placeholder's name goes to the path, a
 model, mapping, collection or dataclass to JSON, and anything else to the query string.
 
-A helper on a model, dataclass or mapping parameter sends each of its fields to that part: with
+A ``Query()``, ``Header()`` or ``Form()`` helper on a model, dataclass or mapping parameter sends each of its
+fields to that part: with
 ``filters: Annotated[Filters, Query()]``, each field of ``Filters`` is a query parameter. A helper on a
 model's own field raises ``DefinitionError``, because the parameter decides where all of its fields go.
 

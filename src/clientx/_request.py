@@ -20,10 +20,10 @@ Each is sent under its helper's alias, or else under the parameter's name, with 
 into ``-`` for a header. ``_to_text`` turns values into text.
 
 The body is one kind: JSON, raw content (one ``Body()`` parameter), or a form (``Form()``
-parameters, and ``File()`` ones for a multipart form). A lone JSON parameter that's a model,
-mapping or list is the whole JSON body; any other JSON parameter is a field of a JSON object,
-under its alias or name. A ``None`` value is left out everywhere, so an optional parameter
-that isn't passed isn't sent.
+parameters, and ``File()`` ones for a multipart form). A lone JSON parameter that isn't a plain
+value (a model, dataclass, mapping or collection) is the whole JSON body; any other JSON
+parameter is a field of a JSON object, under its alias or name. A ``None`` value is left out
+everywhere, so an optional parameter that isn't passed isn't sent.
 
 A model, dataclass or mapping marked ``Query()``, ``Header()`` or ``Form()`` is spread into that
 part: each field is a separate value, under its alias or name (with ``_`` turned into ``-`` for
@@ -101,7 +101,6 @@ class Placeholder:
     keep_slashes: bool
 
     def __str__(self) -> str:
-        """Return the placeholder as it's written in the template, for error messages."""
         return f"{{{self.name}:path}}" if self.keep_slashes else f"{{{self.name}}}"
 
 
@@ -178,7 +177,7 @@ class RequestPlan:
             fields, files, and the fields of a JSON object), and the ones spread into a part,
             in signature order.
         body: The parameter that's the whole body, or ``None``: the raw content, or a lone
-            JSON parameter that's a model, mapping or list. Its ``key`` isn't used.
+            JSON parameter that isn't a plain value. Its ``key`` isn't used.
     """
 
     path: tuple[str | Placeholder, ...]
@@ -269,14 +268,11 @@ def plan_request(template: str, parameters: Sequence[ParameterInfo]) -> RequestP
 
 
 def _check_helper(parameter: ParameterInfo) -> None:
-    """Check that a parameter's helper is in its outermost ``Annotated`` and has no default of its own.
+    """Raise ``DefinitionError`` if a parameter's helper is nested or has a default, or a model field has one.
 
-    Also check that no field of a model parameter has a helper: the parameter's helper, or its
-    inferred part, decides where the model goes.
-
-    Raises:
-        DefinitionError: If a model field has a helper, the helper is nested inside the parameter's
-            type, or the helper has a default.
+    The helper must be in the parameter's outermost ``Annotated``. A field of a model
+    parameter can't have a helper: the parameter's helper, or its inferred part, decides
+    where the model goes.
     """
     for arm in _arms(parameter.annotation):
         cls = _class_of(arm)
@@ -304,11 +300,7 @@ def _check_helper(parameter: ParameterInfo) -> None:
 
 
 def _check_path_parameter(parameter: ParameterInfo, placeholder: Placeholder, template: str) -> None:
-    """Check that a parameter that fills a placeholder has no other helper, and is a plain value.
-
-    Raises:
-        DefinitionError: If the parameter has a helper other than ``Url()``, or isn't a plain value.
-    """
+    """Raise ``DefinitionError`` unless a parameter that fills a placeholder is a plain value with no other helper."""
     name, part = parameter.name, parameter.httpx_argument
     if part not in {None, HttpxArgument.URL}:
         raise DefinitionError(
@@ -342,12 +334,9 @@ def _part_of(parameter: ParameterInfo, template: str) -> HttpxArgument:
 
 
 def _check_one_body(placed: list[tuple[ParameterInfo, HttpxArgument]]) -> None:
-    """Check that the parameters make one kind of body, and that at most one is the raw content.
+    """Raise ``DefinitionError`` unless the parameters make one kind of body, with at most one ``Body()``.
 
     httpx2 sends only one body: given several, it silently drops the others.
-
-    Raises:
-        DefinitionError: If the parameters make more than one kind of body, or several are marked ``Body()``.
     """
     body_parameters = [(parameter.name, _BODY_KINDS[part]) for parameter, part in placed if part in _BODY_KINDS]
     if len({kind for _, kind in body_parameters}) > 1:
@@ -478,7 +467,6 @@ def _arms(annotation: Any, depth: int = 0) -> list[Any]:
 
 
 def _all_plain(annotation: Any) -> bool:
-    """Return whether every type a value of ``annotation`` can have is plain; see ``_is_plain``."""
     return all(_is_plain(arm) for arm in _arms(annotation))
 
 
@@ -518,7 +506,6 @@ def _class_of(annotation: Any) -> type[Any] | None:
 
 
 def _field_text(value: object) -> str | list[str]:
-    """Return a spread field's JSON-ready value as text, or a list of texts for a list."""
     if isinstance(value, list):
         return [_to_text(item) for item in cast("list[object]", value)]
     return _to_text(value)

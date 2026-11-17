@@ -1,11 +1,9 @@
 """Map endpoint functions to their ``Endpoint`` objects.
 
-The verb decorators register each endpoint function here, so ``ClientX`` and
-``Resource`` can find their endpoints when a subclass is defined (to check names
-and apply a resource's prefix and tags), and so can ``clientx.tools`` and tests.
-This module imports nothing else from ClientX at runtime: ``_endpoint.py``
-imports ``_client.py``, so a runtime import here would be a cycle as soon as
-``_client.py`` uses this module.
+The verb decorators register each endpoint function here, so ``_class_setup.py``
+can find a client's or resource's endpoints when the class is defined, to check
+them and apply a resource's prefix and tags. ``Endpoint`` is imported only for
+type checking: nothing here uses it at runtime.
 """
 
 from __future__ import annotations
