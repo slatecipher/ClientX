@@ -193,12 +193,36 @@ class AsyncHttpxClientOptions(_HttpxClientOptions, total=False):
 
 
 class BuildRequestKwargs(TypedDict, total=False):
+    """Keyword arguments of ``Client.build_request`` and ``AsyncClient.build_request``, after ``method`` and ``url``.
+
+    ``RequestPlan.build`` fills the parts that carry an endpoint's arguments, and
+    ``Endpoint.request_arguments`` adds ``timeout``. ClientX never sets ``cookies`` or
+    ``extensions``: they're listed so the keys match ``build_request``'s parameters.
+    """
+
     content: RequestContent | None
+    """The raw body: ``str``, ``bytes``, or an iterable of ``bytes``. A ``Body()`` parameter sets it."""
+
     data: RequestData | None
+    """Form fields, form-encoded, or a multipart form with ``files``. ``Form()`` parameters set it."""
+
     files: RequestFiles | None
+    """Files to upload in a multipart form. ``File()`` parameters set it."""
+
     json: Any | None
+    """A JSON body. ``Json()`` parameters, and models, mappings and collections without a helper, set it."""
+
     params: QueryParamTypes | None
+    """Query parameters, merged with the client's. ``Query()`` parameters, and plain values without a helper, set it."""
+
     headers: HeaderTypes | None
+    """HTTP headers, merged with the client's. ``Header()`` parameters set it."""
+
     cookies: CookieTypes | None
+    """Cookies, merged with the client's. ClientX never sets it: there's no ``Cookie()`` helper."""
+
     timeout: TimeoutTypes | UseClientDefault
+    """The request's timeout, or ``USE_CLIENT_DEFAULT`` for the client's. The endpoint's ``timeout=`` sets it."""
+
     extensions: RequestExtensions | None
+    """Options for the transport, such as a ``trace`` callback. ClientX never sets it."""

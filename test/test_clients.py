@@ -1,13 +1,16 @@
 """Clients and resources: how they're set up, the rules for their class bodies, and their settings."""
 
+import inspect
 import re
 from collections.abc import Callable
+from typing import Any
 
 import httpx2
 import pytest
 
 import clientx
 from clientx import AsyncClientX, AsyncResource, ClientX, DefinitionError, Resource, method
+from clientx._types import AsyncHttpxClientOptions, BuildRequestKwargs, HttpxClientOptions
 
 type MockTransport = Callable[..., httpx2.MockTransport]
 
@@ -280,3 +283,26 @@ async def test_async_resources_send_through_the_async_client(mock_transport: Moc
     async with API(BASE_URL, transport=mock_transport(sent)) as api:
         await api.users.fetch(1)
     assert only_request(sent).url.path == "/users/1"
+
+
+# The TypedDicts that mirror httpx2's signatures
+
+
+@pytest.mark.parametrize(
+    ("typed_dict", "function", "passed_separately"),
+    [
+        (HttpxClientOptions, httpx2.Client.__init__, {"base_url"}),
+        (AsyncHttpxClientOptions, httpx2.AsyncClient.__init__, {"base_url"}),
+        (BuildRequestKwargs, httpx2.Client.build_request, {"method", "url"}),
+    ],
+    ids=["Client options", "AsyncClient options", "build_request arguments"],
+)
+def test_a_typed_dict_lists_every_parameter_of_its_httpx2_function(
+    typed_dict: Any, function: Callable[..., object], passed_separately: set[str]
+) -> None:
+    # If httpx2 adds a parameter, add it to the TypedDict. If only CI's test-lowest job fails, a key
+    # we list is newer than the lowest httpx2 version pyproject.toml allows.
+    parameters = inspect.signature(function).parameters.values()
+    keywords = {p.name for p in parameters if p.kind in {p.POSITIONAL_OR_KEYWORD, p.KEYWORD_ONLY}}
+    assert typed_dict.__required_keys__ == frozenset()
+    assert typed_dict.__optional_keys__ == keywords - {"self", *passed_separately}
