@@ -1,10 +1,10 @@
 """Fixtures shared by the test modules.
 
-pytest finds this file by itself and passes a fixture to every test that names it
-as a parameter. The suite runs in pytest's recommended ``importlib`` import mode,
-where test modules can't import each other or a helper module, so shared helpers
-are fixtures. Each one returns a function, so a test can call it as often as it
-needs, with different arguments ("factories as fixtures").
+pytest finds this file by itself and passes a fixture to every test that names it as a
+parameter. The suite runs in pytest's recommended ``importlib`` import mode, where test
+modules can't import each other or a helper module, so shared helpers are fixtures. Each one
+returns a function, so a test can call it as often as it needs, with different arguments
+("factories as fixtures").
 """
 
 from collections.abc import Callable
@@ -13,22 +13,7 @@ from typing import Any
 import httpx2
 import pytest
 
-from clientx._endpoint_context import Endpoint
-from clientx._registry import endpoint_for
-
 type Handler = Callable[[httpx2.Request], httpx2.Response]
-
-
-@pytest.fixture
-def endpoint_of() -> Callable[[object], Endpoint]:
-    """Return a function that gives the ``Endpoint`` behind a decorated method, failing the test if there isn't one."""
-
-    def find(function: object) -> Endpoint:
-        endpoint = endpoint_for(function)
-        assert endpoint is not None
-        return endpoint
-
-    return find
 
 
 @pytest.fixture
@@ -39,6 +24,7 @@ def mock_transport() -> Callable[..., httpx2.MockTransport]:
     Each request is appended to ``sent``, if given. The answer comes from ``handler`` if
     given, or else is a new ``httpx2.Response(status, **response)`` for each request, such
     as ``mock_transport(sent, json={"id": 1})`` or ``mock_transport(status=404)``.
+    ``httpx2.MockTransport`` serves async clients too.
     """
 
     def build(

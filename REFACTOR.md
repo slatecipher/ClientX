@@ -146,28 +146,40 @@ Suggested order:
 Open decoder decisions: `key=` unwrapping (old `TypeAdapterDecoder(key=...)`); a streamed open
 response (old `StreamResponseDecoder`).
 
-## Follow-ups for docs, tests and examples
+## Tests
+
+Rebuilt from scratch (agreed 2026-11-17); the old suite (25 files, 6,566 lines) is on `mainline`.
+
+- Tests go through the public API, by feature: define a small client class, call it over
+  `httpx2.MockTransport` (the `mock_transport` fixture), and check the request sent, the result or the
+  error. Internals are tested directly only where that's simpler (`ParameterInfo`, path parsing).
+- Conventions kept: `importlib` import mode, fixtures that return factories, anyio for async tests,
+  and `test_typing.py` checked by pyright and mypy in `make typecheck`.
+- Coverage leaves out `src/clientx/pre/`. A 95% `fail_under` gate goes in once the first wave lands.
+- Done: `conftest.py` (`mock_transport`), `test_public_api.py`, `test_typing.py` (80% coverage).
+- [ ] First wave: `test_paths.py`, `test_query_and_headers.py`, `test_bodies.py`, `test_spreading.py`,
+  `test_responses.py` (decoding, streaming, 4xx/5xx), `test_clients.py` (classes, resources, repr,
+  options), `test_signature.py`. Then the coverage gate.
+- Later: `test_typing.py` grows with item 10; tools, MCP and logging get tests when they're ported.
+- Streaming tests need an iterator or async-generator `MockTransport` body: `bytes` bodies are read
+  at once. `make typecheck` still fails until `examples/` is updated and `pre/` is gone, since it runs
+  pyright on `src` and `examples`.
+
+## Follow-ups for docs and examples
 
 - `llms.txt:92` and `docs/errors.md:7`: httpx2's names are reserved on clients, free on resources.
 - `docs/decoders.md`: rewrite for annotation-driven decoding.
 - Docs and `examples/` still use the `base_url=` class argument and the old decoder classes.
 - `DeprecatedMessage(...)` becomes a plain string in `docs/endpoints.md` (drop "any callable"),
-  `llms.txt:78`, `examples/beeceptor/beeceptor_client.py`, and `test/test_async.py`, `test_tools.py`,
-  `test_endpoint_context.py`, `test_public_api.py`. A test can check the warning names the caller's file.
+  `llms.txt:78` and `examples/beeceptor/beeceptor_client.py`.
 - `docs/endpoints.md:31` and `llms.txt:78`: an endpoint's `timeout=None` now means no timeout; leaving
   it out uses the client's.
-- `docs/errors.md`, `llms.txt:103` and the tests' `pytest.raises(...)`: the old exception classes become
-  `DefinitionError` or `ArgumentError` (tests match on the message). `examples/jsonplaceholder_example.py`
-  catches `ArgumentValidationError`.
+- `docs/errors.md` and `llms.txt:103`: the old exception classes become `DefinitionError` or
+  `ArgumentError`. `examples/jsonplaceholder_example.py` catches `ArgumentValidationError`.
 - `docs/requests.md` (the "Serialization control with `DumpConfig`" section, lines 163-204) and
   `llms.txt:12` and `:48` use `DumpConfig`, which isn't ported.
-- `test/test_public_api.py` and `test/test_arguments.py`: the new exports (no `DumpConfig`,
-  `DeprecatedMessage`, `PathParam`, `clientx.decoders`, `get_argument_location`; new `Url`, `Json`,
-  `DefinitionError`, `ArgumentError`). Docs and `llms.txt` use `PathParam`, now `Url()`.
-- Tests still import the old modules (`clientx._client_types`, `clientx._compiler`, ...).
-  Rename or move the tests that define `send`/`stream` endpoints on a `ClientX` (`test_decorators.py`).
-  `test_unresolvable_hints_fall_back_to_the_raw_annotations` must expect a `NameError` now.
-  Streaming tests need an iterator or async-generator `MockTransport` body: `bytes` bodies are read at once.
+- Docs and `llms.txt` use `PathParam`, now `Url()`.
+- `CLAUDE.md` describes the old architecture and test layout; rewrite it once the port is done.
 
 ## Known lint items
 
