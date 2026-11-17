@@ -180,6 +180,20 @@ Rebuilt from scratch (agreed 2026-11-17); the old suite (25 files, 6,566 lines) 
 - Streaming tests need an iterator or async-generator `MockTransport` body: `bytes` bodies are read
   at once.
 
+## Plan for what's left (agreed 2026-11-17)
+
+1. `CLAUDE.md`: rewrite it from the code as it is now (modules, tests, commands), keeping its
+   "Conventions and releasing" section and the `@CONTRIBUTING.md` import.
+2. Finish the code before the docs, so each page is written once against the final API: argument
+   validation (#136), then `clientx.tools` and `clientx.mcp` (item 11).
+3. Before the first page, add a test that type-checks every `python` code block in `docs/`,
+   `README.md` and `llms.txt` with pyright, so snippets can't drift from the API again. Pages stay
+   plain Markdown.
+4. Rewrite each page from the code, one per commit, using the old page only as a checklist of what to
+   cover: endpoints, requests, responses (replaces `decoders.md`), resources, configuration (takes the
+   event hooks section; `logging.md` is dropped), async, testing, errors, AI tools.
+5. Then `README.md` and `docs/README.md`, then `llms.txt`, then a `CHANGELOG.md` entry for the rewrite.
+
 ## Follow-ups for docs
 
 `examples/` was dropped on 2026-11-17: the user wasn't a fan of what the examples demonstrated, and

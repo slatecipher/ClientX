@@ -27,7 +27,7 @@ Other useful commands:
 ```bash
 make lint                                       # format and auto-fix with ruff
 make typecheck                                  # pyright (strict on src/), and pyright and mypy on the typing contract
-uv run pytest test/test_clientx.py::test_name   # run a single test
+uv run pytest test/test_paths.py::test_name     # run a single test
 ```
 
 When you change code:
