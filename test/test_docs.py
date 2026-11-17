@@ -20,7 +20,7 @@ ROOT = Path(__file__).parent.parent
 # The files whose samples are checked. Each page joins this list in the commit
 # that rewrites it. Once every page is rewritten, the list goes, and every
 # Markdown file in docs/, README.md and llms.txt is checked.
-CHECKED: list[str] = ["docs/endpoints.md", "docs/requests.md", "docs/responses.md", "docs/resources.md", "docs/configuration.md"]
+CHECKED: list[str] = ["docs/endpoints.md", "docs/requests.md", "docs/responses.md", "docs/resources.md", "docs/configuration.md", "docs/async.md"]
 
 FENCE = re.compile(r"^(?P<indent>[ \t]*)(?P<fence>`{3,}|~{3,})(?P<info>.*)$")
 
