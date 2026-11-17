@@ -115,15 +115,21 @@ Suggested order:
      `DefinitionError`. The `arguments.py` docstrings now describe parameter-level helpers only
 3. [x] Per-endpoint `timeout`: passed to `build_request` as it is (see Decisions).
 4. [x] `deprecated=`: a message string; both wrappers warn before anything else (see Decisions).
-5. [ ] Argument validation (`validate_arguments` is stored on endpoint and client, never read).
-6. [ ] Exceptions (see Decisions). Done: `ClientXError`, `DefinitionError`, `ArgumentError` (raised for
-   path values; argument validation, item 5, will raise it too). Still to do:
-   - reject `*args`/`**kwargs` endpoint parameters (old `EndpointSignatureError`; not ported yet)
-   - later, maybe: wrap an unresolvable annotation's `NameError` with the endpoint's name
-7. [ ] Public exports in `clientx/__init__.py`: `AsyncClientX`, `Resource`, `AsyncResource`,
-   `ClientXError`, `__version__`, httpx2 re-exports (`Auth`, `Request`, `Response`, `Timeout`),
-   decide whether to re-export the `clientx.arguments` helpers.
-8. [ ] The client's `__repr__` (old: class name, base URL, User-Agent).
+5. [ ] Argument validation (`validate_arguments` is stored on endpoint and client, never read): #136,
+   before v0.1.0. Off by default; one `TypeAdapter` per parameter from its full annotation, so helper
+   constraints such as `Query(ge=1)` apply; strict; only passed arguments; `ArgumentError` with the
+   Pydantic error as its cause. Model instances aren't validated again (Pydantic's default).
+6. [x] Exceptions (see Decisions): `ClientXError`, `DefinitionError`, `ArgumentError` (raised for path
+   values; argument validation, item 5, will raise it too). A `*args` or `**kwargs` endpoint parameter
+   raises `DefinitionError` in `Endpoint.__post_init__`. Later, maybe: wrap an unresolvable
+   annotation's `NameError` with the endpoint's name
+7. [x] Public exports in `clientx/__init__.py` (agreed 2026-11-17): the four bases, `__version__`, httpx2's
+   `Auth`, `Request`, `Response` and `Timeout`, the helpers (`Url`, `Query`, `Header`, `Body`, `Form`,
+   `File`, `Json`; `clientx.arguments` is no longer experimental), all three exceptions, and `method`.
+   `get_argument_location` and `HttpxArgument` are internal now. Gone: `DumpConfig`,
+   `DeprecatedMessage`, `PathParam` (now `Url`), and the `clientx.decoders` module.
+8. [x] The client's `__repr__`, on `_BaseClientX`: class name, base URL and User-Agent, with a password in
+   the base URL shown as `[redacted]` (the old one showed it).
 9. [ ] Logging (old `_logging.py`): one DEBUG record per call, never values.
 10. [ ] Decorator typing (old `RawEndpointDecorator`/`DecodedEndpointDecorator` overloads): check a
     `decoder=` against the annotation; reject `async def` endpoints on sync classes for type checkers.
@@ -149,6 +155,9 @@ response (old `StreamResponseDecoder`).
   catches `ArgumentValidationError`.
 - `docs/requests.md` (the "Serialization control with `DumpConfig`" section, lines 163-204) and
   `llms.txt:12` and `:48` use `DumpConfig`, which isn't ported.
+- `test/test_public_api.py` and `test/test_arguments.py`: the new exports (no `DumpConfig`,
+  `DeprecatedMessage`, `PathParam`, `clientx.decoders`, `get_argument_location`; new `Url`, `Json`,
+  `DefinitionError`, `ArgumentError`). Docs and `llms.txt` use `PathParam`, now `Url()`.
 - Tests still import the old modules (`clientx._client_types`, `clientx._compiler`, ...).
   Rename or move the tests that define `send`/`stream` endpoints on a `ClientX` (`test_decorators.py`).
   `test_unresolvable_hints_fall_back_to_the_raw_annotations` must expect a `NameError` now.
