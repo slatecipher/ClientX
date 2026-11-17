@@ -189,13 +189,41 @@ Rebuilt from scratch (agreed 2026-11-17); the old suite (25 files, 6,566 lines) 
 2. [x] The code for 0.1.0 is done. AI support (item 11, #138) and argument validation (#136) wait until
    after the release, so the docs leave them out.
 3. Before the first page, add a test that type-checks every `python` code block in `docs/`,
-   `README.md` and `llms.txt` with pyright, so snippets can't drift from the API again. Pages stay
-   plain Markdown.
+   `README.md` and `llms.txt` with pyright, so snippets can't drift from the API again. Each block
+   stands alone (its own imports); a deliberately incomplete one is fenced as `python no-check`. The
+   test checks a list of rewritten files, which each page joins in the commit that rewrites it; once
+   every page is rewritten, the list goes and every file is checked. Pages stay plain Markdown.
 4. Rewrite each page from the code, one per commit, using the old page only as a checklist of what to
-   cover: endpoints, requests, responses (replaces `decoders.md`), resources, configuration (takes the
-   event hooks section; `logging.md` is dropped), async, testing, errors. `ai-tools.md` is dropped,
-   and so are the tools and MCP parts of `testing.md` and the README.
-5. Then `README.md` and `docs/README.md`, then `llms.txt`, then a `CHANGELOG.md` entry for the rewrite.
+   cover (docs review, 2026-11-17):
+   1. `endpoints.md`: rewrite. Decorator options (`stream=`, `decoder=` as any callable,
+      `deprecated=` as a string, `timeout=None` means no timeout), the required return annotation,
+      mypy's `empty-body`, the `DeprecationWarning` note from `logging.md`, and "Endpoint names" moved
+      from `resources.md` (a client reserves all of httpx2's names; a resource doesn't). `api.get(url)`
+      works for an ad-hoc request, since `ClientX` is an `httpx2.Client`.
+   2. `requests.md`: rewrite, following `_request.py`'s rules. No special parameter names; `Body()`
+      is raw content and `Json()` is JSON; keys are `alias=`; `Url()` replaces `PathParam`; spreading
+      only with `Query()`, `Header()` or `Form()`. A short "Not supported yet" note links #135 (no
+      `exclude_unset`, no explicit `null`, defaults always sent).
+   3. `responses.md`: new, replaces `decoders.md`. The return-annotation table, `-> Response` and
+      `-> None`, streaming with `Iterator`/`AsyncIterator`, `stream=True`, custom `decoder=` functions
+      (generators stream), how type checkers check them, and "Raising errors for 4xx and 5xx responses"
+      moved from `configuration.md`.
+   4. `resources.md`: update. New decoding in the examples, `DefinitionError` for unmounted resources
+      and endpoints in two classes, no `base_url=` class argument.
+   5. `configuration.md`: update. `base_url` is required and `user_agent=` is the only class argument;
+      every httpx2 option works; authentication and closing stay; event hooks and the `httpx2` logger
+      note come from `logging.md`; validation goes; a one-line pointer to the 4xx/5xx section.
+   6. `async.md`: update. Annotation streaming in the examples; the AI section goes.
+   7. `testing.md`: update. New examples; the tools and MCP part goes.
+   8. `errors.md`: rewrite. `ClientXError`, `DefinitionError` and `ArgumentError`, when each is raised,
+      and httpx2's errors.
+
+   `decoders.md`, `logging.md` and `ai-tools.md` are deleted. A "Documenting your client" page
+   (mkdocstrings settings) waits until after the release.
+5. Then `docs/README.md` and `README.md` (a simpler quickstart; no AI, `clientx[mcp]` or "pluggable
+   decoders"), then `llms.txt`, then `CHANGELOG.md`: ClientX was never released, so the
+   `[Unreleased]` section ("First public release") is rewritten to describe the new API rather than
+   given a breaking-change entry.
 
 ## Follow-ups for docs
 
