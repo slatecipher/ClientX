@@ -141,7 +141,9 @@ Suggested order:
     does). Both limit each overload to its kind of class, so a `def` endpoint on an `AsyncClientX` or
     `AsyncResource` is rejected by pyright and mypy. An `async def` endpoint on a sync class can't be: to a
     type checker it's a `def` returning a coroutine. The check when the class is defined catches it.
-11. [ ] `clientx.tools` (old 314 lines), then `clientx.mcp` (old 210 lines).
+11. [ ] `clientx.tools` (old 314 lines) and `clientx.mcp` (old 210 lines): sidelined until after the
+    0.1.0 release (2026-11-17), with the `mcp` extra removed. #138 has the findings and the preferred
+    design.
 
 Decoder decisions (agreed 2026-11-17):
 - No `key=` unwrapping (old `TypeAdapterDecoder(key=...)`): for a wrapped body such as
@@ -177,26 +179,32 @@ Rebuilt from scratch (agreed 2026-11-17); the old suite (25 files, 6,566 lines) 
   `test_bodies.py` covers #128 and #129.
 - The coverage gate: `make test-ci`, which CI runs, fails below 95% (`--cov-fail-under=95`). It isn't
   in `[tool.coverage]`, so running one test file locally doesn't fail it.
-- Later: `test_typing.py` grows with item 10; tools, MCP and logging get tests when they're ported.
+- Later: tools and MCP get tests if they come back.
 - Streaming tests need an iterator or async-generator `MockTransport` body: `bytes` bodies are read
   at once.
 
 ## Plan for what's left (agreed 2026-11-17)
 
-1. `CLAUDE.md`: rewrite it from the code as it is now (modules, tests, commands), keeping its
-   "Conventions and releasing" section and the `@CONTRIBUTING.md` import.
-2. Finish the code before the docs, so each page is written once against the final API:
-   `clientx.tools` and `clientx.mcp` (item 11). Argument validation (#136) waits until after the
-   release, so the docs leave it out.
+1. [x] `CLAUDE.md`: rewritten from the code (`aeb4c41`).
+2. [x] The code for 0.1.0 is done. AI support (item 11, #138) and argument validation (#136) wait until
+   after the release, so the docs leave them out.
 3. Before the first page, add a test that type-checks every `python` code block in `docs/`,
    `README.md` and `llms.txt` with pyright, so snippets can't drift from the API again. Pages stay
    plain Markdown.
 4. Rewrite each page from the code, one per commit, using the old page only as a checklist of what to
    cover: endpoints, requests, responses (replaces `decoders.md`), resources, configuration (takes the
-   event hooks section; `logging.md` is dropped), async, testing, errors, AI tools.
+   event hooks section; `logging.md` is dropped), async, testing, errors. `ai-tools.md` is dropped,
+   and so are the tools and MCP parts of `testing.md` and the README.
 5. Then `README.md` and `docs/README.md`, then `llms.txt`, then a `CHANGELOG.md` entry for the rewrite.
 
 ## Follow-ups for docs
+
+- mkdocs (mkdocstrings, griffe) reads an endpoint from its source fine: signature, docstring and
+  `Args:`. It doesn't show the HTTP method, path or `deprecated=` (they're in the decorator), and
+  shows `Annotated[...]` in full unless `unwrap_annotated: true`. Imported instead of read from source,
+  annotations collapse to `Annotated` and a mounted resource looks like a function (a descriptor with
+  `__get__` only). Ideas: a "Documenting your client" page with the right mkdocstrings settings, and
+  later a griffe extension that shows each endpoint's method and path.
 
 `examples/` was dropped on 2026-11-17: the user wasn't a fan of what the examples demonstrated, and
 they called live APIs, so CI could only lint and type-check them. Ideas if examples come back: tested
