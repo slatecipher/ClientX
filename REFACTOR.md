@@ -60,6 +60,10 @@ pieces are ported one small step at a time. Delete this file and `pre/` when the
     2026-11-17), so optional PATCH fields aren't sent as `null`. A lone model or dict is sent whole,
     `null`s included. Open: a way to send an explicit `null` for a keyed parameter (JSON Merge Patch,
     RFC 7396, uses `null` to delete a field).
+  - Defaults are sent (agreed 2026-11-17): `bind()` fills them in, so with `page: int = 1`,
+    `api.list()` sends `?page=1`, as a Python call would. `| None = None` lets the server decide. The
+    alternative, sending only what the caller passed (generated SDKs' `NOT_GIVEN`/`UNSET`), is in #135,
+    with explicit `null` and unset model fields.
   - An endpoint sends one kind of body: JSON, raw content (one `Body()`), or a form (`Form()`, plus
     `File()` for multipart). Any other mix raises `DefinitionError` (agreed 2026-11-17): httpx2 sends
     only one and silently drops the rest. Open: a JSON part inside a multipart form, as in Discord's
