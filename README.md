@@ -33,7 +33,7 @@ ClientX is inspired by FastAPI, which reads type hints to define server endpoint
 - **The return annotation decodes the response.** `-> User` returns the JSON body validated as a `User`, `-> Iterator[str]` streams it line by line, and `-> Response` returns the response itself.
 - **Type checkers see real types.** Decorated methods keep their signatures, so editors and type checkers see the actual parameters and return types.
 - **Sync or async.** Write endpoints as `def` methods on a `ClientX`, or as `async def` methods on an `AsyncClientX`, with the same decorators.
-- **Mistakes surface early.** A missing return annotation, a placeholder that names no parameter, or a type ClientX can't decode raises an error when the class is defined, not on the first request.
+- **Mistakes surface early.** A missing return annotation, a parameter that doesn't say where it goes, a placeholder that names no parameter, or a type ClientX can't decode raises an error when the class is defined, not on the first request.
 - **Pydantic v2 throughout.** Send models as JSON bodies, or spread them into query parameters, headers or form fields, and decode responses into models.
 - **Built on httpx2.** A client is an `httpx2.Client`, or an `httpx2.AsyncClient`, so every option is available, including auth, timeouts, proxies and custom transports.
 
@@ -42,7 +42,7 @@ ClientX is inspired by FastAPI, which reads type hints to define server endpoint
 - Declarative endpoint definitions with HTTP verb decorators.
 - Responses decoded from the return annotation, with streaming, and your own decoder when you need one.
 - Path parameters filled from method arguments and percent-encoded (e.g. `"/users/{user_id}"`).
-- Request parts chosen as FastAPI chooses them: models to the JSON body, plain values to the query string, and helpers (`Query`, `Header`, `Json`, `Body`, `Form`, `File`) for the rest.
+- Request parts declared with helpers named like FastAPI's (`Query`, `Header`, `Json`, `Body`, `Form`, `File`): every parameter but a path placeholder's says where it goes.
 - Resources that group endpoints under a path prefix.
 - Built-in deprecation warnings per endpoint.
 - Full access to `httpx2.Client` configuration through `ClientX(...)` arguments.
@@ -65,7 +65,9 @@ Using an AI coding assistant? Point it at [llms.txt](https://github.com/slatecip
 ## Quickstart
 
 ```python
-from clientx import ClientX, Resource, method
+from typing import Annotated
+
+from clientx import ClientX, Query, Resource, method
 from pydantic import BaseModel
 
 
@@ -81,7 +83,7 @@ class Users(Resource, prefix="/users"):
         ...
 
     @method.get()
-    def search(self, name: str | None = None) -> list[User]:
+    def search(self, name: Annotated[str | None, Query()] = None) -> list[User]:
         """List users, or only those with this name."""
         ...
 

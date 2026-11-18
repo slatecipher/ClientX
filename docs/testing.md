@@ -3,9 +3,11 @@
 Test a client without the network by passing an `httpx2.MockTransport` when you create it. The transport calls your handler with each `httpx2.Request` the client sends, and returns the `httpx2.Response` the handler builds, so a test can check what was sent and choose what comes back:
 
 ```python
+from typing import Annotated
+
 import httpx2
 import pytest
-from clientx import ClientX, method
+from clientx import ClientX, Query, method
 from pydantic import BaseModel
 
 
@@ -16,7 +18,7 @@ class User(BaseModel):
 
 class UsersAPI(ClientX, user_agent="users-client/1.0"):
     @method.get("/users/{user_id}")
-    def get_user(self, user_id: int, fields: str | None = None) -> User:
+    def get_user(self, user_id: int, fields: Annotated[str | None, Query()] = None) -> User:
         """Fetch one user by ID."""
         ...
 

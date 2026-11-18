@@ -9,7 +9,7 @@ A complete client:
 ```python
 from typing import Annotated
 
-from clientx import ClientX, Header, Query, Resource, Response, method
+from clientx import ClientX, Header, Json, Query, Resource, Response, method
 from pydantic import BaseModel
 
 
@@ -29,17 +29,25 @@ class Users(Resource, prefix="/users"):
         ...
 
     @method.get()
-    def search(self, name: Annotated[str, Query(alias="q")], limit: int | None = None) -> list[User]:
+    def search(
+        self,
+        name: Annotated[str, Query(alias="q")],
+        limit: Annotated[int | None, Query()] = None,
+    ) -> list[User]:
         """Search users by name."""
         ...
 
     @method.post()
-    def create(self, user: NewUser, request_id: Annotated[str | None, Header()] = None) -> User:
+    def create(
+        self,
+        user: Annotated[NewUser, Json()],
+        request_id: Annotated[str | None, Header()] = None,
+    ) -> User:
         """Create a user."""
         ...
 
     @method.patch("/{user_id}")
-    def rename(self, user_id: int, changes: dict[str, str]) -> User:
+    def rename(self, user_id: int, changes: Annotated[dict[str, str], Json()]) -> User:
         """Change some of a user's fields."""
         ...
 
@@ -74,12 +82,12 @@ Rules for writing endpoints:
 - The return annotation decides what the endpoint returns: `-> None` nothing, `-> Response` the response with its body read (`clientx.Response` is `httpx2.Response`; `clientx` also re-exports `Auth`, `Request` and `Timeout`), `-> str` the text, `-> bytes` the content, `-> Iterator[str]` the body streamed as lines, `-> Iterator[bytes]` streamed as chunks (`AsyncIterator[...]` for `async def` endpoints), and any other type the JSON body validated against the full annotation by a Pydantic `TypeAdapter` (models, `list[User]`, dicts, dataclasses, `TypedDict`s, `Annotated` constraints). A body that doesn't match raises `pydantic.ValidationError`, a `ValueError`. A type Pydantic can't validate raises `DefinitionError` when the class is defined. There are no decoder classes.
 - `decoder=` takes any function `(response: httpx2.Response) -> T` in place of the annotation's decoding. Type checkers check that `T` matches the endpoint's annotation, at the decorator. The body is read before it runs, so it's a plain function (not `async def`), even for an `async def` endpoint. A generator decoder streams: a generator on a `def` endpoint annotated `-> Iterator[...]`, an async generator on an `async def` endpoint annotated `-> AsyncIterator[...]`. A decoder on an endpoint annotated `-> None` raises `DefinitionError`.
 - `stream=True`, only with `-> Response` and no `decoder=`, returns the open, unread response: the caller reads it (`iter_bytes()`, `iter_lines()`) and must close it. A streamed iterator closes its response when iteration ends, breaks or fails, or when the iterator is closed.
-- Where each parameter goes, as FastAPI decides it, in reverse: (1) a parameter named like a `{placeholder}` fills it; (2) a parameter with a helper in its outermost `Annotated` goes where the helper says: `Url()` (a placeholder's value), `Query()`, `Header()`, `Json()` (the JSON body or one of its fields), `Body()` (the raw body: `str`, `bytes` or an iterable of `bytes`), `Form()` (a form field), `File()` (a file in a multipart form); (3) any other parameter goes to the JSON body if its type is a model, mapping, collection or dataclass (or a union with one), and to the query string otherwise. A parameter's name, such as `json` or `headers`, has no meaning of its own. A list without a helper goes to the JSON body, so a list query parameter is `Annotated[list[str] | None, Query()] = None`.
+- Where each parameter goes is never guessed: (1) a parameter named like a `{placeholder}` fills it; (2) every other parameter needs a helper in its outermost `Annotated`, and goes where the helper says: `Url()` (a placeholder's value), `Query()`, `Header()`, `Json()` (the JSON body or one of its fields), `Body()` (the raw body: `str`, `bytes` or an iterable of `bytes`), `Form()` (a form field), `File()` (a file in a multipart form). A parameter without a helper raises `DefinitionError`, models and plain values included: write `user: Annotated[NewUser, Json()]` and `page: Annotated[int, Query()] = 1`, not `user: NewUser` or `page: int = 1`. A parameter's name, such as `json` or `headers`, has no meaning of its own.
 - The helpers wrap `pydantic.Field` and take its arguments. The name a value is sent under is `alias=`: `Annotated[int, Query(alias="userId")]`. A default goes after `=` (`page: Annotated[int, Query()] = 1`); a default inside the helper, such as `Query(1)` or `Query("userId")`, raises `DefinitionError`. A `description=` or constraint such as `ge=1` isn't checked before sending.
 - Path values become text (an `Enum` its value, a `datetime` ISO 8601, a number or `bool` JSON text) and are percent-encoded as one segment, so `/`, `?`, `#` and `..` in a value can't change the path. Don't pre-encode values: `%` would be encoded again. `{name:path}` keeps slashes for a value such as a file path. `{{` and `}}` are literal braces; any other brace or converter raises `DefinitionError`. Placeholders in a resource prefix count too, and every placeholder needs a parameter, which must be a plain value with no helper other than `Url()`. A `None` or empty value, or a `{name:path}` value with a leading, trailing or doubled slash, raises `ArgumentError` (with `.parameter`) before sending.
 - Query parameters, headers and form fields are sent under the alias, or else the parameter's name; a header's name has underscores turned into hyphens (`request_id` becomes `request-id`). A list repeats a query parameter or form field (`?tag=a&tag=b`); a header takes a plain value only. Values become text as path values do. `None` is left out; any other default is sent. The client's own `params=` and `headers=` are sent too.
 - A request has one kind of body: JSON, raw `Body()` content (at most one), or a form (`Form()` fields, and `File()` files for a multipart form); two kinds raise `DefinitionError`. A lone JSON parameter that isn't a plain value is the whole body; otherwise each JSON parameter is a field of a JSON object, under its alias or name. Values are dumped as Pydantic dumps them in JSON mode, models by alias; a model's `None` field is sent as `null`, but a parameter that's `None` is left out. There's no `DumpConfig`, `exclude_unset` or explicit `null` yet (#135): for a partial update, send a `dict` of the fields to change.
-- `Send` flags change how a parameter is sent: put them in the outermost `Annotated`, next to the helper, and combine them with `|`. `Send.EMBED` sends a lone JSON parameter under its alias or name instead of as the whole body, as FastAPI's `Body(embed=True)` does: `ids: Annotated[list[str], Send.EMBED]` sends `{"ids": [...]}`. A flag where it can't apply (`EMBED` outside the JSON body, any flag on a path parameter, nested inside the type, or on a model's field) raises `DefinitionError`.
+- `Send` flags change how a parameter is sent: put them in the outermost `Annotated`, next to the helper, and combine them with `|`. `Send.EMBED` sends a lone JSON parameter under its alias or name instead of as the whole body, as FastAPI's `Body(embed=True)` does: `ids: Annotated[list[str], Json(), Send.EMBED]` sends `{"ids": [...]}`. A flag where it can't apply (`EMBED` outside the JSON body, any flag on a path parameter, nested inside the type, or on a model's field) raises `DefinitionError`.
 - A model, dataclass or mapping marked `Query()`, `Header()` or `Form()` is spread into that part: each field is a separate value, under its alias or name (hyphens for headers), and must be a plain value or, except in a header, a list of them; `None` fields are left out. A helper on a model's field raises `DefinitionError`: the parameter's helper decides where all of its fields go.
 - One helper per parameter, in the outermost `Annotated`, around the full type with `None` inside (`Annotated[int | None, Query()]`). A helper nested inside another type (`Annotated[int, Query()] | None`, `list[Annotated[str, Query()]]`) raises `DefinitionError`; with several helpers, the last one wins. Pydantic metadata such as `Field(ge=1)` isn't a helper and can go anywhere. Reuse annotations with `type` aliases: `type UserId = Annotated[int, Query(alias="userId")]`, or `type HeaderValue[T] = Annotated[T, Header()]`.
 - The helpers are named like FastAPI's but build the outgoing request. In a FastAPI app, import ClientX's under another name (`from clientx import Query as ClientQuery`) or use `clientx.Query()`.

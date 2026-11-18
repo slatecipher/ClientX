@@ -3,7 +3,9 @@
 For larger APIs, group related endpoints into `Resource` classes, much like FastAPI's `APIRouter`. Mount an instance on your client, and its endpoints send through the client's connection and settings, so there's no second client to create or pass around. For `async def` endpoints, subclass `AsyncResource` and mount it on an `AsyncClientX` (see [Async clients](async.md)):
 
 ```python
-from clientx import ClientX, Resource, method
+from typing import Annotated
+
+from clientx import ClientX, Json, Resource, method
 from pydantic import BaseModel
 
 
@@ -21,7 +23,7 @@ class Users(Resource, prefix="/users"):
     def retrieve(self, user_id: int) -> User: ...
 
     @method.post()
-    def create(self, user: NewUser) -> User: ...
+    def create(self, user: Annotated[NewUser, Json()]) -> User: ...
 
 
 class ExampleAPI(ClientX):
@@ -85,8 +87,10 @@ Names that a client reserves, such as `get` or `headers`, are free for endpoints
 A client or resource can also have ordinary, undecorated methods. They aren't endpoints, but they can call endpoints through `self`. They're the place for logic around requests, such as following pages or normalizing an argument:
 
 ```python
+from typing import Annotated
+
 import httpx2
-from clientx import ClientX, Resource, method
+from clientx import ClientX, Query, Resource, method
 from pydantic import BaseModel
 
 
@@ -108,7 +112,7 @@ class Pokemon(BaseModel):
 
 class PokemonResource(Resource, prefix="/pokemon"):
     @method.get()
-    def page(self, limit: int = 20, offset: int = 0) -> Page:
+    def page(self, limit: Annotated[int, Query()] = 20, offset: Annotated[int, Query()] = 0) -> Page:
         """List Pokémon, one page at a time."""
         ...
 

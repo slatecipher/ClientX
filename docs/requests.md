@@ -1,15 +1,14 @@
 # Building Requests
 
-Each parameter after `self` sends one value. Where it goes is decided once, when the class is defined, the way FastAPI decides where an incoming request's values come from, in reverse:
+Each parameter after `self` sends one value. Where it goes is decided once, when the class is defined, and never guessed:
 
 1. A parameter named like a `{placeholder}` in the path fills it.
-2. A parameter with a helper, such as `Annotated[str, Header()]`, goes where the helper says.
-3. Any other parameter goes to the JSON body if its type is a model, a mapping, a collection or a dataclass (or a union with one), and to the query string otherwise.
+2. Every other parameter has a helper, such as `Annotated[int, Query()]`, and goes where the helper says. A parameter without one raises `DefinitionError`, and the message suggests the helper it most likely needs.
 
 ```python
 from typing import Annotated
 
-from clientx import ClientX, Header, Response, method
+from clientx import ClientX, Header, Json, Query, Response, method
 from pydantic import BaseModel
 
 
@@ -20,10 +19,19 @@ class NewPost(BaseModel):
 
 class PostsAPI(ClientX):
     @method.get("/users/{user_id}/posts")
-    def list_posts(self, user_id: int, page: int = 1, tag: str | None = None) -> Response: ...
+    def list_posts(
+        self,
+        user_id: int,
+        page: Annotated[int, Query()] = 1,
+        tag: Annotated[str | None, Query()] = None,
+    ) -> Response: ...
 
     @method.post("/posts")
-    def create_post(self, post: NewPost, request_id: Annotated[str, Header()]) -> Response: ...
+    def create_post(
+        self,
+        post: Annotated[NewPost, Json()],
+        request_id: Annotated[str, Header()],
+    ) -> Response: ...
 ```
 
 - `list_posts(7, tag="news")` sends `GET /users/7/posts?page=1&tag=news`. `page`'s default is sent, and `tag` is left out when it's `None`.
@@ -89,7 +97,7 @@ class ItemsAPI(ClientX):
     def list_items(
         self,
         item_type: Annotated[str, Query(alias="type")],
-        sort: Sort = Sort.NEWEST,
+        sort: Annotated[Sort, Query()] = Sort.NEWEST,
         tags: Annotated[list[str] | None, Query()] = None,
         request_id: Annotated[str | None, Header()] = None,
     ) -> Response: ...
@@ -98,7 +106,7 @@ class ItemsAPI(ClientX):
 `list_items("book", Sort.OLDEST, tags=["new", "used"], request_id="r-1")` sends `GET /items?type=book&sort=oldest&tags=new&tags=used` with the header `request-id: r-1`.
 
 - **Names.** A value is sent under its helper's `alias`, or else under the parameter's name. A header's name has its underscores turned into hyphens, so `request_id` is sent as `request-id`; an alias is used exactly as given.
-- **Lists.** A list repeats the query parameter (`tags=new&tags=used`), and so does a list of form fields. A header takes a plain value only. A list without a helper goes to the JSON body, like any collection, so mark a query parameter that's a list with `Query()`.
+- **Lists.** A list repeats the query parameter (`tags=new&tags=used`), and so does a list of form fields. A header takes a plain value only.
 - **Text.** An `Enum` is sent as its value, a `datetime` as ISO 8601 text, a `UUID` as its string, and a number or `bool` as JSON text (`2`, `1.5`, `true`). Anything else is sent as `str(value)`.
 - **`None` and defaults.** A value of `None` is left out, so an optional parameter defaults to `None`. A default that isn't `None` is sent, like any other value.
 - **The client's own.** Values set with the client's `params=` and `headers=` are sent too.
@@ -109,10 +117,10 @@ A request has one kind of body: JSON, raw content, or a form. Parameters that wo
 
 ### JSON
 
-A parameter marked `Json()`, or a model, mapping, collection or dataclass without a helper, goes to the JSON body:
+A parameter marked `Json()` goes to the JSON body:
 
-- **One parameter that isn't a plain value is the whole body.** A `post: NewPost` parameter sends the model's JSON, and a `items: list[Item]` parameter sends the list. To send it under its name instead, add [`Send.EMBED`](#send-flags): `ids: Annotated[list[str], Send.EMBED]` sends `{"ids": [...]}`.
-- **Otherwise, each JSON parameter is a field of a JSON object**, under its alias or name: `title: Annotated[str, Json()]` and `tags: list[str]` send `{"title": "Hello", "tags": ["a", "b"]}`.
+- **One parameter that isn't a plain value is the whole body.** A `post: Annotated[NewPost, Json()]` parameter sends the model's JSON, and an `items: Annotated[list[Item], Json()]` parameter sends the list. To send it under its name instead, add [`Send.EMBED`](#send-flags): `ids: Annotated[list[str], Json(), Send.EMBED]` sends `{"ids": [...]}`.
+- **Otherwise, each JSON parameter is a field of a JSON object**, under its alias or name: `title: Annotated[str, Json()]` and `tags: Annotated[list[str], Json()]` send `{"title": "Hello", "tags": ["a", "b"]}`.
 - **Values are sent as Pydantic sends them in JSON mode.** A model uses its own serializers and is sent by alias, so `user_id: int = Field(alias="userId")` is sent as `"userId"`. Dates, UUIDs and enums become JSON values. A model's field that's `None` is sent as `null`.
 - **`None` is left out.** A JSON field whose value is `None` isn't sent, and a body parameter that's `None` sends no body.
 
@@ -187,23 +195,27 @@ class IssuesAPI(ClientX):
 
 ## Send flags
 
-`Send` holds flags that change how a parameter is sent. Put them in the parameter's outermost `Annotated`, next to its helper if it has one, and combine them with `|`:
+`Send` holds flags that change how a parameter is sent. Put them in the parameter's outermost `Annotated`, next to its helper, and combine them with `|`:
 
 | Flag | Effect |
 |---|---|
 | `Send.EMBED` | Sends a lone JSON parameter under its alias or name, as a field of a JSON object, instead of as the whole body. FastAPI's `Body(embed=True)` does the same for the request it receives. |
 
-Many APIs take a body such as `{"ids": [...]}`. Without the flag, a lone `ids: list[str]` would be the whole body, `[...]`:
+Many APIs take a body such as `{"ids": [...]}`. Without the flag, a lone `ids: Annotated[list[str], Json()]` would be the whole body, `[...]`:
 
 ```python
 from typing import Annotated
 
-from clientx import ClientX, Response, Send, method
+from clientx import ClientX, Json, Query, Response, Send, method
 
 
 class HostsAPI(ClientX):
     @method.post("/devices/actions")
-    def contain(self, action_name: str, ids: Annotated[list[str], Send.EMBED]) -> Response: ...
+    def contain(
+        self,
+        action_name: Annotated[str, Query()],
+        ids: Annotated[list[str], Json(), Send.EMBED],
+    ) -> Response: ...
 ```
 
 `contain("contain", ["host-1", "host-2"])` sends `POST /devices/actions?action_name=contain` with the JSON body `{"ids":["host-1","host-2"]}`.

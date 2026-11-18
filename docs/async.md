@@ -4,8 +4,9 @@ For async code, such as an asyncio app or a FastAPI service, subclass `AsyncClie
 
 ```python
 import asyncio
+from typing import Annotated
 
-from clientx import AsyncClientX, AsyncResource, method
+from clientx import AsyncClientX, AsyncResource, Query, method
 from pydantic import BaseModel
 
 
@@ -21,7 +22,7 @@ class Users(AsyncResource, prefix="/users"):
         ...
 
     @method.get()
-    async def search(self, name: str | None = None) -> list[User]:
+    async def search(self, name: Annotated[str | None, Query()] = None) -> list[User]:
         """List users, or only those with this name."""
         ...
 

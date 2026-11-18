@@ -41,9 +41,10 @@ after the release).
   clientx's `_decorators.py`, so outside test runners the warning was hidden.
 - An endpoint's `timeout=` follows httpx2: it defaults to `USE_CLIENT_DEFAULT` (the client's timeout),
   and `None` means no timeout. Unlike `raise_for_status=`, where `None` means the client's setting. The old code read `timeout=None` as the client's.
-- Request building follows FastAPI's rules, run the other way (agreed 2026-11-17):
-  - A parameter without a helper goes to the path if a placeholder names it; to the JSON body if it's
-    a model, mapping, list or dataclass; otherwise to the query string. Decided when the class is defined.
+- Request building (agreed 2026-11-17, made strict 2026-11-18):
+  - A parameter named like a placeholder fills it. Every other parameter needs a helper, or raises
+    `DefinitionError`, with the likely helper in the message. Strict first (agreed 2026-11-18): inference
+    can be added later without breaking anyone, but not taken away. Decided when the class is defined.
   - A helper on a model parameter sends all its fields to that part. Helpers on model fields aren't
     supported (`DefinitionError`).
   - One JSON parameter is the whole body; several are keyed by parameter name. A lone plain value is
@@ -90,7 +91,7 @@ after the release).
 | `_method.py` | the verb decorator and the sync/async wrappers: warn if deprecated, bind, build the request from `endpoint.request_arguments()` (path, `timeout`), send (`stream=`), raise for 4xx/5xx, decode |
 | `_types.py`, `arguments.py`, `_arguments.py` | option TypedDicts, shared aliases; the `Field`-based request-part helpers (no `Cookie`) |
 | `exceptions.py` | `ClientXError`, `DefinitionError` (every check above raises it), `ArgumentError` (path values) |
-| `_request.py` | `plan_request(template, parameters)` places each parameter (path, helper, or inferred), checks the rules (one kind of body, no default inside a helper...), and returns a `RequestPlan`: the parsed path, a `PlannedParameter` per value sent under a name (query, headers, form, files, JSON fields) or a `SpreadParameter` per model, dataclass or mapping spread into a part, and the `body` parameter, if one is the whole body (raw content, or a lone JSON model, mapping or list). `RequestPlan.build(arguments)` renders the path and fills the parts (`PlannedParameter.encode`, `_to_text`) |
+| `_request.py` | `plan_request(template, parameters)` places each parameter (path or helper), checks the rules (one kind of body, no default inside a helper...), and returns a `RequestPlan`: the parsed path, a `PlannedParameter` per value sent under a name (query, headers, form, files, JSON fields) or a `SpreadParameter` per model, dataclass or mapping spread into a part, and the `body` parameter, if one is the whole body (raw content, or a lone JSON model, mapping or list). `RequestPlan.build(arguments)` renders the path and fills the parts (`PlannedParameter.encode`, `_to_text`) |
 
 ## Missing functionality (besides docs and tests)
 
