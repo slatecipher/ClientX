@@ -14,9 +14,9 @@ inside the helper raises ``DefinitionError``, so put it after ``=``::
             dry_run: Annotated[bool, Query()] = False,
         ) -> None: ...
 
-A parameter without a helper is placed as FastAPI places it: a path
-placeholder's name goes to the path, a model, mapping, collection or dataclass
-to JSON, and anything else to the query string.
+Every parameter needs a helper, except one named like a path placeholder,
+which fills it. ClientX doesn't guess where a parameter goes: a parameter
+without a helper raises ``DefinitionError``.
 
 A ``Query()``, ``Header()`` or ``Form()`` helper on a model, dataclass or
 mapping parameter sends each of its fields to that part: with
@@ -40,8 +40,8 @@ helper, and the argument it marks:
     ``Json``    ``json``
 
 ``Send`` holds flags that change how a parameter is sent, put next to its helper
-in ``Annotated``: ``ids: Annotated[list[str], Send.EMBED]`` sends a lone list as
-``{"ids": [...]}`` rather than as the whole body.
+in ``Annotated``: ``ids: Annotated[list[str], Json(), Send.EMBED]`` sends a lone
+list as ``{"ids": [...]}`` rather than as the whole body.
 """
 
 from pydantic import Field

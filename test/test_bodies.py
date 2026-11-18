@@ -35,7 +35,7 @@ class Flagged(BaseModel):
     ids: Annotated[list[str], Send.EMBED]
 
 
-type Embedded[T] = Annotated[T, Send.EMBED]
+type Embedded[T] = Annotated[T, Json(), Send.EMBED]
 
 
 def only_request(sent: list[httpx2.Request]) -> httpx2.Request:
@@ -53,7 +53,7 @@ def content_type(request: httpx2.Request) -> str:
 def test_a_lone_model_is_the_whole_json_body(mock_transport: MockTransport) -> None:
     class API(ClientX):
         @method.post("/users")
-        def create(self, user: NewUser) -> None: ...
+        def create(self, user: Annotated[NewUser, Json()]) -> None: ...
 
     sent: list[httpx2.Request] = []
     API(BASE_URL, transport=mock_transport(sent)).create(
@@ -73,7 +73,7 @@ def test_a_model_is_sent_by_its_own_type(mock_transport: MockTransport) -> None:
     # sent with its default.
     class API(ClientX):
         @method.post("/users")
-        def create(self, user: NewUser) -> None: ...
+        def create(self, user: Annotated[NewUser, Json()]) -> None: ...
 
     sent: list[httpx2.Request] = []
     API(BASE_URL, transport=mock_transport(sent)).create(Admin(name="Root", emailAddress="r@example.com", level=9))
@@ -103,7 +103,7 @@ def test_a_lone_list_mapping_or_root_model_is_the_whole_json_body(
 ) -> None:
     class API(ClientX):
         @method.post("/items")
-        def create(self, items: annotation) -> None: ...  # pyright: ignore[reportInvalidTypeForm]
+        def create(self, items: Annotated[annotation, Json()]) -> None: ...  # pyright: ignore[reportInvalidTypeForm]
 
     sent: list[httpx2.Request] = []
     API(BASE_URL, transport=mock_transport(sent)).create(value)
@@ -123,7 +123,7 @@ def test_a_lone_plain_json_value_is_sent_under_its_name(mock_transport: MockTran
 def test_several_json_parameters_are_keyed_by_name(mock_transport: MockTransport) -> None:
     class API(ClientX):
         @method.post("/invites")
-        def invite(self, user: NewUser, notify: Annotated[bool, Json()] = True) -> None: ...
+        def invite(self, user: Annotated[NewUser, Json()], notify: Annotated[bool, Json()] = True) -> None: ...
 
     sent: list[httpx2.Request] = []
     API(BASE_URL, transport=mock_transport(sent)).invite(NewUser(name="Ada", emailAddress="a@x"))
@@ -167,7 +167,7 @@ def test_a_json_field_thats_none_is_left_out(mock_transport: MockTransport) -> N
 def test_a_lone_body_thats_none_sends_no_body(mock_transport: MockTransport) -> None:
     class API(ClientX):
         @method.post("/users")
-        def create(self, user: NewUser | None = None) -> None: ...
+        def create(self, user: Annotated[NewUser | None, Json()] = None) -> None: ...
 
     sent: list[httpx2.Request] = []
     API(BASE_URL, transport=mock_transport(sent)).create()
@@ -178,7 +178,7 @@ def test_a_lone_body_thats_none_sends_no_body(mock_transport: MockTransport) -> 
 async def test_async_endpoints_send_bodies_too(mock_transport: MockTransport) -> None:
     class API(AsyncClientX):
         @method.post("/users")
-        async def create(self, user: NewUser) -> None: ...
+        async def create(self, user: Annotated[NewUser, Json()]) -> None: ...
 
     sent: list[httpx2.Request] = []
     await API(BASE_URL, transport=mock_transport(sent)).create(NewUser(name="Ada", emailAddress="a@x"))
@@ -191,12 +191,12 @@ async def test_async_endpoints_send_bodies_too(mock_transport: MockTransport) ->
 @pytest.mark.parametrize(
     ("annotation", "value", "body"),
     [
-        pytest.param(Annotated[list[str], Send.EMBED], ["a", "b"], {"ids": ["a", "b"]}, id="list"),
+        pytest.param(Annotated[list[str], Json(), Send.EMBED], ["a", "b"], {"ids": ["a", "b"]}, id="list"),
         pytest.param(
             Annotated[list[str], Json(alias="deviceIds"), Send.EMBED], ["a"], {"deviceIds": ["a"]}, id="alias"
         ),
         pytest.param(
-            Annotated[NewUser, Send.EMBED],
+            Annotated[NewUser, Json(), Send.EMBED],
             NewUser(name="Ada", emailAddress="a@x"),
             {"ids": {"name": "Ada", "emailAddress": "a@x", "joined": None}},
             id="model",
@@ -210,7 +210,7 @@ def test_send_embed_sends_a_lone_json_parameter_under_its_name(
 ) -> None:
     class API(ClientX):
         @method.post("/devices/actions")
-        def act(self, action_name: str, ids: annotation) -> None: ...  # pyright: ignore[reportInvalidTypeForm]
+        def act(self, action_name: Annotated[str, Query()], ids: annotation) -> None: ...  # pyright: ignore[reportInvalidTypeForm]
 
     sent: list[httpx2.Request] = []
     API(BASE_URL, transport=mock_transport(sent)).act("contain", value)
@@ -341,7 +341,7 @@ def test_a_form_field_must_be_a_plain_value_or_a_list_of_them() -> None:
             "(JSON), 'p2' (raw content)",
             id="JSON and raw content",
         ),
-        pytest.param(NewUser, Annotated[str, Form()], "(JSON), 'p2' (a form)", id="inferred JSON and a form"),
+        pytest.param(Annotated[NewUser, Json()], Annotated[str, Form()], "(JSON), 'p2' (a form)", id="JSON and a form"),
         pytest.param(
             Annotated[bytes, Body()],
             Annotated[bytes, File()],
@@ -369,7 +369,7 @@ def test_an_endpoint_has_at_most_one_raw_body() -> None:
 def test_query_parameters_go_with_any_body(mock_transport: MockTransport) -> None:
     class API(ClientX):
         @method.post("/users")
-        def create(self, user: NewUser, dry_run: Annotated[bool, Query()] = False) -> None: ...
+        def create(self, user: Annotated[NewUser, Json()], dry_run: Annotated[bool, Query()] = False) -> None: ...
 
         @method.post("/upload")
         def upload(

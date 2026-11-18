@@ -48,16 +48,17 @@ class HttpxArgument(StrEnum):
 class Send(Flag):
     """Flags that change how a parameter is sent.
 
-    Put them in the parameter's outermost ``Annotated``, next to its helper if
-    it has one, and combine them with ``|``, as in
-    ``Annotated[list[str], Send.EMBED]``. A flag where it can't apply raises
-    ``DefinitionError`` when the class is defined.
+    Put them in the parameter's outermost ``Annotated``, next to its helper,
+    and combine them with ``|``, as in
+    ``Annotated[list[str], Json(), Send.EMBED]``. A flag where it can't apply
+    raises ``DefinitionError`` when the class is defined.
 
     Attributes:
-        EMBED: Send a lone JSON parameter under its alias or name, as a field
-            of a JSON object, instead of as the whole body:
-            ``ids: Annotated[list[str], Send.EMBED]`` sends ``{"ids": [...]}``
-            rather than ``[...]``. Like FastAPI's ``Body(embed=True)``.
+        EMBED: Send a lone JSON parameter under its alias or name, as a field of
+            a JSON object, instead of as the whole body:
+            ``ids: Annotated[list[str], Json(), Send.EMBED]`` sends
+            ``{"ids": [...]}`` rather than ``[...]``. Like FastAPI's
+            ``Body(embed=True)``.
     """
 
     EMBED = auto()
@@ -260,14 +261,13 @@ class BuildRequestKwargs(TypedDict, total=False):
     json: Any | None
     """A JSON body.
 
-    ``Json()`` parameters set it, and so do models, dataclasses, mappings and
-    collections without a helper.
+    ``Json()`` parameters set it.
     """
 
     params: QueryParamTypes | None
     """Query parameters, merged with the client's.
 
-    ``Query()`` parameters set it, and so do plain values without a helper.
+    ``Query()`` parameters set it.
     """
 
     headers: HeaderTypes | None

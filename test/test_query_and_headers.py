@@ -11,7 +11,7 @@ import httpx2
 import pytest
 from pydantic import BaseModel, Field
 
-from clientx import ClientX, DefinitionError, Header, Query, Url, method
+from clientx import ClientX, DefinitionError, Header, Json, Query, Url, method
 
 type MockTransport = Callable[..., httpx2.MockTransport]
 
@@ -44,26 +44,41 @@ def header_names(request: httpx2.Request) -> list[str]:
 # Where a parameter goes
 
 
-def test_a_plain_parameter_without_a_helper_goes_to_the_query(mock_transport: MockTransport) -> None:
+@pytest.mark.parametrize(
+    ("parameter", "example"),
+    [
+        pytest.param("page: int = 1", "page: Annotated[int, Query()]", id="plain value"),
+        pytest.param("tags: list[str]", "tags: Annotated[list[str], Json()]", id="collection"),
+        pytest.param("filters: Filters", "filters: Annotated[Filters, Json()]", id="model"),
+        pytest.param("raw=None", "raw: Annotated[str, Query()]", id="no annotation"),
+    ],
+)
+def test_a_parameter_without_a_helper_fails(parameter: str, example: str) -> None:
+    # ClientX doesn't guess where a parameter goes: only a path placeholder's
+    # parameter goes without a helper.
+    source = f"class API(ClientX):\n    @method.get('/items')\n    def search(self, {parameter}) -> None: ..."
+    with pytest.raises(DefinitionError, match=re.escape("needs a helper that says where it goes")) as raised:
+        exec(source, {"ClientX": ClientX, "method": method, "Filters": Filters})  # noqa: S102
+    assert f"as in {example}." in str(raised.value)
+
+
+def test_query_values_are_sent_as_text(mock_transport: MockTransport) -> None:
     class API(ClientX):
         @method.get("/items")
         def search(
             self,
-            page: int = 1,
-            flag: bool = False,
-            color: Color = Color.RED,
-            since: datetime.datetime | None = None,
-            kind: Literal["a", "b"] = "a",
-            raw=None,  # Unannotated on purpose: it goes to the query too.
+            page: Annotated[int, Query()] = 1,
+            flag: Annotated[bool, Query()] = False,
+            color: Annotated[Color, Query()] = Color.RED,
+            since: Annotated[datetime.datetime | None, Query()] = None,
+            kind: Annotated[Literal["a", "b"], Query()] = "a",
         ) -> None: ...
 
     sent: list[httpx2.Request] = []
     API(BASE_URL, transport=mock_transport(sent)).search(
-        page=2, flag=True, since=datetime.datetime(2026, 11, 17, 9, 30), kind="b", raw="r"
+        page=2, flag=True, since=datetime.datetime(2026, 11, 17, 9, 30), kind="b"
     )
-    assert only_request(sent).url.query.decode() == (
-        "page=2&flag=true&color=red&since=2026-11-17T09%3A30%3A00&kind=b&raw=r"
-    )
+    assert only_request(sent).url.query.decode() == "page=2&flag=true&color=red&since=2026-11-17T09%3A30%3A00&kind=b"
 
 
 def test_defaults_are_sent_and_none_is_left_out(mock_transport: MockTransport) -> None:
@@ -71,29 +86,22 @@ def test_defaults_are_sent_and_none_is_left_out(mock_transport: MockTransport) -
     # server decide.
     class API(ClientX):
         @method.get("/items")
-        def search(self, page: int = 1, q: str | None = None, opt: Optional[int] = None) -> None: ...  # noqa: UP045
+        def search(
+            self,
+            page: Annotated[int, Query()] = 1,
+            q: Annotated[str | None, Query()] = None,
+            opt: Annotated[Optional[int], Query()] = None,  # noqa: UP045
+        ) -> None: ...
 
     sent: list[httpx2.Request] = []
     API(BASE_URL, transport=mock_transport(sent)).search()
     assert only_request(sent).url.query.decode() == "page=1"
 
 
-def test_a_collection_without_a_helper_goes_to_json_not_the_query(mock_transport: MockTransport) -> None:
-    class API(ClientX):
-        @method.post("/items")
-        def create(self, tags: list[str], keep: int = 1) -> None: ...
-
-    sent: list[httpx2.Request] = []
-    API(BASE_URL, transport=mock_transport(sent)).create(["a"])
-    request = only_request(sent)
-    assert request.url.query.decode() == "keep=1"
-    assert json.loads(request.content) == ["a"]
-
-
-def test_a_recursive_type_alias_is_inferred_as_json(mock_transport: MockTransport) -> None:
+def test_a_recursive_type_alias_works(mock_transport: MockTransport) -> None:
     class API(ClientX):
         @method.post("/values")
-        def store(self, value: JsonValue) -> None: ...
+        def store(self, value: Annotated[JsonValue, Json()]) -> None: ...
 
     sent: list[httpx2.Request] = []
     API(BASE_URL, transport=mock_transport(sent)).store({"k": [1]})
@@ -148,7 +156,7 @@ def test_a_list_repeats_its_query_parameter(mock_transport: MockTransport) -> No
 def test_the_clients_own_query_parameters_are_kept(mock_transport: MockTransport) -> None:
     class API(ClientX):
         @method.get("/items")
-        def search(self, page: int) -> None: ...
+        def search(self, page: Annotated[int, Query()]) -> None: ...
 
     sent: list[httpx2.Request] = []
     API(BASE_URL, transport=mock_transport(sent), params={"api_key": "k"}).search(2)
@@ -255,7 +263,7 @@ def test_a_helper_inside_a_parameters_type_fails(annotation: Any) -> None:
 def test_a_plain_field_inside_a_type_isnt_a_helper(mock_transport: MockTransport) -> None:
     class API(ClientX):
         @method.post("/items")
-        def create(self, counts: list[Annotated[int, Field(gt=0)]]) -> None: ...
+        def create(self, counts: Annotated[list[Annotated[int, Field(gt=0)]], Json()]) -> None: ...
 
     sent: list[httpx2.Request] = []
     API(BASE_URL, transport=mock_transport(sent)).create([1, 2])

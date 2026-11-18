@@ -49,8 +49,8 @@ class ParameterInfo:
         base_type: ``annotation`` without its ``Annotated`` wrapper or ``type``
             alias, or ``NO_VALUE`` if there's no annotation.
         httpx_argument: The request part the parameter's helper marks it for,
-            read from ``httpx_argument_spec``. ``None`` without a helper:
-            ``_request.py`` then works out the part from the parameter's type.
+            read from ``httpx_argument_spec``. ``None`` without a helper, which
+            only a path placeholder's parameter may lack.
         httpx_argument_spec: The mark the helper adds to ``clientx_field_info``;
             ``None`` without one.
         clientx_field_info: The ``FieldInfo`` of the parameter's

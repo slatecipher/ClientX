@@ -4,12 +4,12 @@ import linecache
 import re
 import warnings
 from collections.abc import Callable
-from typing import Any
+from typing import Annotated, Any
 
 import httpx2
 import pytest
 
-from clientx import AsyncClientX, ClientX, DefinitionError, Timeout, method
+from clientx import AsyncClientX, ClientX, DefinitionError, Query, Timeout, method
 
 type MockTransport = Callable[..., httpx2.MockTransport]
 
@@ -107,7 +107,7 @@ def test_an_endpoints_timeout_reaches_the_transport(mock_transport: MockTranspor
 def test_positional_only_and_keyword_only_parameters_work(mock_transport: MockTransport) -> None:
     class API(ClientX):
         @method.get("/items/{item_id}")
-        def item(self, item_id: int, /, *, verbose: bool = False) -> None: ...
+        def item(self, item_id: int, /, *, verbose: Annotated[bool, Query()] = False) -> None: ...
 
     sent: list[httpx2.Request] = []
     API(BASE_URL, transport=mock_transport(sent)).item(7, verbose=True)

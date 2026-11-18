@@ -6,15 +6,13 @@ parameters, and checks that they fit together. On each call,
 ``RequestPlan.build`` turns the call's arguments into the URL path and the other
 ``build_request`` arguments, without reading annotations again.
 
-Where each parameter goes is decided once, the way FastAPI decides it:
+Where each parameter goes is decided once, and never guessed:
 
 1. A parameter that a path placeholder names fills it. It must be a plain value.
-2. A parameter with a ``clientx.arguments`` helper in its outermost
-   ``Annotated`` goes where the helper says. A helper anywhere else in its type,
-   as in ``Annotated[str, Header()] | None``, is an error.
-3. Any other parameter goes to the JSON body if its type is a model, mapping,
-   collection or dataclass, or a union with one of those, and to the query
-   string otherwise.
+2. Every other parameter has a ``clientx.arguments`` helper in its outermost
+   ``Annotated``, and goes where the helper says. A parameter without one is an
+   error, and so is a helper anywhere else in its type, as in
+   ``Annotated[str, Header()] | None``.
 
 A query parameter or form field is a plain value, or a list of plain values,
 which repeats the key (``?tag=a&tag=b``). A header is a plain value. A file is
@@ -59,7 +57,7 @@ from pydantic import BaseModel
 from pydantic_core import PydanticUndefined, to_jsonable_python
 
 from clientx._arguments import get_argument_location
-from clientx._signature import ParameterInfo, unwrap_annotated
+from clientx._signature import NO_VALUE, ParameterInfo, unwrap_annotated
 from clientx._types import BuildRequestKwargs, HttpxArgument, RequestContent, Send
 from clientx.exceptions import ArgumentError, DefinitionError
 
@@ -293,7 +291,7 @@ def _check_helper(parameter: ParameterInfo) -> None:
 
     The helper must be in the parameter's outermost ``Annotated``, without a
     default of its own. A field of a model parameter can't have a helper: the
-    parameter's helper, or its inferred part, decides where the model goes.
+    parameter's helper decides where the model goes.
     """
     for arm in _arms(parameter.annotation):
         cls = _class_of(arm)
@@ -320,8 +318,8 @@ def _check_helper(parameter: ParameterInfo) -> None:
     if _has_nested(parameter, _is_send_flag):
         raise DefinitionError(
             f"Parameter {parameter.name!r} has a Send flag inside its type. ClientX reads Send flags only "
-            "in the outermost Annotated, so move it there: for example, Annotated[list[str] | None, "
-            "Send.EMBED] rather than Annotated[list[str], Send.EMBED] | None."
+            "in the outermost Annotated, so move it there: for example, Annotated[list[str] | None, Json(), "
+            "Send.EMBED] rather than Annotated[list[str], Json(), Send.EMBED] | None."
         )
     field_info = parameter.clientx_field_info
     if field_info is not None and (field_info.default is not PydanticUndefined or field_info.default_factory):
@@ -364,24 +362,38 @@ def _check_send(parameter: ParameterInfo, part: HttpxArgument) -> None:
 
 
 def _part_of(parameter: ParameterInfo, template: str) -> HttpxArgument:
-    """Return the part a parameter outside the path goes to.
-
-    It's its helper's part. Without a helper, a plain value goes to the query
-    string, and anything else to JSON.
+    """Return the part a parameter outside the path goes to: its helper's.
 
     Raises:
-        DefinitionError: If the parameter is marked ``Url()``: it has no
-            placeholder.
+        DefinitionError: If the parameter has no helper, or is marked ``Url()``
+            without a placeholder.
     """
     name, part = parameter.name, parameter.httpx_argument
+    if part is None:
+        raise DefinitionError(
+            f"Parameter {name!r} needs a helper that says where it goes: Query(), Header(), Json(), Body(), "
+            f"Form() or File(), as in {_example(parameter)}. Only a parameter named like a path placeholder "
+            "goes without one."
+        )
     if part is HttpxArgument.URL:
         raise DefinitionError(
             f"Parameter {name!r} is marked Url(), but the path {template!r} has no placeholder {{{name}}}. "
             "Add the placeholder, or remove Url()."
         )
-    if part is not None:
-        return part
-    return HttpxArgument.PARAMS if _all_plain(parameter.annotation) else HttpxArgument.JSON
+    return part
+
+
+def _example(parameter: ParameterInfo) -> str:
+    """Return the parameter with the helper it most likely needs, for a message.
+
+    That's ``Query()`` for a plain value and ``Json()`` for anything else.
+    """
+    if parameter.annotation is NO_VALUE:
+        return f"{parameter.name}: Annotated[str, Query()]"
+    base = parameter.base_type
+    type_text = base.__qualname__ if isinstance(base, type) else repr(base)
+    helper = "Query()" if _all_plain(parameter.annotation) else "Json()"
+    return f"{parameter.name}: Annotated[{type_text}, {helper}]"
 
 
 def _check_one_body(placed: list[tuple[ParameterInfo, HttpxArgument]]) -> None:
