@@ -12,7 +12,7 @@ from typing import Annotated, Any
 import pytest
 from pydantic import Field
 
-from clientx import Header, Query
+from clientx import Header, Query, Send
 from clientx._signature import NO_VALUE, ParameterInfo, ParameterKind, inspect_signature
 from clientx._types import HttpxArgument
 
@@ -20,6 +20,7 @@ type UserId = Annotated[int, Field(gt=0)]
 type QueryUserId = Annotated[UserId, Query()]
 type QueryParam[T] = Annotated[T, Query()]
 type NotGeneric[T] = int
+type Embed = Annotated[int, Send(embed=True)]
 # Deliberately cyclic, to check that alias expansion stops.
 type Loop = Loop2  # pyright: ignore[reportGeneralTypeIssues]
 type Loop2 = Loop
@@ -52,6 +53,21 @@ def test_the_last_helper_in_the_outermost_annotated_counts(annotation: Any, part
     info = parameter(annotation)
     assert info.httpx_argument is part
     assert (info.clientx_field_info is None) is (part is None)
+
+
+@pytest.mark.parametrize(
+    ("annotation", "send"),
+    [
+        pytest.param(Annotated[int, Send(embed=True)], Send(embed=True), id="one"),
+        pytest.param(Annotated[int, Send(embed=True), Query()], Send(embed=True), id="before the helper"),
+        pytest.param(Annotated[int, Send(embed=True), Send(embed=False)], Send(embed=False), id="the last of two"),
+        pytest.param(Annotated[Embed, Send(embed=False)], Send(embed=False), id="the parameter's over an alias's"),
+        pytest.param(Embed, Send(embed=True), id="from an alias"),
+        pytest.param(Annotated[int, Query()], Send(), id="none"),
+    ],
+)
+def test_the_last_send_in_the_outermost_annotated_counts(annotation: Any, send: Send) -> None:
+    assert parameter(annotation).send == send
 
 
 @pytest.mark.parametrize(

@@ -119,7 +119,7 @@ A request has one kind of body: JSON, raw content, or a form. Parameters that wo
 
 A parameter marked `Json()` goes to the JSON body:
 
-- **One parameter that isn't a plain value is the whole body.** A `post: Annotated[NewPost, Json()]` parameter sends the model's JSON, and an `items: Annotated[list[Item], Json()]` parameter sends the list. To send it under its name instead, add [`Send.EMBED`](#send-flags): `ids: Annotated[list[str], Json(), Send.EMBED]` sends `{"ids": [...]}`.
+- **One parameter that isn't a plain value is the whole body.** A `post: Annotated[NewPost, Json()]` parameter sends the model's JSON, and an `items: Annotated[list[Item], Json()]` parameter sends the list. To send it under its name instead, add [`Send(embed=True)`](#send): `ids: Annotated[list[str], Json(), Send(embed=True)]` sends `{"ids": [...]}`.
 - **Otherwise, each JSON parameter is a field of a JSON object**, under its alias or name: `title: Annotated[str, Json()]` and `tags: Annotated[list[str], Json()]` send `{"title": "Hello", "tags": ["a", "b"]}`.
 - **Values are sent as Pydantic sends them in JSON mode.** A model uses its own serializers and is sent by alias, so `user_id: int = Field(alias="userId")` is sent as `"userId"`. Dates, UUIDs and enums become JSON values. A model's field that's `None` is sent as `null`.
 - **`None` is left out.** A JSON field whose value is `None` isn't sent, and a body parameter that's `None` sends no body.
@@ -193,15 +193,15 @@ class IssuesAPI(ClientX):
 - A model's own serializers apply, and its fields are sent by alias.
 - A helper on a model's field, such as `assignee: Annotated[str, Header()]`, raises `DefinitionError`: the parameter's helper decides where all of the model's fields go.
 
-## Send flags
+## Send
 
-`Send` holds flags that change how a parameter is sent. Put them in the parameter's outermost `Annotated`, next to its helper, and combine them with `|`:
+The helper says where a parameter goes; `Send` says how it's sent there. Put it in the parameter's outermost `Annotated`, next to the helper. It has one option so far:
 
-| Flag | Effect |
+| Option | Effect |
 |---|---|
-| `Send.EMBED` | Sends a lone JSON parameter under its alias or name, as a field of a JSON object, instead of as the whole body. FastAPI's `Body(embed=True)` does the same for the request it receives. |
+| `embed=True` | Sends a lone JSON parameter under its alias or name, as a field of a JSON object, instead of as the whole body. FastAPI's `Body(embed=True)` does the same for the request it receives. |
 
-Many APIs take a body such as `{"ids": [...]}`. Without the flag, a lone `ids: Annotated[list[str], Json()]` would be the whole body, `[...]`:
+Many APIs take a body such as `{"ids": [...]}`. Without `embed`, a lone `ids: Annotated[list[str], Json()]` would be the whole body, `[...]`:
 
 ```python
 from typing import Annotated
@@ -214,15 +214,17 @@ class HostsAPI(ClientX):
     def contain(
         self,
         action_name: Annotated[str, Query()],
-        ids: Annotated[list[str], Json(), Send.EMBED],
+        ids: Annotated[list[str], Json(), Send(embed=True)],
     ) -> Response: ...
 ```
 
 `contain("contain", ["host-1", "host-2"])` sends `POST /devices/actions?action_name=contain` with the JSON body `{"ids":["host-1","host-2"]}`.
 
-To send it under another name, give it an alias with its helper: `ids: Annotated[list[str], Json(alias="deviceIds"), Send.EMBED]` sends `{"deviceIds": [...]}`. ClientX reads the name only from its own helpers, so a plain `pydantic.Field(alias=...)` doesn't change it.
+To send it under another name, give it an alias with its helper: `ids: Annotated[list[str], Json(alias="deviceIds"), Send(embed=True)]` sends `{"deviceIds": [...]}`. ClientX reads the name only from its own helpers, so a plain `pydantic.Field(alias=...)` doesn't change it.
 
-A flag where it can't apply raises `DefinitionError` when the class is defined: `Send.EMBED` on a parameter that isn't sent as JSON, any flag on a path parameter, a flag nested inside the parameter's type, or a flag on a model's field.
+With several `Send` in one `Annotated`, such as one from a `type` alias and one on the parameter, the last one wins whole, as the last helper does.
+
+`Send` where it can't apply raises `DefinitionError` when the class is defined: `embed` on a parameter that isn't sent as JSON (`embed=False` too) or on a path parameter, or a `Send` nested inside the parameter's type or on a model's field.
 
 ## Where a helper goes
 

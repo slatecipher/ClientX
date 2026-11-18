@@ -39,9 +39,9 @@ helper, and the argument it marks:
     ``File``    ``files``
     ``Json``    ``json``
 
-``Send`` holds flags that change how a parameter is sent, put next to its helper
-in ``Annotated``: ``ids: Annotated[list[str], Json(), Send.EMBED]`` sends a lone
-list as ``{"ids": [...]}`` rather than as the whole body.
+``Send`` changes how a parameter is sent, put next to its helper in
+``Annotated``: ``ids: Annotated[list[str], Json(), Send(embed=True)]`` sends a
+lone list as ``{"ids": [...]}`` rather than as the whole body.
 """
 
 from pydantic import Field

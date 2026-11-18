@@ -32,10 +32,10 @@ class Tags(RootModel[list[str]]):
 
 
 class Flagged(BaseModel):
-    ids: Annotated[list[str], Send.EMBED]
+    ids: Annotated[list[str], Send(embed=True)]
 
 
-type Embedded[T] = Annotated[T, Json(), Send.EMBED]
+type Embedded[T] = Annotated[T, Json(), Send(embed=True)]
 
 
 def only_request(sent: list[httpx2.Request]) -> httpx2.Request:
@@ -185,24 +185,24 @@ async def test_async_endpoints_send_bodies_too(mock_transport: MockTransport) ->
     assert json.loads(only_request(sent).content)["emailAddress"] == "a@x"
 
 
-# Send.EMBED: a lone JSON parameter sent under its name (#129)
+# Send(embed=True): a lone JSON parameter sent under its name (#129)
 
 
 @pytest.mark.parametrize(
     ("annotation", "value", "body"),
     [
-        pytest.param(Annotated[list[str], Json(), Send.EMBED], ["a", "b"], {"ids": ["a", "b"]}, id="list"),
+        pytest.param(Annotated[list[str], Json(), Send(embed=True)], ["a", "b"], {"ids": ["a", "b"]}, id="list"),
         pytest.param(
-            Annotated[list[str], Json(alias="deviceIds"), Send.EMBED], ["a"], {"deviceIds": ["a"]}, id="alias"
+            Annotated[list[str], Json(alias="deviceIds"), Send(embed=True)], ["a"], {"deviceIds": ["a"]}, id="alias"
         ),
         pytest.param(
-            Annotated[NewUser, Json(), Send.EMBED],
+            Annotated[NewUser, Json(), Send(embed=True)],
             NewUser(name="Ada", emailAddress="a@x"),
             {"ids": {"name": "Ada", "emailAddress": "a@x", "joined": None}},
             id="model",
         ),
         pytest.param(Embedded[list[str]], ["a"], {"ids": ["a"]}, id="type alias"),
-        pytest.param(Annotated[str, Json(), Send.EMBED], "a", {"ids": "a"}, id="plain value, keyed anyway"),
+        pytest.param(Annotated[str, Json(), Send(embed=True)], "a", {"ids": "a"}, id="plain value, keyed anyway"),
     ],
 )
 def test_send_embed_sends_a_lone_json_parameter_under_its_name(
@@ -216,6 +216,16 @@ def test_send_embed_sends_a_lone_json_parameter_under_its_name(
     API(BASE_URL, transport=mock_transport(sent)).act("contain", value)
     request = only_request(sent)
     assert (request.url.query.decode(), json.loads(request.content)) == ("action_name=contain", body)
+
+
+def test_the_parameters_send_replaces_an_aliass(mock_transport: MockTransport) -> None:
+    class API(ClientX):
+        @method.post("/devices/actions")
+        def act(self, ids: Annotated[Embedded[list[str]], Send(embed=False)]) -> None: ...
+
+    sent: list[httpx2.Request] = []
+    API(BASE_URL, transport=mock_transport(sent)).act(["a", "b"])
+    assert json.loads(only_request(sent).content) == ["a", "b"]
 
 
 def test_without_send_embed_a_lone_list_is_the_whole_body(mock_transport: MockTransport) -> None:
@@ -233,37 +243,44 @@ def test_without_send_embed_a_lone_list_is_the_whole_body(mock_transport: MockTr
     [
         pytest.param(
             "/items",
-            Annotated[int, Query(), Send.EMBED],
-            "has Send.EMBED, which sends a JSON body parameter under its name, but it goes to the request's params",
+            Annotated[int, Query(), Send(embed=True)],
+            "has Send(embed=...), which sends a JSON body parameter under its name, but it goes to the request's "
+            "params",
             id="query parameter",
         ),
         pytest.param(
             "/items",
-            Annotated[bytes, Body(), Send.EMBED],
+            Annotated[int, Query(), Send(embed=False)],
+            "has Send(embed=...)",
+            id="embed=False counts too",
+        ),
+        pytest.param(
+            "/items",
+            Annotated[bytes, Body(), Send(embed=True)],
             "but it goes to the request's content",
             id="raw content",
         ),
         pytest.param(
             "/items/{p}",
-            Annotated[int, Send.EMBED],
-            "so Send flags don't apply to it",
+            Annotated[int, Send(embed=True)],
+            "so Send doesn't apply to it",
             id="path parameter",
         ),
         pytest.param(
             "/items",
-            Annotated[list[str], Send.EMBED] | None,  # pyright: ignore[reportOperatorIssue]
-            "has a Send flag inside its type",
+            Annotated[list[str], Send(embed=True)] | None,  # pyright: ignore[reportOperatorIssue]
+            "has a Send inside its type",
             id="nested",
         ),
         pytest.param(
             "/items",
             Flagged,
-            "Field 'ids' of Flagged has a Send flag, but ClientX reads Send flags only on endpoint parameters",
+            "Field 'ids' of Flagged has a Send, but ClientX reads Send only on endpoint parameters",
             id="on a model's field",
         ),
     ],
 )
-def test_a_send_flag_where_it_cant_apply_fails(path: str, annotation: Any, message: str) -> None:
+def test_send_where_it_cant_apply_fails(path: str, annotation: Any, message: str) -> None:
     with pytest.raises(DefinitionError, match=re.escape(message)):
 
         class API(ClientX):

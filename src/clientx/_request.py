@@ -274,7 +274,7 @@ def plan_request(template: str, parameters: Sequence[ParameterInfo]) -> RequestP
     # Then how each is sent: as the whole body, or under a name.
     json_parameters = [parameter for parameter, part in placed if part is HttpxArgument.JSON]
     lone_json = json_parameters[0] if len(json_parameters) == 1 else None
-    if lone_json is not None and (Send.EMBED in lone_json.send or _all_plain(lone_json.annotation)):
+    if lone_json is not None and (lone_json.send.embed or _all_plain(lone_json.annotation)):
         lone_json = None  # Sent under its name, as a field of a JSON object.
     body: PlannedParameter | None = None
     planned: list[PlannedParameter | SpreadParameter] = []
@@ -306,8 +306,8 @@ def _check_helper(parameter: ParameterInfo) -> None:
                 )
             if any(isinstance(meta, Send) for meta in field_info.metadata):
                 raise DefinitionError(
-                    f"Field {field_name!r} of {cls.__name__} has a Send flag, but ClientX reads Send flags only "
-                    f"on endpoint parameters. Put the flag on parameter {parameter.name!r} instead."
+                    f"Field {field_name!r} of {cls.__name__} has a Send, but ClientX reads Send only on "
+                    f"endpoint parameters. Put it on parameter {parameter.name!r} instead."
                 )
     if _has_nested(parameter, _is_helper):
         raise DefinitionError(
@@ -315,11 +315,11 @@ def _check_helper(parameter: ParameterInfo) -> None:
             "in the outermost Annotated, so move it there: for example, Annotated[str | None, Header()] "
             "rather than Annotated[str, Header()] | None."
         )
-    if _has_nested(parameter, _is_send_flag):
+    if _has_nested(parameter, _is_send):
         raise DefinitionError(
-            f"Parameter {parameter.name!r} has a Send flag inside its type. ClientX reads Send flags only "
-            "in the outermost Annotated, so move it there: for example, Annotated[list[str] | None, Json(), "
-            "Send.EMBED] rather than Annotated[list[str], Json(), Send.EMBED] | None."
+            f"Parameter {parameter.name!r} has a Send inside its type. ClientX reads Send only in the "
+            "outermost Annotated, so move it there: for example, Annotated[list[str] | None, Json(), "
+            "Send(embed=True)] rather than Annotated[list[str], Json(), Send(embed=True)] | None."
         )
     field_info = parameter.clientx_field_info
     if field_info is not None and (field_info.default is not PydanticUndefined or field_info.default_factory):
@@ -345,19 +345,21 @@ def _check_path_parameter(parameter: ParameterInfo, placeholder: Placeholder, te
             f"Parameter {name!r} fills {placeholder} in the path {template!r}, so it must be a plain value, "
             "such as str or int, not a model, mapping or collection."
         )
-    if parameter.send:
+    if parameter.send != Send():
         raise DefinitionError(
-            f"Parameter {name!r} fills {placeholder} in the path {template!r}, so Send flags don't apply to "
-            "it. Remove them."
+            f"Parameter {name!r} fills {placeholder} in the path {template!r}, so Send doesn't apply to it. Remove it."
         )
 
 
 def _check_send(parameter: ParameterInfo, part: HttpxArgument) -> None:
-    """Raise ``DefinitionError`` for a ``Send`` flag the part can't take."""
-    if Send.EMBED in parameter.send and part is not HttpxArgument.JSON:
+    """Raise ``DefinitionError`` for a ``Send`` option the part can't take.
+
+    An option set to ``False`` counts too: it can't apply there either.
+    """
+    if parameter.send.embed is not None and part is not HttpxArgument.JSON:
         raise DefinitionError(
-            f"Parameter {parameter.name!r} has Send.EMBED, which sends a JSON body parameter under its name, "
-            f"but it goes to the request's {part}. Remove the flag, or send the parameter as JSON."
+            f"Parameter {parameter.name!r} has Send(embed=...), which sends a JSON body parameter under its "
+            f"name, but it goes to the request's {part}. Remove it, or send the parameter as JSON."
         )
 
 
@@ -502,7 +504,7 @@ def _is_helper(meta: object) -> bool:
     return get_httpx_argument(meta) is not None
 
 
-def _is_send_flag(meta: object) -> bool:
+def _is_send(meta: object) -> bool:
     return isinstance(meta, Send)
 
 

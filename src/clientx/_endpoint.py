@@ -218,7 +218,7 @@ class Endpoint:
         return arguments
 
     def parameters(self) -> tuple[ParameterInfo, ...]:
-        """Return all parameters but the first, which receives the owner."""
+        """Return all parameters but the first: the client or resource."""
         return self.signature.parameters[1:]
 
     def set_up_request(self) -> None:

@@ -59,8 +59,9 @@ class ParameterInfo:
             ``Annotated[int, Query()] | None``, isn't found. Only the annotation
             is read, by design: a helper given as the default value isn't found,
             so there's no annotation and default to reconcile.
-        send: The ``Send`` flags in the outermost ``Annotated``, combined;
-            ``Send(0)`` without any.
+        send: The last ``Send`` in the outermost ``Annotated``, so one on the
+            parameter wins over one from a ``type`` alias; ``Send()`` without
+            one.
         annotation: The resolved annotation, with ``Annotated`` kept, or
             ``NO_VALUE`` if there's none.
         default: The default value, or ``NO_VALUE`` if there's none.
@@ -72,7 +73,7 @@ class ParameterInfo:
     base_type: Any = field(init=False)
     httpx_argument: HttpxArgument | None = field(default=None, init=False)
     clientx_field_info: FieldInfo | None = field(default=None, init=False)
-    send: Send = field(default=Send(0), init=False)
+    send: Send = field(default_factory=Send, init=False)
     annotation: Any = NO_VALUE
     default: Any = NO_VALUE
 
@@ -80,31 +81,36 @@ class ParameterInfo:
         """Set ``base_type``, the helper's attributes and ``send``."""
         base_type, metadata = unwrap_annotated(self.annotation)
         self.base_type = base_type
-        self._set_clientx_field_info(metadata)
-        for meta in metadata:
-            if isinstance(meta, Send):
-                self.send |= meta
+        self._read_metadata(metadata)
 
-    def _set_clientx_field_info(self, metadata: tuple[Any, ...]) -> None:
-        """Set the attributes that come from the parameter's helper.
+    def _read_metadata(self, metadata: tuple[Any, ...]) -> None:
+        """Set the helper's attributes and ``send`` from ``metadata``.
 
-        The helper is the last ``FieldInfo`` in ``metadata`` that a
-        ``clientx.arguments`` helper marked, so in
-        ``Annotated[int, Query(), Header()]``, ``Header()`` wins. A plain
-        ``FieldInfo``, such as ``Field(gt=0)``, is skipped. Without a helper,
-        ``clientx_field_info`` and ``httpx_argument`` stay ``None``.
+        Both come from the end of ``metadata``. The helper is the last
+        ``FieldInfo`` that a ``clientx.arguments`` helper marked, so in
+        ``Annotated[int, Query(), Header()]``, ``Header()`` wins; a plain
+        ``FieldInfo``, such as ``Field(gt=0)``, is skipped. ``send`` is the last
+        ``Send``, whole. Without a helper, ``clientx_field_info`` and
+        ``httpx_argument`` stay ``None``; without a ``Send``, ``send`` stays
+        ``Send()``.
 
         Args:
             metadata: The ``Annotated`` metadata, in the order
-                ``unwrap_annotated`` returns it: inner first, so a helper on the
-                parameter wins over one from a ``type`` alias.
+                ``unwrap_annotated`` returns it: inner first, so a helper or
+                ``Send`` on the parameter wins over one from a ``type`` alias.
         """
+        found_send = False
         for meta in reversed(metadata):
-            if isinstance(meta, FieldInfo):
+            if self.clientx_field_info is None and isinstance(meta, FieldInfo):
                 if (httpx_argument := get_httpx_argument(meta)) is not None:
                     self.httpx_argument = httpx_argument
                     self.clientx_field_info = meta
-                    break
+            if not found_send and isinstance(meta, Send):
+                self.send = meta
+                found_send = True
+
+            if self.clientx_field_info is not None and found_send:
+                break
 
 
 @dataclass(frozen=True)

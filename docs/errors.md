@@ -25,7 +25,7 @@ When the client or resource class is defined:
 - An endpoint or mounted resource has a name the client already uses (see [Endpoint names](endpoints.md#endpoint-names)), or the endpoint is already in another class's body.
 - A resource is mounted on the other kind of client or resource, or on a class that isn't one, or a resource class is assigned where an instance should be (`users = Users` rather than `users = Users()`).
 - The path has a brace that isn't part of a placeholder, a placeholder other than `{name}` or `{name:path}`, or a placeholder, a resource prefix's included, that names no parameter. A placeholder's parameter isn't a plain value, or has a helper other than `Url()`, or a `Url()` parameter has no placeholder.
-- A helper is nested inside a parameter's type, has a default inside it, or is on a model's field. The same goes for a `Send` flag, and for a flag where it can't apply, such as `Send.EMBED` on a parameter that isn't sent as JSON, or any flag on a path parameter.
+- A helper is nested inside a parameter's type, has a default inside it, or is on a model's field. The same goes for a `Send`, and for a `Send` option where it can't apply, such as `Send(embed=True)` on a parameter that isn't sent as JSON, or on a path parameter.
 - A parameter's value can't go to its part, such as a list for a header, or a field of a spread model that isn't a plain value. The parameters make more than one kind of body, or more than one is marked `Body()`.
 
 See [Building requests](requests.md) for the rules behind the last four.

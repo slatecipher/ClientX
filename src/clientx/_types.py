@@ -1,6 +1,7 @@
 import ssl
 from collections.abc import Awaitable, Callable, Mapping
-from enum import Flag, StrEnum, auto
+from dataclasses import dataclass
+from enum import StrEnum
 from typing import Any, Literal, TypedDict
 
 from httpx2 import AsyncBaseTransport, BaseTransport, Limits, Request, Response
@@ -44,23 +45,32 @@ class HttpxArgument(StrEnum):
     JSON = "json"
 
 
-class Send(Flag):
-    """Flags that change how a parameter is sent.
+@dataclass(frozen=True, slots=True, kw_only=True)
+class Send:
+    """Options that change how a parameter is sent.
 
-    Put them in the parameter's outermost ``Annotated``, next to its helper,
-    and combine them with ``|``, as in
-    ``Annotated[list[str], Json(), Send.EMBED]``. A flag where it can't apply
-    raises ``DefinitionError`` when the class is defined.
+    The helper says where a value goes; ``Send`` says how. Put it in the
+    parameter's outermost ``Annotated``, next to the helper, as in
+    ``Annotated[list[str], Json(), Send(embed=True)]``.
+
+    Each option applies to some parts of the request only, and one where it
+    can't apply raises ``DefinitionError`` when the class is defined, as does a
+    ``Send`` on a path parameter, nested inside the type, or on a model's field.
+
+    With several ``Send`` in one ``Annotated``, the last one wins whole, as the
+    last helper does, so one on the parameter replaces one from a ``type``
+    alias rather than adding to it.
 
     Attributes:
-        EMBED: Send a lone JSON parameter under its alias or name, as a field of
-            a JSON object, instead of as the whole body:
-            ``ids: Annotated[list[str], Json(), Send.EMBED]`` sends
+        embed: Send a lone ``Json()`` parameter under its alias or name, as a
+            field of a JSON object, instead of as the whole body:
+            ``ids: Annotated[list[str], Json(), Send(embed=True)]`` sends
             ``{"ids": [...]}`` rather than ``[...]``. Like FastAPI's
-            ``Body(embed=True)``.
+            ``Body(embed=True)``. A parameter that's already keyed, a plain
+            value or one of several ``Json()`` parameters, is sent the same.
     """
 
-    EMBED = auto()
+    embed: bool | None = None
 
 
 type MethodType = Literal["GET", "PUT", "POST", "PATCH", "DELETE", "HEAD", "OPTIONS"]
