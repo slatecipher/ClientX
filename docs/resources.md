@@ -70,7 +70,7 @@ ClientX keeps the tags on each endpoint for tooling, such as describing endpoint
 
 ## Mounting and nesting
 
-Mount an instance (`users = Users()`), not the class. Calling an endpoint on a resource that isn't mounted on a client, such as `Users().retrieve(42)`, raises `DefinitionError`.
+Mount an instance (`users = Users()`), not the class: `users = Users` raises `DefinitionError` when the class is defined. Calling an endpoint on a resource that isn't mounted on a client, such as `Users().retrieve(42)`, raises `DefinitionError` too.
 
 Mount resources on other resources to nest them, for example `api.repos.issues.retrieve(...)`. Each keeps its own prefix: prefixes don't add up through nesting.
 

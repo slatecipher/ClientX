@@ -23,7 +23,7 @@ When the client or resource class is defined:
 - The class subclasses both `ClientX` and `AsyncClientX`, or both `Resource` and `AsyncResource`.
 - An endpoint is the wrong kind for its class: `async def` on a `ClientX` or `Resource`, or `def` on an `AsyncClientX` or `AsyncResource`.
 - An endpoint or mounted resource has a name the client already uses (see [Endpoint names](endpoints.md#endpoint-names)), or the endpoint is already in another class's body.
-- A resource is mounted on the other kind of client or resource, or on a class that isn't one.
+- A resource is mounted on the other kind of client or resource, or on a class that isn't one, or a resource class is assigned where an instance should be (`users = Users` rather than `users = Users()`).
 - The path has a brace that isn't part of a placeholder, a placeholder other than `{name}` or `{name:path}`, or a placeholder, a resource prefix's included, that names no parameter. A placeholder's parameter isn't a plain value, or has a helper other than `Url()`, or a `Url()` parameter has no placeholder.
 - A helper is nested inside a parameter's type, has a default inside it, or is on a model's field.
 - A parameter's value can't go to its part, such as a list for a header, or a field of a spread model that isn't a plain value. The parameters make more than one kind of body, or more than one is marked `Body()`.

@@ -286,6 +286,45 @@ async def test_async_resources_send_through_the_async_client(mock_transport: Moc
     assert only_request(sent).url.path == "/users/1"
 
 
+def test_a_resource_class_must_be_mounted_as_an_instance() -> None:
+    class Users(Resource, prefix="/users"):
+        @method.get("/{user_id}")
+        def retrieve(self, user_id: int) -> None: ...
+
+    class Issues(AsyncResource, prefix="/issues"):
+        @method.get()
+        async def list_issues(self) -> None: ...
+
+    message = re.escape("isn't mounted. Mount an instance: users = Users().")
+    with pytest.raises(DefinitionError, match=message):
+
+        class API(ClientX):
+            users = Users
+
+    with pytest.raises(DefinitionError, match=message):
+
+        class Teams(Resource):
+            users = Users
+
+    with pytest.raises(DefinitionError, match=re.escape("Mount an instance: issues = Issues().")):
+
+        class AsyncAPI(AsyncClientX):
+            issues = Issues
+
+
+def test_a_resource_class_defined_in_a_body_can_be_mounted_there(mock_transport: MockTransport) -> None:
+    class API(ClientX):
+        class Users(Resource, prefix="/users"):
+            @method.get("/{user_id}")
+            def retrieve(self, user_id: int) -> None: ...
+
+        users = Users()
+
+    sent: list[httpx2.Request] = []
+    API(BASE_URL, transport=mock_transport(sent)).users.retrieve(1)
+    assert only_request(sent).url.path == "/users/1"
+
+
 # Tags: nothing reads them yet, so the tests read each endpoint's directly.
 
 

@@ -39,6 +39,7 @@ def set_up_client(
     """
     _check_one_kind(cls, _CLIENT_BASES)
     _check_member_names(cls, base, fix="Rename it, or put it on a Resource mounted on the client.")
+    _check_resource_classes(cls)
     _check_endpoint_kinds(cls, _CLIENT_BASES)
     if user_agent is not None:
         cls.__clientx_user_agent__ = user_agent
@@ -64,6 +65,7 @@ def set_up_resource(
     """
     _check_one_kind(cls, _RESOURCE_BASES)
     _check_member_names(cls, base, fix="Rename it.")
+    _check_resource_classes(cls)
     _check_endpoint_kinds(cls, _RESOURCE_BASES)
     if prefix is not None:
         cls.__clientx_prefix__ = prefix
@@ -156,6 +158,23 @@ def _reserved_names(base: type) -> frozenset[str]:
     parents declare.
     """
     return frozenset(dir(base)).union(*(inspect.get_annotations(cls) for cls in base.__mro__))
+
+
+def _check_resource_classes(cls: type) -> None:
+    """Raise ``DefinitionError`` for a resource class in ``cls``'s body.
+
+    ``users = Users`` instead of ``users = Users()`` isn't mounted: each call
+    would fail on its endpoint's ``self``, far from the mistake. A resource
+    class defined in the body itself, to be mounted there, is fine: its
+    qualified name is ``cls``'s plus its own.
+    """
+    for name, value in vars(cls).items():
+        is_resource_class = isinstance(value, type) and hasattr(value, "__clientx_prefix__")
+        if is_resource_class and value.__qualname__ != f"{cls.__qualname__}.{name}":
+            raise DefinitionError(
+                f"'{cls.__qualname__}.{name}' is the resource class {value.__qualname__}, not an instance, so it "
+                f"isn't mounted. Mount an instance: {name} = {value.__name__}()."
+            )
 
 
 def _is_resource(value: object) -> bool:
