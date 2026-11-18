@@ -56,11 +56,11 @@ def set_up_resource(
     """Set up a new resource subclass: check it, and apply its prefix and tags.
 
     ``base`` is ``Resource`` or ``AsyncResource``, whose names the endpoints
-    can't use. A subclass without its own ``prefix`` or ``tags`` keeps its
-    parent's. The prefix is joined to each endpoint's path now, so it's
-    absolute: it doesn't depend on where the resource is mounted. Each
-    endpoint's request plan is worked out after the join, because the prefix can
-    add placeholders.
+    can't use. A subclass without its own ``prefix`` keeps its parent's, and its
+    ``tags`` are added to its parent's, each tag once. The prefix is joined to
+    each endpoint's path now, so it's absolute: it doesn't depend on where the
+    resource is mounted. Each endpoint's request plan is worked out after the
+    join, because the prefix can add placeholders.
     """
     _check_one_kind(cls, _RESOURCE_BASES)
     _check_member_names(cls, base, fix="Rename it.")
@@ -68,10 +68,11 @@ def set_up_resource(
     if prefix is not None:
         cls.__clientx_prefix__ = prefix
     if tags is not None:
-        cls.__clientx_tags__ = tuple(tags)
+        # Until now, `cls` inherits its parent's tags: add its own after them.
+        cls.__clientx_tags__ = tuple(dict.fromkeys([*cls.__clientx_tags__, *tags]))
     for endpoint in _claim_endpoints(cls):
         endpoint.raw_path = _join_path(cls.__clientx_prefix__, endpoint.raw_path)
-        endpoint.tags = list(dict.fromkeys([*cls.__clientx_tags__, *(endpoint.tags or ())]))
+        endpoint.tags = list(dict.fromkeys([*cls.__clientx_tags__, *endpoint.tags]))
         endpoint.set_up_request()
 
 

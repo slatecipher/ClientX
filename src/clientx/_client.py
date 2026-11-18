@@ -209,8 +209,9 @@ class Resource(_BaseResource):
         """Check the class, and apply its prefix and tags to its endpoints.
 
         The ``prefix=`` class argument, such as ``"/users"``, is joined onto
-        each endpoint's path, and ``tags=`` go before each endpoint's own tags.
-        A subclass without them keeps its parent's.
+        each endpoint's path; a subclass without one keeps its parent's.
+        ``tags=`` are added to the parent class's tags, then go before each
+        endpoint's own, each tag once.
         """
         super().__init_subclass__(**kwargs)
         set_up_resource(cls, base=Resource, prefix=prefix, tags=tags)

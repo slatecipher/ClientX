@@ -10,6 +10,7 @@ import pytest
 
 import clientx
 from clientx import AsyncClientX, AsyncResource, ClientX, DefinitionError, Resource, method
+from clientx._registry import endpoint_for
 from clientx._types import AsyncHttpxClientOptions, BuildRequestKwargs, HttpxClientOptions
 
 type MockTransport = Callable[..., httpx2.MockTransport]
@@ -283,6 +284,65 @@ async def test_async_resources_send_through_the_async_client(mock_transport: Moc
     async with API(BASE_URL, transport=mock_transport(sent)) as api:
         await api.users.fetch(1)
     assert only_request(sent).url.path == "/users/1"
+
+
+# Tags: nothing reads them yet, so the tests read each endpoint's directly.
+
+
+def tags_of(function: object) -> list[str]:
+    endpoint = endpoint_for(function)
+    assert endpoint is not None
+    return endpoint.tags
+
+
+def test_an_endpoint_keeps_each_tag_once_in_order() -> None:
+    class API(ClientX):
+        @method.get("/health", tags=["ops", "public", "ops"])
+        def health(self) -> None: ...
+
+        @method.get("/version")
+        def version(self) -> None: ...
+
+    assert (tags_of(API.health), tags_of(API.version)) == (["ops", "public"], [])
+
+
+def test_a_resources_tags_go_before_its_endpoints_own() -> None:
+    class Users(Resource, tags=["users", "public"]):
+        @method.get("/users", tags=["public", "read"])
+        def list_users(self) -> None: ...
+
+    assert tags_of(Users.list_users) == ["users", "public", "read"]
+
+
+def test_a_resource_subclass_adds_its_tags_to_its_parents() -> None:
+    class Users(Resource, tags=["users"]):
+        @method.get("/users/{user_id}")
+        def retrieve(self, user_id: int) -> None: ...
+
+    class Admins(Users, tags=["admin", "users"]):
+        @method.post("/admins", tags=["write"])
+        def create(self) -> None: ...
+
+    class Guests(Users):
+        @method.get("/guests")
+        def list_guests(self) -> None: ...
+
+    assert tags_of(Admins.create) == ["users", "admin", "write"]
+    assert tags_of(Guests.list_guests) == ["users"]
+    # An inherited endpoint keeps the tags of the class that declares it.
+    assert tags_of(Admins.retrieve) == ["users"]
+
+
+def test_a_mounted_resource_keeps_its_own_tags() -> None:
+    class Issues(AsyncResource, tags=["issues"]):
+        @method.get("/issues")
+        async def list_issues(self) -> None: ...
+
+    class Repos(AsyncResource, tags=["repos"]):
+        issues = Issues()
+
+    assert isinstance(Repos.issues, Issues)
+    assert tags_of(Issues.list_issues) == ["issues"]
 
 
 # The TypedDicts that mirror httpx2's signatures

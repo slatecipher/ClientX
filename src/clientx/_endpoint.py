@@ -34,8 +34,9 @@ class Endpoint:
         signature: The function's analysed signature, with every parameter as
             written. The first one receives the client or resource;
             ``parameters()`` returns the rest.
-        tags: Tags that group endpoints, such as for ``clientx.tools``. A
-            resource puts its own tags in front when its class is defined.
+        tags: Labels that group endpoints, each tag once, in order. A resource
+            puts its own tags in front when its class is defined. ClientX
+            doesn't read them itself yet: they're for tooling.
         raw_path: The path template, such as ``"/users/{user_id}"``. A resource
             joins its prefix onto it when its class is defined.
         decoder: Turns the ``httpx2.Response`` into the endpoint's return value.
@@ -66,7 +67,7 @@ class Endpoint:
 
     method: MethodType
     signature: SignatureInfo
-    tags: list[str] | None = field(default=None)
+    tags: list[str] = field(default_factory=list[str])
     raw_path: str = field(default="")
     decoder: Decoder | None = field(default=None)
     deprecated: str | None = field(default=None)
@@ -87,6 +88,7 @@ class Endpoint:
                 ``stream=True`` or the ``decoder=`` can't work; see the
                 ``_check_*`` methods and ``default_decoder``.
         """
+        self.tags = list(dict.fromkeys(self.tags))  # Each tag once, in order.
         self._check_parameters()
         self._check_return_annotation()
         self._check_stream_response()

@@ -125,7 +125,8 @@ class Method:
             stream: Return the open, unread response, which the caller reads and
                 closes. Only with ``-> Response`` and no ``decoder=``.
             deprecated: The message of a ``DeprecationWarning`` each call emits.
-            tags: Tags that group endpoints. A resource's tags go in front.
+            tags: Labels that group endpoints, each kept once. A resource's tags
+                go in front. ClientX doesn't use them itself yet.
             timeout: The request timeout, as httpx2 takes it: the default uses
                 the client's, and ``None`` turns it off.
             raise_for_status: Whether a 4xx or 5xx response raises
@@ -137,7 +138,7 @@ class Method:
                 method=self.method,
                 raw_path=path,
                 signature=inspect_signature(func),
-                tags=tags,
+                tags=list(tags or ()),
                 timeout=timeout,
                 raise_for_status=raise_for_status,
                 decoder=decoder,
