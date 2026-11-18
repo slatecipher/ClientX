@@ -24,6 +24,7 @@ def test_package_exports() -> None:
             "Header",
             "Json",
             "Query",
+            "Send",
             "Url",
             "ArgumentError",
             "ClientXError",
@@ -37,7 +38,7 @@ def test_package_exports() -> None:
 
 def test_submodule_exports() -> None:
     assert method.__all__ == ["delete", "get", "head", "options", "patch", "post", "put"]
-    assert sorted(arguments.__all__) == ["Body", "File", "Form", "Header", "Json", "Query", "Url"]
+    assert sorted(arguments.__all__) == ["Body", "File", "Form", "Header", "Json", "Query", "Send", "Url"]
     assert sorted(exceptions.__all__) == ["ArgumentError", "ClientXError", "DefinitionError"]
 
 

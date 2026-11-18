@@ -15,7 +15,7 @@ from typing import Annotated, Any, TypeAliasType, get_args, get_origin, get_type
 from pydantic.fields import FieldInfo
 
 from clientx._arguments import get_argument_spec
-from clientx._types import HttpxArgument, HttpxArgumentSpec
+from clientx._types import HttpxArgument, HttpxArgumentSpec, Send
 
 ParameterKind = inspect._ParameterKind  # pyright: ignore[reportPrivateUsage]
 """A parameter's kind, such as positional-only or keyword-only.
@@ -61,6 +61,8 @@ class ParameterInfo:
             ``Annotated[int, Query()] | None``, isn't found. Only the annotation
             is read, by design: a helper given as the default value isn't found,
             so there's no annotation and default to reconcile.
+        send: The ``Send`` flags in the outermost ``Annotated``, combined;
+            ``Send(0)`` without any.
         annotation: The resolved annotation, with ``Annotated`` kept, or
             ``NO_VALUE`` if there's none.
         default: The default value, or ``NO_VALUE`` if there's none.
@@ -73,14 +75,18 @@ class ParameterInfo:
     httpx_argument: HttpxArgument | None = field(default=None, init=False)
     httpx_argument_spec: HttpxArgumentSpec | None = field(default=None, init=False)
     clientx_field_info: FieldInfo | None = field(default=None, init=False)
+    send: Send = field(default=Send(0), init=False)
     annotation: Any = NO_VALUE
     default: Any = NO_VALUE
 
     def __post_init__(self) -> None:
-        """Set ``base_type`` and the helper's attributes from ``annotation``."""
+        """Set ``base_type``, the helper's attributes and ``send``."""
         base_type, metadata = unwrap_annotated(self.annotation)
         self.base_type = base_type
         self._set_clientx_field_info(metadata)
+        for meta in metadata:
+            if isinstance(meta, Send):
+                self.send |= meta
 
     def _set_clientx_field_info(self, metadata: tuple[Any, ...]) -> None:
         """Set the attributes that come from the parameter's helper.

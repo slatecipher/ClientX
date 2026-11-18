@@ -10,7 +10,7 @@ import httpx2
 import pytest
 from pydantic import BaseModel, Field, RootModel
 
-from clientx import AsyncClientX, Body, ClientX, DefinitionError, File, Form, Json, Query, method
+from clientx import AsyncClientX, Body, ClientX, DefinitionError, File, Form, Json, Query, Send, method
 
 type MockTransport = Callable[..., httpx2.MockTransport]
 
@@ -29,6 +29,13 @@ class Admin(NewUser):
 
 class Tags(RootModel[list[str]]):
     pass
+
+
+class Flagged(BaseModel):
+    ids: Annotated[list[str], Send.EMBED]
+
+
+type Embedded[T] = Annotated[T, Send.EMBED]
 
 
 def only_request(sent: list[httpx2.Request]) -> httpx2.Request:
@@ -176,6 +183,92 @@ async def test_async_endpoints_send_bodies_too(mock_transport: MockTransport) ->
     sent: list[httpx2.Request] = []
     await API(BASE_URL, transport=mock_transport(sent)).create(NewUser(name="Ada", emailAddress="a@x"))
     assert json.loads(only_request(sent).content)["emailAddress"] == "a@x"
+
+
+# Send.EMBED: a lone JSON parameter sent under its name (#129)
+
+
+@pytest.mark.parametrize(
+    ("annotation", "value", "body"),
+    [
+        pytest.param(Annotated[list[str], Send.EMBED], ["a", "b"], {"ids": ["a", "b"]}, id="list"),
+        pytest.param(
+            Annotated[list[str], Json(alias="deviceIds"), Send.EMBED], ["a"], {"deviceIds": ["a"]}, id="alias"
+        ),
+        pytest.param(
+            Annotated[NewUser, Send.EMBED],
+            NewUser(name="Ada", emailAddress="a@x"),
+            {"ids": {"name": "Ada", "emailAddress": "a@x", "joined": None}},
+            id="model",
+        ),
+        pytest.param(Embedded[list[str]], ["a"], {"ids": ["a"]}, id="type alias"),
+        pytest.param(Annotated[str, Json(), Send.EMBED], "a", {"ids": "a"}, id="plain value, keyed anyway"),
+    ],
+)
+def test_send_embed_sends_a_lone_json_parameter_under_its_name(
+    annotation: Any, value: object, body: object, mock_transport: MockTransport
+) -> None:
+    class API(ClientX):
+        @method.post("/devices/actions")
+        def act(self, action_name: str, ids: annotation) -> None: ...  # pyright: ignore[reportInvalidTypeForm]
+
+    sent: list[httpx2.Request] = []
+    API(BASE_URL, transport=mock_transport(sent)).act("contain", value)
+    request = only_request(sent)
+    assert (request.url.query.decode(), json.loads(request.content)) == ("action_name=contain", body)
+
+
+def test_without_send_embed_a_lone_list_is_the_whole_body(mock_transport: MockTransport) -> None:
+    class API(ClientX):
+        @method.post("/devices/actions")
+        def act(self, ids: Annotated[list[str], Json()]) -> None: ...
+
+    sent: list[httpx2.Request] = []
+    API(BASE_URL, transport=mock_transport(sent)).act(["a", "b"])
+    assert json.loads(only_request(sent).content) == ["a", "b"]
+
+
+@pytest.mark.parametrize(
+    ("path", "annotation", "message"),
+    [
+        pytest.param(
+            "/items",
+            Annotated[int, Query(), Send.EMBED],
+            "has Send.EMBED, which sends a JSON body parameter under its name, but it goes to the request's params",
+            id="query parameter",
+        ),
+        pytest.param(
+            "/items",
+            Annotated[bytes, Body(), Send.EMBED],
+            "but it goes to the request's content",
+            id="raw content",
+        ),
+        pytest.param(
+            "/items/{p}",
+            Annotated[int, Send.EMBED],
+            "so Send flags don't apply to it",
+            id="path parameter",
+        ),
+        pytest.param(
+            "/items",
+            Annotated[list[str], Send.EMBED] | None,  # pyright: ignore[reportOperatorIssue]
+            "has a Send flag inside its type",
+            id="nested",
+        ),
+        pytest.param(
+            "/items",
+            Flagged,
+            "Field 'ids' of Flagged has a Send flag, but ClientX reads Send flags only on endpoint parameters",
+            id="on a model's field",
+        ),
+    ],
+)
+def test_a_send_flag_where_it_cant_apply_fails(path: str, annotation: Any, message: str) -> None:
+    with pytest.raises(DefinitionError, match=re.escape(message)):
+
+        class API(ClientX):
+            @method.post(path)
+            def act(self, p: annotation) -> None: ...  # pyright: ignore[reportInvalidTypeForm]
 
 
 # Raw content

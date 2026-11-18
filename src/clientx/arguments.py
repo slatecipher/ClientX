@@ -38,12 +38,16 @@ helper, and the argument it marks:
     ``Form``    ``data``
     ``File``    ``files``
     ``Json``    ``json``
+
+``Send`` holds flags that change how a parameter is sent, put next to its helper
+in ``Annotated``: ``ids: Annotated[list[str], Send.EMBED]`` sends a lone list as
+``{"ids": [...]}`` rather than as the whole body.
 """
 
 from pydantic import Field
 
 from clientx._arguments import bind_argument
-from clientx._types import HttpxArgument
+from clientx._types import HttpxArgument, Send
 
 Url = bind_argument("Url", HttpxArgument.URL, Field)
 Query = bind_argument("Query", HttpxArgument.PARAMS, Field)
@@ -53,4 +57,4 @@ Form = bind_argument("Form", HttpxArgument.DATA, Field)
 File = bind_argument("File", HttpxArgument.FILES, Field)
 Json = bind_argument("Json", HttpxArgument.JSON, Field)
 
-__all__ = ["Body", "File", "Form", "Header", "Json", "Query", "Url"]
+__all__ = ["Body", "File", "Form", "Header", "Json", "Query", "Send", "Url"]

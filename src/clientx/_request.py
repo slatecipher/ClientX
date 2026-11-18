@@ -47,7 +47,7 @@ the class is defined rather than being sent as it's written.
 """
 
 import json
-from collections.abc import Collection, Iterable, Mapping, Sequence
+from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass, is_dataclass
 from dataclasses import fields as dataclass_fields
 from string import Formatter
@@ -60,7 +60,7 @@ from pydantic_core import PydanticUndefined, to_jsonable_python
 
 from clientx._arguments import get_argument_location
 from clientx._signature import ParameterInfo, unwrap_annotated
-from clientx._types import BuildRequestKwargs, HttpxArgument, RequestContent
+from clientx._types import BuildRequestKwargs, HttpxArgument, RequestContent, Send
 from clientx.exceptions import ArgumentError, DefinitionError
 
 # The end of each path template error message: how to write one that works.
@@ -268,16 +268,20 @@ def plan_request(template: str, parameters: Sequence[ParameterInfo]) -> RequestP
         if placeholder is not None:
             _check_path_parameter(parameter, placeholder, template)
         else:
-            placed.append((parameter, _part_of(parameter, template)))
+            part = _part_of(parameter, template)
+            _check_send(parameter, part)
+            placed.append((parameter, part))
     _check_one_body(placed)
 
     # Then how each is sent: as the whole body, or under a name.
     json_parameters = [parameter for parameter, part in placed if part is HttpxArgument.JSON]
     lone_json = json_parameters[0] if len(json_parameters) == 1 else None
+    if lone_json is not None and (Send.EMBED in lone_json.send or _all_plain(lone_json.annotation)):
+        lone_json = None  # Sent under its name, as a field of a JSON object.
     body: PlannedParameter | None = None
     planned: list[PlannedParameter | SpreadParameter] = []
     for parameter, part in placed:
-        if part is HttpxArgument.CONTENT or (parameter is lone_json and not _all_plain(parameter.annotation)):
+        if part is HttpxArgument.CONTENT or parameter is lone_json:
             body = PlannedParameter(parameter.name, part, parameter.name)
         else:
             planned.append(_plan_keyed(parameter, part))
@@ -302,11 +306,22 @@ def _check_helper(parameter: ParameterInfo) -> None:
                     f"helpers only on endpoint parameters. Put the helper on parameter {parameter.name!r} "
                     f"instead, as in Annotated[{cls.__name__}, Query()]: all of the model's fields then go there."
                 )
-    if _has_nested_helper(parameter):
+            if any(isinstance(meta, Send) for meta in field_info.metadata):
+                raise DefinitionError(
+                    f"Field {field_name!r} of {cls.__name__} has a Send flag, but ClientX reads Send flags only "
+                    f"on endpoint parameters. Put the flag on parameter {parameter.name!r} instead."
+                )
+    if _has_nested(parameter, _is_helper):
         raise DefinitionError(
             f"Parameter {parameter.name!r} has a helper inside its type. ClientX reads a helper only "
             "in the outermost Annotated, so move it there: for example, Annotated[str | None, Header()] "
             "rather than Annotated[str, Header()] | None."
+        )
+    if _has_nested(parameter, _is_send_flag):
+        raise DefinitionError(
+            f"Parameter {parameter.name!r} has a Send flag inside its type. ClientX reads Send flags only "
+            "in the outermost Annotated, so move it there: for example, Annotated[list[str] | None, "
+            "Send.EMBED] rather than Annotated[list[str], Send.EMBED] | None."
         )
     field_info = parameter.clientx_field_info
     if field_info is not None and (field_info.default is not PydanticUndefined or field_info.default_factory):
@@ -331,6 +346,20 @@ def _check_path_parameter(parameter: ParameterInfo, placeholder: Placeholder, te
         raise DefinitionError(
             f"Parameter {name!r} fills {placeholder} in the path {template!r}, so it must be a plain value, "
             "such as str or int, not a model, mapping or collection."
+        )
+    if parameter.send:
+        raise DefinitionError(
+            f"Parameter {name!r} fills {placeholder} in the path {template!r}, so Send flags don't apply to "
+            "it. Remove them."
+        )
+
+
+def _check_send(parameter: ParameterInfo, part: HttpxArgument) -> None:
+    """Raise ``DefinitionError`` for a ``Send`` flag the part can't take."""
+    if Send.EMBED in parameter.send and part is not HttpxArgument.JSON:
+        raise DefinitionError(
+            f"Parameter {parameter.name!r} has Send.EMBED, which sends a JSON body parameter under its name, "
+            f"but it goes to the request's {part}. Remove the flag, or send the parameter as JSON."
         )
 
 
@@ -457,17 +486,26 @@ def _key(parameter: ParameterInfo, part: HttpxArgument) -> str:
     return parameter.name.replace("_", "-") if part is HttpxArgument.HEADERS else parameter.name
 
 
-def _has_nested_helper(parameter: ParameterInfo) -> bool:
-    """Return whether a helper is nested inside the parameter's type.
+def _is_helper(meta: object) -> bool:
+    return get_argument_location(meta) is not None
 
-    For example, ``Annotated[str, Header()] | None``. A helper in the outermost
-    ``Annotated`` isn't nested: ``ParameterInfo`` has already found it.
+
+def _is_send_flag(meta: object) -> bool:
+    return isinstance(meta, Send)
+
+
+def _has_nested(parameter: ParameterInfo, wanted: Callable[[object], bool]) -> bool:
+    """Return whether ``wanted`` metadata is nested in the parameter's type.
+
+    For example, the helper in ``Annotated[str, Header()] | None``. Metadata in
+    the outermost ``Annotated`` isn't nested: ``ParameterInfo`` has already
+    read it.
     """
-    return any(_contains_helper(arg, frozenset()) for arg in get_args(parameter.base_type))
+    return any(_contains(arg, wanted, frozenset()) for arg in get_args(parameter.base_type))
 
 
-def _contains_helper(annotation: Any, seen: frozenset[TypeAliasType]) -> bool:
-    """Return whether ``annotation``, or a type inside it, has a helper.
+def _contains(annotation: Any, wanted: Callable[[object], bool], seen: frozenset[TypeAliasType]) -> bool:
+    """Return whether ``annotation``, or a type inside it, has ``wanted``.
 
     ``seen`` holds the ``type`` aliases already expanded on the way here, so one
     that contains itself, such as ``type Value = dict[str, Value] | str``, is
@@ -479,9 +517,9 @@ def _contains_helper(annotation: Any, seen: frozenset[TypeAliasType]) -> bool:
             return False
         seen |= {alias}
     base, metadata = unwrap_annotated(annotation)
-    if any(get_argument_location(meta) is not None for meta in metadata):
+    if any(wanted(meta) for meta in metadata):
         return True
-    return any(_contains_helper(arg, seen) for arg in get_args(base))
+    return any(_contains(arg, wanted, seen) for arg in get_args(base))
 
 
 def _arms(annotation: Any, depth: int = 0) -> list[Any]:

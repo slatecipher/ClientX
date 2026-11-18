@@ -1,7 +1,7 @@
 import ssl
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
-from enum import StrEnum
+from enum import Flag, StrEnum, auto
 from typing import Any, Literal, TypedDict
 
 from httpx2 import AsyncBaseTransport, BaseTransport, Limits, Request, Response
@@ -43,6 +43,24 @@ class HttpxArgument(StrEnum):
     DATA = "data"
     FILES = "files"
     JSON = "json"
+
+
+class Send(Flag):
+    """Flags that change how a parameter is sent.
+
+    Put them in the parameter's outermost ``Annotated``, next to its helper if
+    it has one, and combine them with ``|``, as in
+    ``Annotated[list[str], Send.EMBED]``. A flag where it can't apply raises
+    ``DefinitionError`` when the class is defined.
+
+    Attributes:
+        EMBED: Send a lone JSON parameter under its alias or name, as a field
+            of a JSON object, instead of as the whole body:
+            ``ids: Annotated[list[str], Send.EMBED]`` sends ``{"ids": [...]}``
+            rather than ``[...]``. Like FastAPI's ``Body(embed=True)``.
+    """
+
+    EMBED = auto()
 
 
 @dataclass(frozen=True)
