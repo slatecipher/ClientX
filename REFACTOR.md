@@ -188,12 +188,12 @@ Rebuilt from scratch (agreed 2026-11-17); the old suite (25 files, 6,566 lines) 
 1. [x] `CLAUDE.md`: rewritten from the code (`aeb4c41`).
 2. [x] The code for 0.1.0 is done. AI support (item 11, #138) and argument validation (#136) wait until
    after the release, so the docs leave them out.
-3. Before the first page, add a test that type-checks every `python` code block in `docs/`,
+3. [x] Before the first page, add a test that type-checks every `python` code block in `docs/`,
    `README.md` and `llms.txt` with pyright, so snippets can't drift from the API again. Each block
    stands alone (its own imports); a deliberately incomplete one is fenced as `python no-check`. The
    test checks a list of rewritten files, which each page joins in the commit that rewrites it; once
    every page is rewritten, the list goes and every file is checked. Pages stay plain Markdown.
-4. Rewrite each page from the code, one per commit, using the old page only as a checklist of what to
+4. [x] Rewrite each page from the code, one per commit, using the old page only as a checklist of what to
    cover (docs review, 2026-11-17):
    1. `endpoints.md`: rewrite. Decorator options (`stream=`, `decoder=` as any callable,
       `deprecated=` as a string, `timeout=None` means no timeout), the required return annotation,
@@ -220,10 +220,13 @@ Rebuilt from scratch (agreed 2026-11-17); the old suite (25 files, 6,566 lines) 
 
    `decoders.md`, `logging.md` and `ai-tools.md` are deleted. A "Documenting your client" page
    (mkdocstrings settings) waits until after the release.
-5. Then `docs/README.md` and `README.md` (a simpler quickstart; no AI, `clientx[mcp]` or "pluggable
+5. [x] Then `docs/README.md` and `README.md` (a simpler quickstart; no AI, `clientx[mcp]` or "pluggable
    decoders"), then `llms.txt`, then `CHANGELOG.md`: ClientX was never released, so the
    `[Unreleased]` section ("First public release") is rewritten to describe the new API rather than
    given a breaking-change entry.
+
+Done on 2026-11-17, one commit per page, for review: the snippet test (`test/test_docs.py`) now
+checks every Markdown file in `docs/`, `README.md` and `llms.txt`.
 
 ## Follow-ups for docs
 
@@ -239,23 +242,6 @@ they called live APIs, so CI could only lint and type-check them. Ideas if examp
 docs snippets, where every code sample in `docs/` is a file that CI type-checks and runs against a
 mock transport (as FastAPI's `docs_src/` does), or one realistic client, such as for GitHub's REST
 API, with a test that runs it against a mock transport.
-
-- `llms.txt:92` and `docs/errors.md:7`: httpx2's names are reserved on clients, free on resources.
-- `docs/decoders.md`: rewrite for annotation-driven decoding.
-- Docs still use the `base_url=` class argument and the old decoder classes.
-- `DeprecatedMessage(...)` becomes a plain string in `docs/endpoints.md` (drop "any callable"),
-  and `llms.txt:78`.
-- `docs/endpoints.md:31` and `llms.txt:78`: an endpoint's `timeout=None` now means no timeout; leaving
-  it out uses the client's.
-- `docs/errors.md` and `llms.txt:103`: the old exception classes become `DefinitionError` or
-  `ArgumentError`.
-- `docs/requests.md` (the "Serialization control with `DumpConfig`" section, lines 163-204) and
-  `llms.txt:12` and `:48` use `DumpConfig`, which isn't ported.
-- Docs and `llms.txt` use `PathParam`, now `Url()`.
-- `docs/logging.md` (and its links in `docs/README.md` and `llms.txt`): ClientX has no logger of its own
-  now; point to httpx2's `httpx2` logger and keep the event hooks section.
-- `CLAUDE.md` describes the old architecture and test layout; rewrite it once the port is done. Keep its
-  "Conventions and releasing" section, which imports `CONTRIBUTING.md` (commit format, docstring rules).
 
 ## Trying it
 
