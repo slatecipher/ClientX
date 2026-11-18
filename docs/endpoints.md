@@ -40,6 +40,7 @@ Each decorator takes the path, then these keyword options:
 | `decoder` | none | A function that turns the `httpx2.Response` into the return value, instead of the decoding the return annotation implies. See [Your own decoder](responses.md#your-own-decoder). |
 | `stream` | `False` | `True` returns the open, unread response: annotate the endpoint `-> Response`, with no `decoder`. See [The open response](responses.md#the-open-response). |
 | `deprecated` | `None` | A message: each call emits a `DeprecationWarning` with it. See [Deprecating endpoints](#deprecating-endpoints). |
+| `tags` | none | Labels that group endpoints, each kept once. A resource's tags go in front (see [Tags](resources.md#tags)). Nothing in ClientX uses them yet. |
 | `timeout` | the client's | Seconds, or an `httpx2.Timeout`, for this endpoint's requests. `None` turns the timeout off. |
 | `raise_for_status` | the client's | Whether a 4xx or 5xx response raises `httpx2.HTTPStatusError`. Clients raise by default. See [Errors for 4xx and 5xx responses](responses.md#errors-for-4xx-and-5xx-responses). |
 

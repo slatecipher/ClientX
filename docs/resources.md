@@ -46,6 +46,28 @@ A resource subclass inherits its parent's `prefix` unless it sets its own. Eithe
 
 With `class Admins(Users, prefix="/admins")`, a new endpoint `@method.get("/{admin_id}")` in `Admins` is `GET /admins/{admin_id}`, but the inherited `retrieve` is still `GET /users/{user_id}`.
 
+## Tags
+
+`tags=` labels a resource's endpoints, to group them:
+
+```python
+from clientx import Resource, method
+
+
+class Users(Resource, prefix="/users", tags=["users"]):
+    @method.get("/{user_id}", tags=["read"])
+    def retrieve(self, user_id: int) -> None: ...
+
+
+class Admins(Users, tags=["admin"]):
+    @method.post("/{user_id}/promote", tags=["write"])
+    def promote(self, user_id: int) -> None: ...
+```
+
+`retrieve` is tagged `["users", "read"]`: a resource's tags go before each endpoint's own, and each tag is kept once, in order. A subclass's tags are added to its parent's, so `promote` is tagged `["users", "admin", "write"]`, and a subclass without `tags` keeps its parent's. Like a prefix, tags are fixed when the class is defined, so they don't depend on where the resource is mounted.
+
+ClientX keeps the tags on each endpoint for tooling, such as describing endpoints as AI tools ([#138](https://github.com/slatecipher/ClientX/issues/138)), but nothing in ClientX uses them yet.
+
 ## Mounting and nesting
 
 Mount an instance (`users = Users()`), not the class. Calling an endpoint on a resource that isn't mounted on a client, such as `Users().retrieve(42)`, raises `DefinitionError`.
