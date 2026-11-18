@@ -31,6 +31,7 @@ CHECKED: list[str] = [
     "docs/async.md",
     "docs/testing.md",
     "docs/errors.md",
+    "llms.txt",
 ]
 
 FENCE = re.compile(r"^(?P<indent>[ \t]*)(?P<fence>`{3,}|~{3,})(?P<info>.*)$")
