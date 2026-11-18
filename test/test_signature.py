@@ -52,7 +52,6 @@ def test_the_last_helper_in_the_outermost_annotated_counts(annotation: Any, part
     info = parameter(annotation)
     assert info.httpx_argument is part
     assert (info.clientx_field_info is None) is (part is None)
-    assert (info.httpx_argument_spec is None) is (part is None)
 
 
 @pytest.mark.parametrize(

@@ -56,7 +56,7 @@ from urllib.parse import quote
 from pydantic import BaseModel
 from pydantic_core import PydanticUndefined, to_jsonable_python
 
-from clientx._arguments import get_argument_location
+from clientx._arguments import get_httpx_argument
 from clientx._signature import NO_VALUE, ParameterInfo, unwrap_annotated
 from clientx._types import BuildRequestKwargs, HttpxArgument, RequestContent, Send
 from clientx.exceptions import ArgumentError, DefinitionError
@@ -298,7 +298,7 @@ def _check_helper(parameter: ParameterInfo) -> None:
         if cls is None or not issubclass(cls, BaseModel):
             continue
         for field_name, field_info in cls.model_fields.items():
-            if get_argument_location(field_info) is not None:
+            if get_httpx_argument(field_info) is not None:
                 raise DefinitionError(
                     f"Field {field_name!r} of {cls.__name__} has a clientx.arguments helper, but ClientX reads "
                     f"helpers only on endpoint parameters. Put the helper on parameter {parameter.name!r} "
@@ -499,7 +499,7 @@ def _key(parameter: ParameterInfo, part: HttpxArgument) -> str:
 
 
 def _is_helper(meta: object) -> bool:
-    return get_argument_location(meta) is not None
+    return get_httpx_argument(meta) is not None
 
 
 def _is_send_flag(meta: object) -> bool:

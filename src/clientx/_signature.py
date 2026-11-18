@@ -14,8 +14,8 @@ from typing import Annotated, Any, TypeAliasType, get_args, get_origin, get_type
 
 from pydantic.fields import FieldInfo
 
-from clientx._arguments import get_argument_spec
-from clientx._types import HttpxArgument, HttpxArgumentSpec, Send
+from clientx._arguments import get_httpx_argument
+from clientx._types import HttpxArgument, Send
 
 ParameterKind = inspect._ParameterKind  # pyright: ignore[reportPrivateUsage]
 """A parameter's kind, such as positional-only or keyword-only.
@@ -48,11 +48,9 @@ class ParameterInfo:
             or ``**kwargs``.
         base_type: ``annotation`` without its ``Annotated`` wrapper or ``type``
             alias, or ``NO_VALUE`` if there's no annotation.
-        httpx_argument: The request part the parameter's helper marks it for,
-            read from ``httpx_argument_spec``. ``None`` without a helper, which
-            only a path placeholder's parameter may lack.
-        httpx_argument_spec: The mark the helper adds to ``clientx_field_info``;
-            ``None`` without one.
+        httpx_argument: The request part the parameter's helper marks it for.
+            ``None`` without a helper, which only a path placeholder's parameter
+            may lack.
         clientx_field_info: The ``FieldInfo`` of the parameter's
             ``clientx.arguments`` helper, such as ``Query()``, from the
             ``Annotated`` metadata; ``None`` without one. If there are several
@@ -73,7 +71,6 @@ class ParameterInfo:
     kind: ParameterKind
     base_type: Any = field(init=False)
     httpx_argument: HttpxArgument | None = field(default=None, init=False)
-    httpx_argument_spec: HttpxArgumentSpec | None = field(default=None, init=False)
     clientx_field_info: FieldInfo | None = field(default=None, init=False)
     send: Send = field(default=Send(0), init=False)
     annotation: Any = NO_VALUE
@@ -95,8 +92,7 @@ class ParameterInfo:
         ``clientx.arguments`` helper marked, so in
         ``Annotated[int, Query(), Header()]``, ``Header()`` wins. A plain
         ``FieldInfo``, such as ``Field(gt=0)``, is skipped. Without a helper,
-        ``clientx_field_info``, ``httpx_argument_spec`` and ``httpx_argument``
-        stay ``None``.
+        ``clientx_field_info`` and ``httpx_argument`` stay ``None``.
 
         Args:
             metadata: The ``Annotated`` metadata, in the order
@@ -105,9 +101,8 @@ class ParameterInfo:
         """
         for meta in reversed(metadata):
             if isinstance(meta, FieldInfo):
-                if httpx_meta := get_argument_spec(meta):
-                    self.httpx_argument = httpx_meta.in_
-                    self.httpx_argument_spec = httpx_meta
+                if (httpx_argument := get_httpx_argument(meta)) is not None:
+                    self.httpx_argument = httpx_argument
                     self.clientx_field_info = meta
                     break
 

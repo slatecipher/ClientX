@@ -1,6 +1,5 @@
 import ssl
 from collections.abc import Awaitable, Callable, Mapping
-from dataclasses import dataclass
 from enum import Flag, StrEnum, auto
 from typing import Any, Literal, TypedDict
 
@@ -62,21 +61,6 @@ class Send(Flag):
     """
 
     EMBED = auto()
-
-
-@dataclass(frozen=True)
-class HttpxArgumentSpec:
-    """Field metadata: the request part an endpoint parameter goes to.
-
-    The helpers in ``clientx.arguments`` add it to ``FieldInfo.metadata``, and
-    ``get_argument_spec`` in ``_arguments.py`` reads it.
-
-    Attributes:
-        in_: The request part. Named like OpenAPI's ``in``, with an underscore
-            because ``in`` is a keyword.
-    """
-
-    in_: HttpxArgument
 
 
 type MethodType = Literal["GET", "PUT", "POST", "PATCH", "DELETE", "HEAD", "OPTIONS"]

@@ -35,7 +35,7 @@ Where the rules are written down:
 
 - `_request.py`'s module docstring: where each parameter goes (a path placeholder, its helper's part, or else inferred: models, mappings, collections and dataclasses to JSON, plain values to the query), the keys it's sent under, `None` left out, one kind of body, spreading a model marked `Query()`, `Header()` or `Form()`, and path encoding.
 - `_decoding.py`'s module docstring: how the return annotation decides decoding (`-> None`, `Response`, `str`, `bytes`, `Iterator[str]` or `Iterator[bytes]`, anything else through a `TypeAdapter`).
-- `_signature.py`: one `ParameterInfo` per parameter, with `Annotated` kept and PEP 695 `type` aliases expanded. A parameter's helper is the last `clientx.arguments` mark in its outermost `Annotated`. The helpers wrap `pydantic.Field` and add an `HttpxArgumentSpec` to its metadata (`_arguments.py`).
+- `_signature.py`: one `ParameterInfo` per parameter, with `Annotated` kept and PEP 695 `type` aliases expanded. A parameter's helper is the last `clientx.arguments` mark in its outermost `Annotated`. The helpers wrap `pydantic.Field` and append their `HttpxArgument` to its metadata (`_arguments.py`).
 - `_types.py`: TypedDicts that mirror httpx2's signatures (`HttpxClientOptions`, `AsyncHttpxClientOptions`, `BuildRequestKwargs`); a test in `test_clients.py` fails when httpx2's parameters change. It's the only module that imports httpx2's private modules.
 
 Rules that span modules:
