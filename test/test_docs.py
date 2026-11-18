@@ -13,24 +13,12 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-import pytest
-
 ROOT = Path(__file__).parent.parent
 
-# The files whose samples are checked. Each page joins this list in the commit
-# that rewrites it. Once every page is rewritten, the list goes, and every
-# Markdown file in docs/, README.md and llms.txt is checked.
-CHECKED: list[str] = [
+# Every page with code samples: the guide, the README and llms.txt.
+CHECKED = [
+    *(str(path.relative_to(ROOT)) for path in sorted(ROOT.glob("docs/*.md"))),
     "README.md",
-    "docs/README.md",
-    "docs/endpoints.md",
-    "docs/requests.md",
-    "docs/responses.md",
-    "docs/resources.md",
-    "docs/configuration.md",
-    "docs/async.md",
-    "docs/testing.md",
-    "docs/errors.md",
     "llms.txt",
 ]
 
@@ -105,8 +93,6 @@ def type_errors(samples: list[Sample], directory: Path) -> list[str]:
 
 def test_the_samples_in_the_docs_type_check(tmp_path: Path) -> None:
     samples = [sample for name in CHECKED for sample in samples_in(ROOT / name, name)]
-    if not samples:
-        pytest.skip("No page is checked yet: CHECKED is empty.")
     assert type_errors(samples, tmp_path) == []
 
 
