@@ -1,17 +1,27 @@
-"""Code samples in the docs type-check under pyright's strict mode.
+"""Code samples in the docs type-check under pyright's strict mode, and run.
 
 Each ```python block in a checked file is type-checked on its own, so it must
 carry its own imports, as a reader copying it would need. A block that's
 deliberately incomplete is fenced as ```python no-check: GitHub still
 highlights it as Python, since it reads only the first word.
+
+Each block also runs on its own, up to the first request it sends, which raises
+instead of reaching the network. That catches what only running finds, such as
+the ``DefinitionError`` for a parameter without a helper.
 """
 
 import json
 import re
 import subprocess  # noqa: S404 - runs pyright on the docs' own samples
 import sys
+import traceback
+import types
 from dataclasses import dataclass
 from pathlib import Path
+from typing import NoReturn
+
+import httpx2
+import pytest
 
 ROOT = Path(__file__).parent.parent
 
@@ -91,9 +101,51 @@ def type_errors(samples: list[Sample], directory: Path) -> list[str]:
     return errors
 
 
+class RequestSentError(Exception):
+    """Stop a sample at the first request it sends."""
+
+
+def run_errors(samples: list[Sample], monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """Run each sample in a module of its own, and return its errors.
+
+    A sample stops at the first request it sends, which raises
+    ``RequestSentError`` instead of reaching the network. Each error is
+    ``file:line: type: message``, with the line in the Markdown file.
+    """
+
+    def stop(*_: object) -> NoReturn:
+        raise RequestSentError
+
+    async def astop(*_: object) -> NoReturn:
+        raise RequestSentError
+
+    monkeypatch.setattr(httpx2.HTTPTransport, "handle_request", stop)
+    monkeypatch.setattr(httpx2.AsyncHTTPTransport, "handle_async_request", astop)
+    errors: list[str] = []
+    for number, sample in enumerate(samples):
+        module = types.ModuleType(f"docs_sample_{number}")
+        monkeypatch.setitem(sys.modules, module.__name__, module)
+        # Blank lines in front put each line of code at its line in the file.
+        code = compile("\n" * (sample.line - 1) + sample.code, sample.file, "exec")
+        try:
+            exec(code, module.__dict__)  # noqa: S102 - the docs' own samples
+        except RequestSentError:
+            pass
+        except Exception as error:  # noqa: BLE001 - any error is the sample's
+            frames = traceback.extract_tb(error.__traceback__)
+            line = [frame.lineno for frame in frames if frame.filename == sample.file][-1]
+            errors.append(f"{sample.file}:{line}: {type(error).__name__}: {error}")
+    return errors
+
+
 def test_the_samples_in_the_docs_type_check(tmp_path: Path) -> None:
     samples = [sample for name in CHECKED for sample in samples_in(ROOT / name, name)]
     assert type_errors(samples, tmp_path) == []
+
+
+def test_the_samples_in_the_docs_run(monkeypatch: pytest.MonkeyPatch) -> None:
+    samples = [sample for name in CHECKED for sample in samples_in(ROOT / name, name)]
+    assert run_errors(samples, monkeypatch) == []
 
 
 def test_the_check_reports_errors_at_their_line_in_the_page(tmp_path: Path) -> None:
@@ -133,3 +185,35 @@ def test_the_check_reports_errors_at_their_line_in_the_page(tmp_path: Path) -> N
     assert {error.split(":", 2)[1] for error in errors} == {"16", "19"}
     assert 'page.md:16: "NotThere" is unknown import symbol' in errors
     assert 'page.md:19: Type annotation is missing for parameter "request"' in errors
+
+
+def test_the_run_reports_errors_at_their_line_in_the_page(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    page = tmp_path / "page.md"
+    page.write_text(
+        "\n".join(
+            [
+                "```python",  # 1
+                "from clientx import ClientX, method",
+                "",
+                "class API(ClientX):",  # 4: endpoints are planned here.
+                "    @method.get('/items')",
+                "    def items(self, page: int) -> None: ...",
+                "```",
+                "```python",
+                "from clientx import ClientX, method",
+                "",  # 10
+                "class API(ClientX):",
+                "    @method.get('/items')",
+                "    def items(self) -> None: ...",
+                "",
+                "API('https://api.example.com').items()",  # 15: stops here.
+                "raise AssertionError('not reached')",
+                "```",
+            ]
+        )
+    )
+
+    errors = run_errors(samples_in(page, "page.md"), monkeypatch)
+
+    [error] = errors
+    assert error.startswith("page.md:4: DefinitionError: Endpoint 'API.items': Parameter 'page' needs a helper")
