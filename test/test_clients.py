@@ -39,6 +39,52 @@ def test_a_client_sends_through_its_own_connection(mock_transport: MockTransport
     assert str(only_request(sent).url) == "https://api.example.com/health"
 
 
+def test_the_base_url_comes_from_the_argument_then_the_class(mock_transport: MockTransport) -> None:
+    class API(ClientX, base_url="https://api.example.com/v1"):
+        @method.get("/health")
+        def health(self) -> None: ...
+
+    class Child(API): ...
+
+    class Staging(API, base_url="https://staging.example.com"): ...
+
+    sent: list[httpx2.Request] = []
+    transport = mock_transport(sent)
+    API(transport=transport).health()
+    Child(transport=transport).health()
+    Staging(transport=transport).health()
+    API("https://localhost:8000", transport=transport).health()
+    assert [str(request.url) for request in sent] == [
+        "https://api.example.com/v1/health",
+        "https://api.example.com/v1/health",
+        "https://staging.example.com/health",
+        "https://localhost:8000/health",
+    ]
+
+
+@pytest.mark.parametrize("base", [ClientX, AsyncClientX])
+def test_a_client_without_a_base_url_fails(base: type) -> None:
+    api_class = type("API", (base,), {})
+    message = f'or set it in the class statement, as in class API({base.__name__}, base_url="https://api.example.com")'
+    with pytest.raises(TypeError, match=re.escape(message)):
+        api_class()
+
+
+@pytest.mark.parametrize(
+    ("base_url", "problem"),
+    [
+        pytest.param("api.example.com", "needs a scheme and a host", id="no scheme"),
+        pytest.param("http://[::1", "isn't a URL", id="not a URL"),
+    ],
+)
+def test_a_base_url_must_be_an_absolute_url(base_url: str, problem: str) -> None:
+    message = f"base_url={base_url!r} {problem}"
+    with pytest.raises(DefinitionError, match=re.escape(f"'API' can't have this class argument: {message}")):
+        type("API", (ClientX,), {}, base_url=base_url)
+    with pytest.raises(ValueError, match=re.escape(message)):
+        ClientX(base_url)
+
+
 def test_the_user_agent_comes_from_the_argument_then_headers_then_the_class(mock_transport: MockTransport) -> None:
     class API(ClientX, user_agent="ExampleAPI/1.0"):
         @method.get("/health")

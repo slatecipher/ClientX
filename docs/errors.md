@@ -21,6 +21,7 @@ When an endpoint is decorated:
 When the client or resource class is defined:
 
 - The class subclasses both `ClientX` and `AsyncClientX`, or both `Resource` and `AsyncResource`.
+- A client class's `base_url=` isn't an absolute URL, with a scheme and a host.
 - An endpoint is the wrong kind for its class: `async def` on a `ClientX` or `Resource`, or `def` on an `AsyncClientX` or `AsyncResource`.
 - An endpoint or mounted resource has a name the client already uses (see [Endpoint names](endpoints.md#endpoint-names)), or the endpoint is already in another class's body.
 - A resource is mounted on the other kind of client or resource, or on a class that isn't one, or a resource class is assigned where an instance should be (`users = Users` rather than `users = Users()`).
@@ -58,6 +59,7 @@ with UsersAPI("https://api.example.com") as api:
 ## Other errors
 
 - Calling an endpoint with arguments that don't fit its signature raises `TypeError`, as for any method.
+- Creating a client without a base URL, where its class doesn't set one, raises `TypeError`, and with one that isn't an absolute URL, with a scheme and a host, `ValueError` (see [Class defaults](configuration.md#class-defaults)).
 - A response body that doesn't match the return annotation raises `pydantic.ValidationError`, which is a `ValueError` (see [Typed results](responses.md#typed-results)). A decoder's own exceptions reach the caller unchanged.
 - HTTP errors come from httpx2: `httpx2.HTTPStatusError` for a 4xx or 5xx response (see [Errors for 4xx and 5xx responses](responses.md#errors-for-4xx-and-5xx-responses)), and `httpx2.RequestError` for a failed request, such as a connection error or a timeout. Both are `httpx2.HTTPError`.
 

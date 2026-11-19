@@ -13,6 +13,8 @@ from collections.abc import Sequence
 from functools import cache
 from typing import TYPE_CHECKING
 
+from httpx2 import URL, InvalidURL
+
 from clientx._registry import endpoint_for
 from clientx.exceptions import DefinitionError
 
@@ -29,20 +31,29 @@ _RESOURCE_BASES = ("Resource", "AsyncResource")
 
 
 def set_up_client(
-    cls: type[ClientX | AsyncClientX], *, base: type[ClientX | AsyncClientX], user_agent: str | None
+    cls: type[ClientX | AsyncClientX],
+    *,
+    base: type[ClientX | AsyncClientX],
+    base_url: URL | str | None,
+    user_agent: str | None,
 ) -> None:
     """Set up a new client subclass: check its body and claim its endpoints.
 
     ``base`` is ``ClientX`` or ``AsyncClientX``, whose names the endpoints can't
-    use. A subclass without its own ``user_agent`` keeps its parent's. Claiming
-    the endpoints stops a resource from taking one and joining its prefix onto
-    the client's path. Each endpoint's request plan is worked out once its path
-    is final.
+    use. A subclass without its own ``base_url`` or ``user_agent`` keeps its
+    parent's. Claiming the endpoints stops a resource from taking one and
+    joining its prefix onto the client's path. Each endpoint's request plan is
+    worked out once its path is final.
     """
     _check_one_kind(cls, _CLIENT_BASES)
     _check_member_names(cls, base, fix="Rename it, or put it on a Resource mounted on the client.")
     _check_resource_classes(cls)
     _check_endpoint_kinds(cls, _CLIENT_BASES)
+    if base_url is not None:
+        try:
+            cls.__clientx_base_url__ = parse_base_url(base_url)
+        except ValueError as error:
+            raise DefinitionError(f"'{cls.__qualname__}' can't have this class argument: {error}") from error
     if user_agent is not None:
         cls.__clientx_user_agent__ = user_agent
     for endpoint in _claim_endpoints(cls):
@@ -100,6 +111,23 @@ def check_mount(resource_name: str, *, is_async: bool, owner: type) -> None:
         other_client, other_resource = _CLIENT_BASES[not is_async], _RESOURCE_BASES[not is_async]
         message += f" For {'a' if is_async else 'an'} {other_client}, subclass {other_resource} instead."
     raise DefinitionError(message)
+
+
+def parse_base_url(base_url: URL | str) -> URL:
+    """Return a base URL as a URL, or raise ``ValueError`` if it isn't absolute.
+
+    It needs a scheme and a host: httpx2 would take ``"api.example.com"`` as a
+    relative path, and fail only on the first request. A client's ``__init__``
+    checks the one it's given; ``set_up_client`` checks a class's, and raises
+    ``DefinitionError`` instead.
+    """
+    try:
+        url = URL(base_url)
+    except InvalidURL as error:
+        raise ValueError(f"base_url={base_url!r} isn't a URL: {error}.") from error
+    if not url.is_absolute_url:
+        raise ValueError(f'base_url={base_url!r} needs a scheme and a host, as in "https://api.example.com".')
+    return url
 
 
 # --- Checks on a class body ---------------------------------------------------

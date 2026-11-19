@@ -42,7 +42,7 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
-- Everything else works as it does for `ClientX`: parameters, decoding, the `user_agent=` class argument, options such as `timeout=`, `auth=` and `raise_for_status=`, and errors. Type checkers see `await api.users.retrieve(42)` as a `User`.
+- Everything else works as it does for `ClientX`: parameters, decoding, the `base_url=` and `user_agent=` class arguments, options such as `timeout=`, `auth=` and `raise_for_status=`, and errors. Type checkers see `await api.users.retrieve(42)` as a `User`.
 - An `AsyncClientX` is an `httpx2.AsyncClient`. Close it with `async with`, or with `await api.aclose()` at shutdown for a long-lived client. As with `ClientX`, create one client and reuse it.
 - `async def` endpoints go on an `AsyncClientX` or an `AsyncResource`, and `def` endpoints on a `ClientX` or a `Resource`. An `AsyncResource` mounts only on an `AsyncClientX` or another `AsyncResource`. Mixing them raises `DefinitionError` when the class is defined, and type checkers report a `def` endpoint on an async class at its decorator.
 - `transport=` and `mounts=` take async transports (`httpx2.MockTransport` works for both kinds of client), and event hooks must be `async` functions. An `auth=` class works for both kinds.

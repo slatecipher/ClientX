@@ -12,7 +12,7 @@ class ExampleAPI(ClientX): ...
 api = ExampleAPI("https://api.example.com", user_agent="my-app/1.0", timeout=5.0)
 ```
 
-- `base_url`: the API's base URL, which every endpoint's path is relative to. It's required.
+- `base_url`: the API's base URL, which every endpoint's path is relative to. It's required unless the class sets one (see [Class defaults](#class-defaults)), and it wins over the class's.
 - `user_agent`: the `User-Agent` to send. Without it, the first of these is sent: a `User-Agent` in `headers=`, the class's `user_agent=` (see [Class defaults](#class-defaults)), or `ClientX/<version>`.
 - `raise_for_status`: whether a 4xx or 5xx response raises `httpx2.HTTPStatusError`. It's on by default; see [Errors for 4xx and 5xx responses](responses.md#errors-for-4xx-and-5xx-responses).
 - Any other `httpx2.Client` option, such as `timeout`, `headers`, `params`, `auth` (see [Authentication](#authentication)), `transport`, `proxy` or `follow_redirects`.
@@ -21,25 +21,29 @@ A `ClientX` is an `httpx2.Client`, so those options, and everything else httpx2 
 
 A client's `repr` shows its class, its base URL and its `User-Agent`, with any password in the base URL replaced by `[redacted]`: `ExampleAPI(base_url='https://api.example.com', user_agent='my-app/1.0')`.
 
-For `async def` endpoints, `AsyncClientX` takes the same arguments and class argument (see [Async clients](async.md)).
+For `async def` endpoints, `AsyncClientX` takes the same arguments and class arguments (see [Async clients](async.md)).
 
 ## Class defaults
 
-A client class can set the `User-Agent` its clients send, as a class argument:
+A client class can set the base URL and the `User-Agent` its clients use, as class arguments:
 
 ```python
 from clientx import ClientX
 
 
-class ExampleAPI(ClientX, user_agent="example-api/1.0"): ...
+class ExampleAPI(ClientX, base_url="https://api.example.com", user_agent="example-api/1.0"): ...
 
 
-api = ExampleAPI("https://api.example.com")  # User-Agent: example-api/1.0
+api = ExampleAPI()  # https://api.example.com, User-Agent: example-api/1.0
+staging = ExampleAPI("https://staging.example.com")
 ```
 
-A subclass keeps its parent's `user_agent` unless it sets its own, and a `user_agent` given when creating a client wins over the class's.
+A subclass keeps its parent's class arguments unless it sets its own, and a `base_url` or `user_agent` given when creating a client wins over the class's.
 
-`user_agent` is the only class argument. Pass the base URL and every other option when creating the client: Python rejects any other keyword in the class statement, a misspelling included, with `TypeError: ExampleAPI.__init_subclass__() takes no keyword arguments`.
+- A client needs a base URL from one or the other. Without either, creating it raises `TypeError`, as a missing argument does. Type checkers can't see whether a class sets one, so they don't catch this.
+- A base URL must be absolute, with a scheme and a host, such as `https://api.example.com`, since httpx2 would take `api.example.com` alone as a relative path and fail only on the first request. A class's raises `DefinitionError` when the class is defined, and one passed when creating a client raises `ValueError`.
+
+`base_url` and `user_agent` are the only class arguments. Pass every other option when creating the client: Python rejects any other keyword in the class statement, a misspelling included, with `TypeError: ExampleAPI.__init_subclass__() takes no keyword arguments`.
 
 ## Authentication
 
