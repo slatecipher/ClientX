@@ -1,11 +1,12 @@
 # Errors
 
-ClientX raises two errors of its own, both derived from `ClientXError`, so `except ClientXError` catches either. Each also keeps a built-in base, so `except TypeError` and `except ValueError` keep working. Import them from `clientx`.
+ClientX raises errors of its own, all derived from `ClientXError`, so `except ClientXError` catches any of them. `DefinitionError` and `ArgumentError` also keep a built-in base, so `except TypeError` and `except ValueError` keep working. Import them from `clientx`, and `ToolError` from `clientx.tools`.
 
 | Error | Base | Raised for |
 |---|---|---|
 | `DefinitionError` | `TypeError` | a client, resource or endpoint written in a way ClientX can't use |
 | `ArgumentError` | `ValueError` | an argument value that can't be sent |
+| `ToolError` | | a tool call that failed, from [`clientx.tools`](tools.md) |
 
 ## `DefinitionError`
 
@@ -56,6 +57,10 @@ with UsersAPI("https://api.example.com") as api:
     except ArgumentError as error:
         print(error.parameter)  # user_id: no request was sent
 ```
+
+## `ToolError`
+
+A `ToolError` is raised by a tool's `call()` or `acall()`, from [`clientx.tools`](tools.md), when the arguments a model gave don't fit, the request can't be sent or fails, or the response doesn't fit the endpoint's return annotation. Its message is written for the model, and never holds the host or the query string. Its `tool` attribute names the tool, and the original error is its `__cause__` (see [Errors](tools.md#errors) on the AI tools page).
 
 ## Other errors
 

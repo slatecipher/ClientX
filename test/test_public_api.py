@@ -5,7 +5,7 @@ import re
 from pathlib import Path
 
 import clientx
-from clientx import arguments, exceptions, method
+from clientx import arguments, exceptions, method, tools
 
 
 def test_package_exports() -> None:
@@ -41,7 +41,8 @@ def test_package_exports() -> None:
 def test_submodule_exports() -> None:
     assert method.__all__ == ["delete", "get", "head", "options", "patch", "post", "put"]
     assert sorted(arguments.__all__) == ["Body", "File", "Form", "Header", "Json", "Query", "Send", "Url"]
-    assert sorted(exceptions.__all__) == ["ArgumentError", "ClientXError", "DefinitionError"]
+    assert sorted(exceptions.__all__) == ["ArgumentError", "ClientXError", "DefinitionError", "ToolError"]
+    assert sorted(tools.__all__) == ["Tool", "ToolError", "list_tools"]
 
 
 def test_the_reference_page_lists_every_public_name() -> None:
@@ -49,7 +50,7 @@ def test_the_reference_page_lists_every_public_name() -> None:
     # backticks, so a name added or removed must be added or removed there too.
     page = (Path(__file__).parent.parent / "docs" / "reference.md").read_text()
     index = page[page.index("| Name | What it is |") :].split("\n\n", 1)[0]
-    assert set(re.findall(r"`(\w+)`", index)) == {*clientx.__all__, *method.__all__}
+    assert set(re.findall(r"`(\w+)`", index)) == {*clientx.__all__, *method.__all__, *tools.__all__}
 
 
 def test_version_is_the_installed_one() -> None:

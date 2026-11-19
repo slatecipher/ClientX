@@ -104,6 +104,7 @@ ClientX is inspired by FastAPI, which reads type hints to define server endpoint
 - Built-in deprecation warnings per endpoint.
 - Full access to `httpx2.Client` configuration through `ClientX(...)` arguments.
 - Async clients (`AsyncClientX`, `AsyncResource`) with the same decorators, for `async def` endpoints.
+- AI tools from the same endpoints (`clientx.tools`): descriptions from docstrings, JSON Schemas, and errors a model can act on.
 
 ## Project status
 
@@ -128,6 +129,7 @@ Using an AI coding assistant? Point it at [llms.txt](https://github.com/slatecip
 - [Client configuration](https://github.com/slatecipher/ClientX/blob/mainline/docs/configuration.md): creating and closing a client, the base URL and `User-Agent` class defaults, authentication, logging and event hooks.
 - [Async clients](https://github.com/slatecipher/ClientX/blob/mainline/docs/async.md): `AsyncClientX` and `AsyncResource` for `async def` endpoints, concurrent requests, and async streaming.
 - [Testing](https://github.com/slatecipher/ClientX/blob/mainline/docs/testing.md): testing a client without the network.
+- [AI tools](https://github.com/slatecipher/ClientX/blob/mainline/docs/tools.md): a client's endpoints as tools a model can call.
 - [Errors](https://github.com/slatecipher/ClientX/blob/mainline/docs/errors.md): the errors ClientX raises, and when.
 - [API reference](https://github.com/slatecipher/ClientX/blob/mainline/docs/reference.md): every public name, with its signature and arguments.
 
