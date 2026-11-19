@@ -384,12 +384,9 @@ class JsonSpec(HttpxArgumentSpec):
 
     @classmethod
     def takes_value(cls, annotation: Any) -> bool:
-        # Pydantic serializes any value, so a JSON field takes anything.
+        # Pydantic serializes any value, so a JSON field takes anything, and
+        # what_fits is never asked for.
         return True
-
-    @classmethod
-    def what_fits(cls) -> str:
-        return "Any value pydantic can serialize fits."
 
 
 # Each argument a helper can mark, to its spec. COOKIES has no helper.
@@ -1037,19 +1034,16 @@ def _is_file_content(annotation: Any) -> bool:
     if annotation is Any or annotation is NO_VALUE:
         return True
     cls = _class_of(annotation)
-    return cls is not None and (issubclass(cls, bytes) or _is_binary_file(annotation))
+    return cls is not None and (issubclass(cls, bytes) or _is_binary_file(cls, annotation))
 
 
-def _is_binary_file(annotation: Any) -> bool:
-    """Return whether the type is a file opened for bytes.
+def _is_binary_file(cls: type[Any], annotation: Any) -> bool:
+    """Return whether the type, whose class is ``cls``, is a file of bytes.
 
     ``IO[bytes]`` and ``BinaryIO`` are; so are ``io.BytesIO`` and what
     ``open(path, "rb")`` returns. ``IO[str]``, ``TextIO`` and a text file
     aren't. A bare ``IO`` has no item type, so it counts as ``Any``.
     """
-    cls = _class_of(annotation)
-    if cls is None:
-        return False
     if issubclass(cls, IO):
         type_args = get_args(annotation)
         return not issubclass(cls, TextIO) and (not type_args or type_args[0] is bytes or type_args[0] is Any)

@@ -1,16 +1,20 @@
 """Request bodies: JSON, raw content, forms, files, and the one-body rule."""
 
+import dataclasses
 import datetime
+import io
 import json
+import pathlib
 import re
-from collections.abc import Callable
-from typing import Annotated, Any
+from collections.abc import AsyncIterator, Callable, Iterator
+from typing import IO, Annotated, Any, BinaryIO, Literal, TextIO
 
 import httpx2
 import pytest
 from pydantic import BaseModel, Field, RootModel
+from pydantic.dataclasses import dataclass as pydantic_dataclass
 
-from clientx import AsyncClientX, Body, ClientX, DefinitionError, File, Form, Json, Query, Send, method
+from clientx import ArgumentError, AsyncClientX, Body, ClientX, DefinitionError, File, Form, Json, Query, Send, method
 
 type MockTransport = Callable[..., httpx2.MockTransport]
 
@@ -400,3 +404,311 @@ def test_query_parameters_go_with_any_body(mock_transport: MockTransport) -> Non
         ("dry_run=true", "application/json"),
         ("page=1", "multipart/form-data"),
     ]
+
+
+# JSON: null, and Send's dump options
+
+
+class Profile(BaseModel):
+    name: str = "sam"
+    nickname: str | None = None
+
+
+@pydantic_dataclass
+class Window:
+    start: int = 0
+    end: int | None = None
+
+
+@dataclasses.dataclass
+class StdWindow:
+    start: int = 0
+    end: int | None = None
+
+
+type Value = dict[str, Value] | str
+
+
+class Opaque:
+    pass
+
+
+def test_a_json_parameter_passed_none_is_sent_as_null(mock_transport: MockTransport) -> None:
+    class API(ClientX):
+        @method.patch("/me")
+        def update(
+            self, nickname: Annotated[str | None, Json()] = None, bio: Annotated[str | None, Json()] = None
+        ) -> None: ...
+
+    sent: list[httpx2.Request] = []
+    api = API(BASE_URL, transport=mock_transport(sent))
+    api.update(nickname=None)
+    api.update(bio="x")
+    api.update()
+    assert [json.loads(request.content) if request.content else None for request in sent] == [
+        {"nickname": None},
+        {"bio": "x"},
+        None,
+    ]
+
+
+def test_a_lone_json_body_passed_none_sends_no_body(mock_transport: MockTransport) -> None:
+    class API(ClientX):
+        @method.post("/users")
+        def create(self, user: Annotated[NewUser | None, Json()] = None) -> None: ...
+
+    sent: list[httpx2.Request] = []
+    API(BASE_URL, transport=mock_transport(sent)).create(None)
+    request = only_request(sent)
+    assert request.content == b""
+    assert content_type(request) == ""
+
+
+@pytest.mark.parametrize(
+    ("annotation", "value", "body"),
+    [
+        pytest.param(
+            Annotated[Profile, Json(), Send(exclude_unset=True)],
+            Profile(name="ana"),
+            {"name": "ana"},
+            id="exclude_unset",
+        ),
+        pytest.param(
+            Annotated[Profile, Json(), Send(exclude_none=True)], Profile(name="ana"), {"name": "ana"}, id="exclude_none"
+        ),
+        pytest.param(
+            Annotated[Profile, Json(), Send(exclude_defaults=True)],
+            Profile(name="sam", nickname="s"),
+            {"nickname": "s"},
+            id="exclude_defaults",
+        ),
+        pytest.param(
+            Annotated[list[Profile], Json(), Send(exclude_unset=True)],
+            [Profile(name="ana")],
+            [{"name": "ana"}],
+            id="nested in a list",
+        ),
+        pytest.param(
+            Annotated[Window, Json(), Send(exclude_none=True)], Window(start=3), {"start": 3}, id="pydantic dataclass"
+        ),
+    ],
+)
+def test_send_dump_options_shape_the_json(
+    annotation: Any, value: object, body: object, mock_transport: MockTransport
+) -> None:
+    class API(ClientX):
+        @method.post("/items")
+        def create(self, p: annotation) -> None: ...  # pyright: ignore[reportInvalidTypeForm]
+
+    sent: list[httpx2.Request] = []
+    API(BASE_URL, transport=mock_transport(sent)).create(value)
+    assert json.loads(only_request(sent).content) == body
+
+
+def test_exclude_none_on_a_json_field_leaves_out_an_explicit_none(mock_transport: MockTransport) -> None:
+    class API(ClientX):
+        @method.patch("/me")
+        def update(
+            self,
+            profile: Annotated[Profile | None, Json(), Send(exclude_none=True)] = None,
+            bio: Annotated[str | None, Json()] = None,
+        ) -> None: ...
+
+    sent: list[httpx2.Request] = []
+    API(BASE_URL, transport=mock_transport(sent)).update(profile=None, bio="x")
+    assert json.loads(only_request(sent).content) == {"bio": "x"}
+
+
+@pytest.mark.parametrize(
+    ("annotation", "message"),
+    [
+        pytest.param(
+            Annotated[StdWindow, Json(), Send(exclude_unset=True)],
+            "has Send(exclude_unset=...), which leaves out fields of a pydantic model, the only kind that records "
+            "which fields were set, but its type has none",
+            id="exclude_unset on a dataclass",
+        ),
+        pytest.param(
+            Annotated[StdWindow, Json(), Send(exclude_none=True)],
+            "leaves out fields of a pydantic model or pydantic dataclass (pydantic doesn't apply it to a stdlib "
+            "dataclass",
+            id="stdlib dataclass",
+        ),
+        pytest.param(Annotated[str, Json(), Send(exclude_defaults=True)], "but its type has none", id="plain value"),
+        pytest.param(Annotated[dict[str, int], Json(), Send(exclude_none=True)], "but its type has none", id="dict"),
+        pytest.param(Annotated[Value, Json(), Send(exclude_none=True)], "but its type has none", id="recursive alias"),
+        pytest.param(
+            Annotated[bytes, File(), Send(exclude_unset=True)],
+            "applies only to a Query(), Header(), Form() or Json() parameter, but it's marked File()",
+            id="file",
+        ),
+    ],
+)
+def test_a_dump_option_where_it_cant_apply_fails(annotation: Any, message: str) -> None:
+    with pytest.raises(DefinitionError, match=re.escape(message)):
+
+        class API(ClientX):
+            @method.post("/items")
+            def create(self, p: annotation) -> None: ...  # pyright: ignore[reportInvalidTypeForm]
+
+
+def test_a_json_value_pydantic_cant_serialize_raises_before_sending(mock_transport: MockTransport) -> None:
+    class API(ClientX):
+        @method.post("/items")
+        def create(self, price: Annotated[Any, Json()], note: Annotated[str, Json()]) -> None: ...
+
+    sent: list[httpx2.Request] = []
+    with pytest.raises(
+        ArgumentError, match=re.escape("Can't send 'price' as JSON: Unable to serialize unknown type")
+    ) as caught:
+        API(BASE_URL, transport=mock_transport(sent)).create(Opaque(), "x")
+    assert caught.value.parameter == "price"
+    assert sent == []
+
+
+# Files: what a file can be
+
+
+@pytest.mark.parametrize(
+    "annotation",
+    [
+        pytest.param(str, id="str"),
+        pytest.param(pathlib.Path, id="Path"),
+        pytest.param(TextIO, id="TextIO"),
+        pytest.param(IO[str], id="IO[str]"),
+        pytest.param(tuple[str], id="1-tuple"),
+        pytest.param(tuple[str, str], id="text content"),
+        pytest.param(tuple[str, bytes, str, int], id="headers not a mapping"),
+        pytest.param(tuple[str, bytes, str, dict[str, int]], id="headers not text"),
+        pytest.param(Literal["a"], id="Literal"),
+    ],
+)
+def test_a_file_that_isnt_bytes_a_binary_file_or_a_file_tuple_fails(annotation: Any) -> None:
+    message = (
+        'A file is bytes, a binary file such as open(path, "rb"), or a (filename, content[, content_type[, '
+        "headers]]) tuple, or Any"
+    )
+    with pytest.raises(DefinitionError, match=re.escape(message)):
+
+        class API(ClientX):
+            @method.post("/upload")
+            def upload(self, doc: Annotated[annotation, File()]) -> None: ...  # pyright: ignore[reportInvalidTypeForm]
+
+
+@pytest.mark.parametrize(
+    ("annotation", "value", "filename"),
+    [
+        pytest.param(BinaryIO, io.BytesIO(b"%PDF"), "upload", id="BinaryIO"),
+        pytest.param(IO[bytes], io.BytesIO(b"%PDF"), "upload", id="IO[bytes]"),
+        pytest.param(io.BytesIO, io.BytesIO(b"%PDF"), "upload", id="BytesIO"),
+        pytest.param(tuple, ("a.pdf", b"%PDF"), "a.pdf", id="bare tuple"),
+        pytest.param(
+            tuple[str, bytes, str, dict[str, str]],
+            ("a.pdf", b"%PDF", "application/pdf", {"X-Checksum": "abc"}),
+            "a.pdf",
+            id="with headers",
+        ),
+        pytest.param(tuple[str, bytes, str, Any], ("a.pdf", b"%PDF", "application/pdf", {}), "a.pdf", id="headers Any"),
+    ],
+)
+def test_file_values_that_fit_are_sent(
+    annotation: Any, value: object, filename: str, mock_transport: MockTransport
+) -> None:
+    class API(ClientX):
+        @method.post("/upload")
+        def upload(self, doc: Annotated[annotation, File()]) -> None: ...  # pyright: ignore[reportInvalidTypeForm]
+
+    sent: list[httpx2.Request] = []
+    API(BASE_URL, transport=mock_transport(sent)).upload(value)
+    assert f'filename="{filename}"' in only_request(sent).read().decode()
+
+
+def test_a_list_of_files_repeats_the_field(mock_transport: MockTransport) -> None:
+    class API(ClientX):
+        @method.post("/upload")
+        def upload(self, docs: Annotated[list[tuple[str, bytes]], File()]) -> None: ...
+
+    sent: list[httpx2.Request] = []
+    API(BASE_URL, transport=mock_transport(sent)).upload([("a.pdf", b"A"), ("b.pdf", b"B")])
+    body = only_request(sent).read().decode()
+    assert body.count('name="docs"') == 2
+    assert 'filename="a.pdf"' in body
+    assert 'filename="b.pdf"' in body
+
+
+# Raw content: what a raw body can be
+
+
+@pytest.mark.parametrize(
+    "annotation",
+    [
+        pytest.param(NewUser, id="model"),
+        pytest.param(int, id="int"),
+        pytest.param(Iterator[str], id="stream of text"),
+        pytest.param(dict[bytes, str], id="mapping"),
+        pytest.param(bytearray, id="bytearray"),
+        pytest.param(Literal["x"], id="Literal"),
+    ],
+)
+def test_a_raw_body_that_isnt_text_bytes_or_a_stream_fails(annotation: Any) -> None:
+    message = "The raw body is str, bytes, or an iterable or async iterable of bytes, or Any."
+    with pytest.raises(DefinitionError, match=re.escape(message)):
+
+        class API(ClientX):
+            @method.put("/blobs")
+            def upload(self, data: Annotated[annotation, Body()]) -> None: ...  # pyright: ignore[reportInvalidTypeForm]
+
+
+@pytest.mark.parametrize(
+    ("annotation", "value", "content"),
+    [
+        pytest.param(Any, b"raw", b"raw", id="Any"),
+        pytest.param(Iterator, iter([b"a", b"b"]), b"ab", id="bare Iterator"),
+        pytest.param(list[bytes], [b"a", b"b"], b"ab", id="list of bytes"),
+    ],
+)
+def test_raw_bodies_that_fit_are_sent(
+    annotation: Any, value: object, content: bytes, mock_transport: MockTransport
+) -> None:
+    class API(ClientX):
+        @method.put("/blobs")
+        def upload(self, data: Annotated[annotation, Body()]) -> None: ...  # pyright: ignore[reportInvalidTypeForm]
+
+    sent: list[httpx2.Request] = []
+    API(BASE_URL, transport=mock_transport(sent)).upload(value)
+    assert only_request(sent).read() == content
+
+
+def test_an_async_stream_on_a_sync_client_fails() -> None:
+    with pytest.raises(DefinitionError, match=re.escape("with an async iterable, but the endpoint is sync")):
+
+        class API(ClientX):
+            @method.put("/blobs")
+            def upload(self, data: Annotated[AsyncIterator[bytes], Body()]) -> None: ...
+
+
+@pytest.mark.parametrize(
+    "annotation",
+    [pytest.param(Iterator[bytes], id="iterator"), pytest.param(list[bytes], id="list of bytes")],
+)
+def test_a_sync_stream_on_an_async_client_fails(annotation: Any) -> None:
+    with pytest.raises(DefinitionError, match=re.escape("with a sync iterable, but the endpoint is async")):
+
+        class API(AsyncClientX):
+            @method.put("/blobs")
+            async def upload(self, data: Annotated[annotation, Body()]) -> None: ...  # pyright: ignore[reportInvalidTypeForm]
+
+
+@pytest.mark.anyio
+async def test_an_async_client_streams_an_async_iterable(mock_transport: MockTransport) -> None:
+    async def chunks() -> AsyncIterator[bytes]:
+        yield b"a"
+        yield b"b"
+
+    class API(AsyncClientX):
+        @method.put("/blobs")
+        async def upload(self, data: Annotated[AsyncIterator[bytes], Body()]) -> None: ...
+
+    sent: list[httpx2.Request] = []
+    await API(BASE_URL, transport=mock_transport(sent)).upload(chunks())
+    assert only_request(sent).content == b"ab"

@@ -11,7 +11,7 @@ import httpx2
 import pytest
 from pydantic import BaseModel, Field, field_serializer
 
-from clientx import ClientX, DefinitionError, File, Form, Header, Json, Query, method
+from clientx import ClientX, DefinitionError, File, Form, Header, Json, Query, Send, method
 
 type MockTransport = Callable[..., httpx2.MockTransport]
 
@@ -227,3 +227,47 @@ def test_a_helper_on_a_models_field_fails(annotation: Any) -> None:
         class API(ClientX):
             @method.post("/items")
             def create(self, p: annotation) -> None: ...  # pyright: ignore[reportInvalidTypeForm]
+
+
+# Key clashes and Send's dump options
+
+
+class Search(BaseModel):
+    status: str = "open"
+    limit: int = 10
+
+
+def test_a_parameter_and_a_spread_field_with_one_key_fail() -> None:
+    message = "Parameter 'status' and field 'status' of parameter 'search' are both sent as 'status' by Query()"
+    with pytest.raises(DefinitionError, match=re.escape(message)):
+
+        class API(ClientX):
+            @method.get("/items")
+            def find(self, status: Annotated[str, Query()], search: Annotated[Search, Query()]) -> None: ...
+
+
+@pytest.mark.parametrize(
+    ("send", "query"),
+    [
+        pytest.param(Send(), "status=closed&limit=10", id="every field"),
+        pytest.param(Send(exclude_unset=True), "status=closed", id="exclude_unset"),
+        pytest.param(Send(exclude_defaults=True), "status=closed", id="exclude_defaults"),
+    ],
+)
+def test_send_dump_options_on_a_spread_model(send: Send, query: str, mock_transport: MockTransport) -> None:
+    class API(ClientX):
+        @method.get("/items")
+        def find(self, search: Annotated[Search, Query(), send]) -> None: ...
+
+    sent: list[httpx2.Request] = []
+    API(BASE_URL, transport=mock_transport(sent)).find(Search(status="closed"))
+    assert only_request(sent).url.query.decode() == query
+
+
+def test_exclude_none_doesnt_apply_to_a_spread_model() -> None:
+    message = "has Send(exclude_none=...), which applies only to a Json() parameter, but it's marked Query()"
+    with pytest.raises(DefinitionError, match=re.escape(message)):
+
+        class API(ClientX):
+            @method.get("/items")
+            def find(self, search: Annotated[Search, Query(), Send(exclude_none=True)]) -> None: ...

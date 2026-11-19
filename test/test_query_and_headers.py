@@ -4,8 +4,8 @@ import datetime
 import enum
 import json
 import re
-from collections.abc import Callable
-from typing import Annotated, Any, Literal, Optional
+from collections.abc import Callable, Collection
+from typing import Annotated, Any, Literal, NewType, Optional
 
 import httpx2
 import pytest
@@ -295,3 +295,124 @@ def test_query_with_ellipsis_isnt_a_default(mock_transport: MockTransport) -> No
     sent: list[httpx2.Request] = []
     API(BASE_URL, transport=mock_transport(sent)).search(3)
     assert only_request(sent).url.query.decode() == "page=3"
+
+
+# What a query or header value can be: the plain-value allow-list
+
+
+class Price:
+    def __str__(self) -> str:
+        return "9.90 EUR"
+
+
+OrderId = NewType("OrderId", int)
+
+
+@pytest.mark.parametrize(
+    "annotation",
+    [
+        pytest.param(Annotated[Price, Query()], id="query"),
+        pytest.param(Annotated[list[Price], Query()], id="list of them"),
+        pytest.param(Annotated[Price, Header()], id="header"),
+    ],
+)
+def test_a_value_clientx_cant_send_as_text_fails(annotation: Any) -> None:
+    message = "A plain value is one of str, int, float, bool, Enum, date, datetime, time, UUID, Decimal, bytes, or Any"
+    with pytest.raises(DefinitionError, match=re.escape(message)):
+
+        class API(ClientX):
+            @method.get("/items")
+            def search(self, p: annotation) -> None: ...  # pyright: ignore[reportInvalidTypeForm]
+
+
+def test_literal_newtype_and_any_values_are_sent_as_text(mock_transport: MockTransport) -> None:
+    class API(ClientX):
+        @method.get("/items")
+        def search(
+            self,
+            sort: Annotated[Literal["asc", "desc"], Query()],
+            order: Annotated[OrderId, Query()],
+            price: Annotated[Any, Query()],
+        ) -> None: ...
+
+    sent: list[httpx2.Request] = []
+    API(BASE_URL, transport=mock_transport(sent)).search("asc", OrderId(7), Price())
+    assert only_request(sent).url.query.decode() == "sort=asc&order=7&price=9.90+EUR"
+
+
+@pytest.mark.parametrize(
+    ("tags", "query"),
+    [
+        pytest.param([], "", id="empty list"),
+        pytest.param(["a", None, "b"], "tag=a&tag=b", id="None item"),
+        pytest.param({"a"}, "tag=a", id="set"),
+    ],
+)
+def test_none_items_and_empty_lists_are_left_out(
+    tags: Collection[str | None], query: str, mock_transport: MockTransport
+) -> None:
+    class API(ClientX):
+        @method.get("/items")
+        def search(self, tag: Annotated[Collection[str | None], Query()]) -> None: ...
+
+    sent: list[httpx2.Request] = []
+    API(BASE_URL, transport=mock_transport(sent)).search(tags)
+    request = only_request(sent)
+    assert request.url.query.decode() == query
+    assert b"?" not in request.url.raw_path or query
+
+
+# Two values under one key
+
+
+@pytest.mark.parametrize(
+    ("first", "second", "message"),
+    [
+        pytest.param(
+            Annotated[str, Query(alias="x")],
+            Annotated[str, Query(alias="x")],
+            "Parameter 'a' and parameter 'b' are both sent as 'x' by Query(), the same key, so one would be lost",
+            id="two aliases",
+        ),
+        pytest.param(
+            Annotated[str, Query(alias="b")],
+            Annotated[str, Query()],
+            "Parameter 'a' and parameter 'b' are both sent as 'b' by Query()",
+            id="an alias and a name",
+        ),
+        pytest.param(
+            Annotated[str, Header(alias="B")],
+            Annotated[str, Header()],
+            "Parameter 'a' and parameter 'b' are sent as 'B' and 'b' by Header(), the same key",
+            id="header names ignore case",
+        ),
+    ],
+)
+def test_two_values_under_one_key_fail(first: Any, second: Any, message: str) -> None:
+    with pytest.raises(DefinitionError, match=re.escape(message)):
+
+        class API(ClientX):
+            @method.get("/items")
+            def search(self, a: first, b: second) -> None: ...  # pyright: ignore[reportInvalidTypeForm]
+
+
+def test_query_keys_keep_their_case(mock_transport: MockTransport) -> None:
+    class API(ClientX):
+        @method.get("/items")
+        def search(self, a: Annotated[str, Query(alias="Page")], b: Annotated[str, Query(alias="page")]) -> None: ...
+
+    sent: list[httpx2.Request] = []
+    API(BASE_URL, transport=mock_transport(sent)).search("1", "2")
+    assert only_request(sent).url.query.decode() == "Page=1&page=2"
+
+
+def test_one_key_in_two_parts_isnt_a_clash(mock_transport: MockTransport) -> None:
+    class API(ClientX):
+        @method.get("/items")
+        def search(self, status: Annotated[str, Query()], s: Annotated[str, Header(alias="status")]) -> None: ...
+
+    sent: list[httpx2.Request] = []
+    API(BASE_URL, transport=mock_transport(sent)).search("open", "x")
+    request = only_request(sent)
+    assert request.url.query.decode() == "status=open"
+    assert request.headers["status"] == "x"

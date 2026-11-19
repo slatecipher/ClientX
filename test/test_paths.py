@@ -5,7 +5,7 @@ import enum
 import re
 import uuid
 from collections.abc import Callable
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal, NewType
 
 import httpx2
 import pytest
@@ -256,3 +256,68 @@ def test_an_endpoint_declared_outside_a_client_class_cant_be_called(mock_transpo
 
     with pytest.raises(DefinitionError, match="isn't declared in the body of a ClientX"):
         loose(API(BASE_URL, transport=mock_transport()))
+
+
+# What a path parameter can be
+
+
+class Price:
+    def __str__(self) -> str:
+        return "9.90"
+
+
+OrderId = NewType("OrderId", int)
+
+
+@pytest.mark.parametrize(
+    "annotation",
+    [
+        pytest.param(str | None, id="optional"),
+        pytest.param(Annotated[str | None, Url()], id="with Url()"),
+    ],
+)
+def test_a_path_parameter_that_can_be_none_fails(annotation: Any) -> None:
+    with pytest.raises(DefinitionError, match=re.escape("so it can't be None: a None value would always fail")):
+
+        class API(ClientX):
+            @method.get("/users/{user_id}")
+            def user(self, user_id: annotation) -> None: ...  # pyright: ignore[reportInvalidTypeForm]
+
+
+def test_a_path_parameter_clientx_cant_send_as_text_fails() -> None:
+    message = "so it must be a plain value. A plain value is one of str, int, float, bool, Enum"
+    with pytest.raises(DefinitionError, match=re.escape(message)):
+
+        class API(ClientX):
+            @method.get("/prices/{price}")
+            def price(self, price: Price) -> None: ...
+
+
+@pytest.mark.parametrize(
+    ("annotation", "value", "segment"),
+    [
+        pytest.param(Literal["asc", "desc"], "asc", "asc", id="Literal"),
+        pytest.param(OrderId, OrderId(7), "7", id="NewType"),
+        pytest.param(Any, Price(), "9.90", id="Any, through str"),
+    ],
+)
+def test_literal_newtype_and_any_fill_the_path(
+    annotation: Any, value: object, segment: str, mock_transport: MockTransport
+) -> None:
+    class API(ClientX):
+        @method.get("/items/{item}")
+        def item(self, item: annotation) -> None: ...  # pyright: ignore[reportInvalidTypeForm]
+
+    sent: list[httpx2.Request] = []
+    API(BASE_URL, transport=mock_transport(sent)).item(value)
+    assert sent_path(sent) == f"/v1/items/{segment}"
+
+
+def test_a_path_parameter_without_an_annotation_takes_any_value(mock_transport: MockTransport) -> None:
+    class API(ClientX):
+        @method.get("/items/{item}")
+        def item(self, item) -> None: ...  # pyright: ignore[reportMissingParameterType]  # noqa: ANN001
+
+    sent: list[httpx2.Request] = []
+    API(BASE_URL, transport=mock_transport(sent)).item(7)
+    assert sent_path(sent) == "/v1/items/7"
