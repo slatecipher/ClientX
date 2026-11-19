@@ -164,3 +164,72 @@ Each framework registers tools its own way, but asks for the same things:
 - for MCP, the hints `read_only`, `destructive` and `idempotent`, as its `readOnlyHint`, `destructiveHint` and `idempotentHint`.
 
 A model can call any tool you register, so register only what it should use. For example, start with the `read_only` tools, and add others as you need them. The hints come from the HTTP method, so they can be wrong for an endpoint such as `POST /search`, which only reads.
+
+## Serving many users
+
+A tool calls the API through its client, with the client's `auth=`, so one client sends one user's credentials. A server that calls an API for many users, such as a public MCP server, can still use one client: give it an `httpx2.Auth` that sends the credentials of the user whose tool call is running.
+
+Here's a hypothetical flow. You host a public MCP server for a shop's API, and run your ClientX client behind it:
+
+1. **A user connects** their AI app, such as Claude, to your MCP server.
+2. **They sign in through your server's OAuth flow.** Their app gets a token issued for your server, which validates it on each request, so it knows who's calling.
+3. **They authorize your server with the shop's API.** Your server is an OAuth client of that API, so it gets that user's upstream token, and stores it.
+4. **On each tool call, your server looks up that user's upstream token,** and runs the tool. The shared client sends that user's token.
+
+Never send the shop's API the token the user's app sent you. It was issued for your server, and the MCP specification forbids [passing it through](https://modelcontextprotocol.io/specification/latest/basic/security_best_practices#token-passthrough): your server's token and the upstream token stay separate.
+
+<!-- docs_src/tools/many_users.py -->
+```python
+import contextvars
+from collections.abc import Generator
+from typing import Any
+
+import httpx2
+from clientx import AsyncClientX, method
+from clientx.tools import list_tools
+from pydantic import BaseModel
+
+
+class Order(BaseModel):
+    id: int
+    status: str
+
+
+class ShopAPI(AsyncClientX, base_url="https://api.shop.example.com"):
+    @method.get("/orders/{order_id}")
+    async def retrieve_order(self, order_id: int) -> Order:
+        """Fetch one of the user's orders, with its status."""
+        ...
+
+
+# The upstream token of the user whose tool call is running.
+upstream_token: contextvars.ContextVar[str] = contextvars.ContextVar("upstream_token")
+
+
+class CurrentUserAuth(httpx2.Auth):
+    """Send the upstream token of the user whose tool call is running."""
+
+    def auth_flow(self, request: httpx2.Request) -> Generator[httpx2.Request, httpx2.Response, None]:
+        request.headers["Authorization"] = f"Bearer {upstream_token.get()}"
+        yield request
+
+
+# Each user's upstream token, stored when they connected: use a real store.
+upstream_tokens: dict[str, str] = {}
+
+api = ShopAPI(auth=CurrentUserAuth())  # one client and one connection pool, for every user
+tools = {tool.name: tool for tool in list_tools(api)}  # described once, at startup
+
+
+async def handle_tool_call(user_id: str, name: str, arguments: dict[str, Any]) -> Any:
+    """Run a tool for a user your server has already authenticated."""
+    upstream_token.set(upstream_tokens[user_id])
+    return await tools[name].acall(arguments)
+```
+
+- **Concurrent calls don't mix users.** Each request runs in its own async task, and a `ContextVar` set in a task belongs to that task. Two users calling at once each send their own token, through the same client and its connection pool.
+- **Use an `AsyncClientX`, and `acall()`.** A sync client's calls often run in worker threads, and some ways of starting a thread don't carry the `ContextVar` over, so the token would be missing.
+- **Refresh a token in `auth_flow`.** An `httpx2.Auth` can read the response and send the request again: on a 401, refresh the user's token and retry (see httpx2's [Authentication](https://pydantic.dev/docs/httpx2/advanced/authentication/) documentation). If the refresh fails, the `ToolError`, such as `the API answered 401 Unauthorized`, tells the model to ask the user to connect again.
+- **The model never sees a token.** It's only in the request's headers, and a `ToolError` message holds neither headers nor the query string.
+
+Users who differ in more than credentials, such as a base URL per tenant, need separate clients, and each client's `list_tools()` describes its tools again.
