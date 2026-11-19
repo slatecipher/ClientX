@@ -75,6 +75,7 @@ An endpoint's second name in its class is the same endpoint, so it's listed once
 | `input_schema` | The JSON Schema of the arguments: an object with one property per parameter, named as in the method. |
 | `output_schema` | The JSON Schema of the result, from the return annotation, or `None` for `-> None`. |
 | `read_only`, `destructive`, `idempotent` | Hints from the HTTP method: `GET`, `HEAD` and `OPTIONS` only read; `PUT`, `PATCH` and `DELETE` can change or delete what's there; and `GET`, `HEAD`, `OPTIONS`, `PUT` and `DELETE` have the same effect when called twice. |
+| `tags` | The endpoint's tags, its resource's first (see [Tags](resources.md#tags)), to choose which tools to register by. |
 | `is_async` | The endpoint is `async def`, so the tool is called with `await tool.acall(arguments)` instead of `call()`. |
 
 ## Descriptions
@@ -188,7 +189,49 @@ MCP's `outputSchema` must describe an object, so a tool whose result isn't one, 
 
 Strict modes, which constrain the model's arguments to the schema exactly, have rules of their own: OpenAI's needs every property listed in `required`, with optional ones made nullable, and Anthropic's needs `additionalProperties: false` and a `required` list. ClientX doesn't change its schemas for either, so adjust a schema before you turn a strict mode on.
 
-A model can call any tool you register, so register only what it should use. For example, start with the `read_only` tools, and add others as you need them. The hints come from the HTTP method, so they can be wrong for an endpoint such as `POST /search`, which only reads.
+## Choosing tools
+
+A model can call any tool you register, so register only what it should use. To choose in the class itself, tag the endpoints a model should use, or a whole resource, and keep the tools with that tag:
+
+<!-- docs_src/tools/choosing_tools.py -->
+```python
+from typing import Annotated, Any
+
+from clientx import ClientX, Json, Resource, method
+from clientx.tools import list_tools
+
+
+class Products(Resource, prefix="/products", tags=["ai"]):
+    @method.post("/search")
+    def search(self, query: Annotated[str, Json()]) -> list[dict[str, Any]]:
+        """Search the catalog by name or description."""
+        ...
+
+
+class Orders(Resource, prefix="/orders"):
+    @method.get("/{order_id}", tags=["ai"])
+    def retrieve(self, order_id: int) -> dict[str, Any]:
+        """Fetch an order, with its status."""
+        ...
+
+    @method.delete("/{order_id}")
+    def cancel(self, order_id: int) -> None:
+        """Cancel an order."""
+        ...
+
+
+class ShopAPI(ClientX, base_url="https://api.shop.example.com"):
+    products = Products()
+    orders = Orders()
+
+
+api = ShopAPI()
+tools = [tool for tool in list_tools(api) if "ai" in tool.tags]  # products_search, orders_retrieve
+```
+
+`products_search` is a tool because its resource is tagged, and `orders_retrieve` because it's tagged itself. `orders_cancel` isn't tagged, so it's left out, and so is an endpoint added later to `Orders`, until you tag it.
+
+The `read_only` hint is another way to start, but it comes from the HTTP method, so it can be wrong for an endpoint such as `POST /search`, which only reads.
 
 ## Serving many users
 

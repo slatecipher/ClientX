@@ -70,7 +70,7 @@ class Admins(Users, tags=["admin"]):
 
 `retrieve` is tagged `["users", "read"]`: a resource's tags go before each endpoint's own, and each tag is kept once, in order. A subclass's tags are added to its parent's, so `promote` is tagged `["users", "admin", "write"]`, and a subclass without `tags` keeps its parent's. Like a prefix, tags are fixed when the class is defined, so they don't depend on where the resource is mounted.
 
-ClientX keeps the tags on each endpoint for tooling, such as describing endpoints as AI tools ([#138](https://github.com/slatecipher/ClientX/issues/138)), but nothing in ClientX uses them yet.
+Each AI tool carries its endpoint's tags, so you can choose which tools to give a model by tag (see [Choosing tools](tools.md#choosing-tools)).
 
 ## Mounting and nesting
 

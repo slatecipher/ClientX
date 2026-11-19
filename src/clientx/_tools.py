@@ -2,7 +2,8 @@
 
 ``list_tools(client)`` returns one ``Tool`` per endpoint on the client and the
 resources mounted on it: a name, a description, a JSON Schema of its arguments
-and of its result, hints from its HTTP method, and ``call()`` or ``acall()``.
+and of its result, hints from its HTTP method, its tags, and ``call()`` or
+``acall()``.
 Nothing here depends on an AI library, so an adapter for MCP or another
 framework can build on it.
 
@@ -115,6 +116,8 @@ class Tool:
             ``PATCH`` or ``DELETE``.
         idempotent: Calling it twice has the effect of calling it once:
             ``GET``, ``HEAD``, ``OPTIONS``, ``PUT`` or ``DELETE``.
+        tags: The endpoint's tags, its resource's first, to choose which tools
+            to register by.
         is_async: It's an ``async def`` endpoint, called with ``acall()``.
     """
 
@@ -125,6 +128,7 @@ class Tool:
     read_only: bool
     destructive: bool
     idempotent: bool
+    tags: tuple[str, ...]
     is_async: bool
     _call: _Call = field(repr=False, compare=False)
 
@@ -261,6 +265,7 @@ def _tool(name: str, endpoint: Endpoint, function: Callable[..., Any]) -> Tool |
         read_only=endpoint.method in _READ_ONLY,
         destructive=endpoint.method in _DESTRUCTIVE,
         idempotent=endpoint.method in _IDEMPOTENT,
+        tags=tuple(endpoint.tags),
         is_async=endpoint.signature.is_async,
         _call=_Call(function, adapter, output, positional, request),
     )

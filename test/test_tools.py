@@ -174,6 +174,17 @@ def test_the_hints_come_from_the_http_method(verb: Any, hints: tuple[bool, bool,
     assert tool.output_schema is None
 
 
+def test_a_tool_has_its_endpoints_tags() -> None:
+    class Users(Resource, prefix="/users", tags=["users"]):
+        @method.get("/{user_id}", tags=["read"])
+        def retrieve(self, user_id: int) -> None: ...
+
+    class API(ClientX):
+        users = Users()
+
+    assert tools_of(API(BASE_URL))["users_retrieve"].tags == ("users", "read")
+
+
 def test_a_call_validates_leniently_and_passes_only_the_given_arguments(mock_transport: MockTransport) -> None:
     class API(ClientX):
         @method.patch("/users/{user_id}")

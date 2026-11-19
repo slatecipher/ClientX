@@ -50,7 +50,7 @@ Rules that span modules:
 
 ## Tests
 
-- Tests go through the public API, one file per feature (`test_paths.py`, `test_query_and_headers.py`, `test_bodies.py`, `test_spreading.py`, `test_responses.py`, `test_clients.py`, `test_endpoints.py`); internals are tested directly only where that's simpler (`test_signature.py`).
+- Tests go through the public API, one file per feature (`test_paths.py`, `test_query_and_headers.py`, `test_bodies.py`, `test_spreading.py`, `test_responses.py`, `test_clients.py`, `test_endpoints.py`, `test_tools.py`); internals are tested directly only where that's simpler (`test_signature.py`).
 - pytest runs in strict mode and `importlib` import mode, so test modules can't import each other: shared helpers are fixtures in `conftest.py`. Send requests through `mock_transport(sent=None, handler=None, *, status=200, **response)`, which records each request in `sent` and serves async clients too. Async tests use anyio (`@pytest.mark.anyio`). A streamed response body must be an iterator: a `bytes` body is read at once.
 - `test/test_typing.py` is the static typing contract, checked by pyright and mypy in `make typecheck`, on its own, so it keeps its own transport instead of the fixtures. It uses `assert_type`, and each line that must be rejected has one comment per checker: `# type: ignore[code]  # pyright: ignore[rule]`. Pyright ignores `# type: ignore` (`enableTypeIgnoreComments = false`), so elsewhere in `test/` suppress it with `# pyright: ignore[rule]`.
 
