@@ -20,6 +20,8 @@ different path, or a value that can't become text or JSON.
   model or dataclass is dumped with its ``DumpOptions``, then each field is
   sent under its planned key; what a spread mapping, or a model with its own
   model serializer, dumps is sent under its own keys.
+- Not passed: a parameter planned ``only_if_passed`` is left out when the
+  caller didn't pass it, so the server's default applies.
 - Files: each file is passed as it is, and a list of them repeats the field.
   A ``None`` in the list is left out.
 - JSON fields: each is dumped with its ``DumpOptions``, by alias, into one JSON
@@ -68,6 +70,8 @@ def build_request(
     keyed: dict[HttpxArgument, dict[str, object]] = {}
     files: list[tuple[str, object]] = []
     for item in plan.parameters:
+        if item.only_if_passed and item.name not in passed:
+            continue
         value = arguments[item.name]
         with _converting(item.name):
             if isinstance(item, SpreadParameter):
@@ -86,8 +90,9 @@ def build_request(
     request_arguments: dict[str, object] = {argument.value: values for argument, values in keyed.items() if values}
     if files:
         request_arguments["files"] = files
-    if plan.body is not None:
-        request_arguments.update(_body(plan.body, arguments[plan.body.name]))
+    body = plan.body
+    if body is not None and not (body.only_if_passed and body.name not in passed):
+        request_arguments.update(_body(body, arguments[body.name]))
     return path, cast("BuildRequestKwargs", request_arguments)
 
 

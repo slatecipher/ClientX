@@ -11,7 +11,7 @@ import httpx2
 import pytest
 from pydantic import BaseModel, Field, PlainSerializer
 
-from clientx import ArgumentError, ClientX, DefinitionError, Form, Header, Json, Query, method
+from clientx import ArgumentError, ClientX, DefinitionError, Form, Header, Json, Query, Send, method
 
 type MockTransport = Callable[..., httpx2.MockTransport]
 
@@ -427,3 +427,16 @@ def test_a_value_that_cant_become_text_raises_before_sending(mock_transport: Moc
         API(BASE_URL, transport=mock_transport(sent)).search(b"\xff")
     assert caught.value.parameter == "token"
     assert sent == []
+
+
+def test_send_exclude_unset_leaves_out_a_parameter_not_passed(mock_transport: MockTransport) -> None:
+    # So the server applies its own default; passing the same value sends it.
+    class API(ClientX):
+        @method.get("/items")
+        def search(self, page: Annotated[int, Query(), Send(exclude_unset=True)] = 1) -> None: ...
+
+    sent: list[httpx2.Request] = []
+    api = API(BASE_URL, transport=mock_transport(sent))
+    api.search()
+    api.search(1)
+    assert [request.url.query.decode() for request in sent] == ["", "page=1"]

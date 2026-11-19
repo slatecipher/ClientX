@@ -108,7 +108,7 @@ class ItemsAPI(ClientX):
 - **Names.** A value is sent under its helper's `alias`, or else under the parameter's name. A header's name has its underscores turned into hyphens, so `request_id` is sent as `request-id`; an alias is used exactly as given.
 - **Lists.** A list repeats the query parameter (`tags=new&tags=used`), and so does a list of form fields. A parameter typed `str | list[str]` takes either, decided by the value at the call, and a `str` passed for a `Sequence[str]` is one value, not one per character. A tuple or set repeats the key too, but a set's order can change from run to run, and the URL with it: use a list for a fixed order. A header takes a plain value only, so join several yourself (`", ".join(tags)`), as you would for another list style, such as `tags=new,used`.
 - **Text.** An `Enum` is sent as its value, a `date`, `time` or `datetime` as ISO 8601 text, a `UUID` or `Decimal` as its string, `bytes` as UTF-8 text, and a number or `bool` as JSON text (`2`, `1.5`, `true`). A value of any other type can only come through `Any`: a list or dict is sent as JSON text, and an object Pydantic doesn't know as `str(value)`. A value that can't become text, such as `bytes` that aren't UTF-8, raises `ArgumentError` before anything is sent.
-- **`None` and defaults.** A value of `None` is left out, and so is an empty list and a `None` in one, so an optional parameter defaults to `None`. A default that isn't `None` is sent, like any other value.
+- **`None` and defaults.** A value of `None` is left out, and so is an empty list and a `None` in one, so an optional parameter defaults to `None`. A default that isn't `None` is sent, like any other value, unless [`Send(exclude_unset=True)`](#send) leaves the parameter out when the caller doesn't pass it, so the server applies its own default.
 - **One key, one value.** Two values sent under one key, such as two parameters with the same alias, or a parameter and a field of a spread model, raise `DefinitionError` when the class is defined, since one would be lost. Header names are compared ignoring case. A spread mapping's keys are known only at the call, so avoiding a clash with them is up to you.
 - **The client's own.** Values set with the client's `params=` and `headers=` are sent too.
 
@@ -207,7 +207,7 @@ The helper says where a parameter goes; `Send` says how it's sent there. Put it 
 | Option | Effect |
 |---|---|
 | `embed=True` | Sends a lone JSON parameter under its alias or name, as a field of a JSON object, instead of as the whole body. FastAPI's `Body(embed=True)` does the same for the request it receives. `Json()` only. |
-| `exclude_unset=True` | Leaves out a model's fields that weren't set when it was made, so the server's defaults apply: a PATCH with only the fields to change. `Json()`, and a model spread into `Query()`, `Header()` or `Form()`. |
+| `exclude_unset=True` | Leaves out what the caller didn't set, so the server's defaults apply: the parameter, when the caller doesn't pass it, so `page: Annotated[int, Query(), Send(exclude_unset=True)] = 1` sends no `page` unless it's passed; and a model's fields that weren't set when it was made, for a PATCH with only the fields to change. `Json()`, `Query()`, `Header()` and `Form()`. |
 | `exclude_none=True` | Leaves out the fields of a model or Pydantic dataclass that are `None`, instead of sending `null`. `Json()` only: the other parts leave out `None` already. On a JSON field, a `None` passed explicitly is then left out too. |
 | `exclude_defaults=True` | Leaves out the fields of a model or Pydantic dataclass that equal their defaults. `Json()`, and a spread model. |
 
@@ -232,7 +232,7 @@ class HostsAPI(ClientX):
 
 To send it under another name, give it an alias with its helper: `ids: Annotated[list[str], Json(alias="deviceIds"), Send(embed=True)]` sends `{"deviceIds": [...]}`. ClientX reads the name only from its own helpers, so a plain `pydantic.Field(alias=...)` doesn't change it.
 
-`exclude_unset`, `exclude_none` and `exclude_defaults` are Pydantic's dump options. They apply to a model anywhere in the value, such as each item of a `list[User]`. Each must fit the type, or it raises `DefinitionError`, since Pydantic would ignore it silently: `exclude_unset` needs a Pydantic model, the only kind that records which fields were set, and the other two a model or a Pydantic dataclass (`pydantic.dataclasses.dataclass`), not a standard library one.
+`exclude_unset`, `exclude_none` and `exclude_defaults` are Pydantic's dump options. They apply to a model anywhere in the value, such as each item of a `list[User]`. Each must have something to act on, or it raises `DefinitionError`, since Pydantic would ignore it silently: `exclude_none` and `exclude_defaults` need a model or a Pydantic dataclass (`pydantic.dataclasses.dataclass`), not a standard library one, and `exclude_unset` a default to leave out, or a Pydantic model, the only kind that records which fields were set.
 
 With several `Send` in one `Annotated`, such as one from a `type` alias and one on the parameter, the last one wins whole, as the last helper does.
 
@@ -263,7 +263,3 @@ class PostsAPI(ClientX):
 ## In a FastAPI app
 
 The helpers are named like FastAPI's, but they do the opposite job: FastAPI's read the incoming request, and ClientX's build the outgoing one. In a FastAPI app that calls other APIs, import one of them under another name (`from clientx import Query as ClientQuery`), or use the module (`import clientx`, then `clientx.Query()`).
-
-## Not supported yet
-
-- **Leaving out a parameter's default.** A parameter's default is always sent. `Send(exclude_defaults=True)` applies to a model's fields, not to the parameter itself.

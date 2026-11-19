@@ -49,9 +49,11 @@ argument, so a rule that differs by argument lives in that argument's class:
   keys compare case-insensitively. A spread mapping's keys exist only at the
   call, and so do those of a model with its own model serializer, so a clash
   with one is the caller's to avoid.
-- ``Send``'s dump options must fit the type, since pydantic ignores them
-  silently otherwise: ``exclude_unset`` needs a pydantic model, and
-  ``exclude_none`` and ``exclude_defaults`` a model or pydantic dataclass.
+- ``Send(exclude_unset=True)`` leaves out a parameter the caller didn't pass,
+  as well as a model's unset fields. The dump options must fit the type, since
+  pydantic ignores them silently otherwise: ``exclude_none`` and
+  ``exclude_defaults`` need a model or pydantic dataclass, and
+  ``exclude_unset`` a default or a pydantic model to act on.
 
 The path template has ``{name}``, filled with one segment, and ``{name:path}``,
 whose value keeps its slashes. There are no literal braces: any brace that
@@ -142,6 +144,8 @@ class PlannedParameter:
             either, and a ``str`` is always one value, not one per character.
         sends_null: A ``None`` passed explicitly is sent as ``null``. The
             planner sets it from the spec, so the builder needn't read one.
+        only_if_passed: Left out when the caller didn't pass it, from
+            ``Send(exclude_unset=True)``, so the server's default applies.
         dump: How pydantic dumps the value, for a model inside it.
     """
 
@@ -150,6 +154,7 @@ class PlannedParameter:
     key: str
     many: bool = False
     sends_null: bool = False
+    only_if_passed: bool = False
     dump: DumpOptions = DumpOptions()
 
 
@@ -165,6 +170,8 @@ class SpreadParameter:
             what it dumps is sent, each key as it is, known only at the call.
         many: A list in a field repeats the key, since the argument takes
             lists. Without it, a list is sent as one text value.
+        only_if_passed: Left out when the caller didn't pass it, from
+            ``Send(exclude_unset=True)``.
         dump: How pydantic dumps the value before its fields are sent.
     """
 
@@ -172,6 +179,7 @@ class SpreadParameter:
     httpx_argument: HttpxArgument
     keys: tuple[tuple[str, str], ...] | None = None
     many: bool = False
+    only_if_passed: bool = False
     dump: DumpOptions = DumpOptions()
 
 
@@ -582,23 +590,25 @@ def _is_model_or_pydantic_dataclass(cls: type[Any]) -> bool:
     return issubclass(cls, BaseModel) or is_pydantic_dataclass(cls)
 
 
-# Each Send dump option, the classes whose fields it affects, and those in
+# Each field-only dump option, the classes whose fields it affects, and those in
 # words, for messages. Dumping a value by its own type, pydantic silently
-# ignores all three on a stdlib dataclass and a dict, and exclude_unset on a
-# pydantic dataclass too, which doesn't record which fields were set; so an
-# option on a type it can't affect raises instead.
+# ignores them on a stdlib dataclass and a dict, so an option on a type it
+# can't affect raises instead. exclude_unset isn't here: it also leaves out the
+# parameter itself, so _check_dump_options checks it on its own.
 _DUMP_OPTIONS: dict[str, tuple[Callable[[type[Any]], bool], str]] = {
-    "exclude_unset": (_is_model, "a pydantic model, the only kind that records which fields were set"),
     "exclude_none": (_is_model_or_pydantic_dataclass, _PYDANTIC_CLASS),
     "exclude_defaults": (_is_model_or_pydantic_dataclass, _PYDANTIC_CLASS),
 }
 
 
 def _check_dump_options(parameter: ParameterInfo) -> None:
-    """Raise ``DefinitionError`` for a dump option the type can't use.
+    """Raise ``DefinitionError`` for a dump option that would do nothing.
 
-    Each affects the fields of some classes only (``_DUMP_OPTIONS``), so the
-    parameter's type must have one, at any depth: ``list[User]`` counts.
+    ``exclude_none`` and ``exclude_defaults`` affect the fields of some classes
+    only (``_DUMP_OPTIONS``), so the type must have one, at any depth:
+    ``list[User]`` counts. ``exclude_unset`` leaves out the parameter when it
+    isn't passed, and a pydantic model's unset fields, so it needs a default
+    or a model.
     """
     for option, (affects, described) in _DUMP_OPTIONS.items():
         if getattr(parameter.send, option) is None:
@@ -608,6 +618,16 @@ def _check_dump_options(parameter: ParameterInfo) -> None:
                 f"Parameter {parameter.name!r} has Send({option}=...), which leaves out fields of "
                 f"{described}, but its type has none. Remove it."
             )
+    if (
+        parameter.send.exclude_unset is not None
+        and parameter.default is NO_VALUE
+        and not _contains_class(parameter.annotation, _is_model, frozenset())
+    ):
+        raise DefinitionError(
+            f"Parameter {parameter.name!r} has Send(exclude_unset=...), but it has no default, so it's always "
+            "passed, and its type has no pydantic model, whose unset fields it would leave out. Give it a "
+            "default, or remove it."
+        )
 
 
 def _dump_options(parameter: ParameterInfo) -> DumpOptions:
@@ -771,11 +791,14 @@ def _plan_keyed(parameter: ParameterInfo, argument: HttpxArgument) -> PlannedPar
     dump = _dump_options(parameter)
     # Send(exclude_none=True) leaves out None, so it isn't sent as null.
     sends_null = spec.sends_null and not dump.exclude_none
+    only_if_passed = dump.exclude_unset
     arms = _arms(parameter.annotation)
     if all(spec.takes_value(arm) for arm in arms):
-        return PlannedParameter(parameter.name, argument, key, sends_null=sends_null, dump=dump)
+        return PlannedParameter(
+            parameter.name, argument, key, sends_null=sends_null, only_if_passed=only_if_passed, dump=dump
+        )
     if spec.takes_lists and all(spec.takes_value(arm) or _is_list_of(arm, spec) for arm in arms):
-        return PlannedParameter(parameter.name, argument, key, many=True)
+        return PlannedParameter(parameter.name, argument, key, many=True, only_if_passed=only_if_passed)
     if spec.takes_text and len(arms) == 1 and _has_fields(arms[0]):
         return _plan_spread(parameter, argument, arms[0])
     raise DefinitionError(
@@ -805,10 +828,15 @@ def _plan_spread(parameter: ParameterInfo, argument: HttpxArgument, annotation: 
                 f"Parameter {parameter.name!r} is marked {spec.helper}, so each item of the mapping goes to "
                 f"{spec.accepts}. Its value type isn't one."
             )
-        return SpreadParameter(parameter.name, argument, many=spec.takes_lists)
+        return SpreadParameter(
+            parameter.name, argument, many=spec.takes_lists, only_if_passed=bool(parameter.send.exclude_unset)
+        )
     if _has_model_serializer(cls):
         # It decides its own keys, so what it dumps is sent, as a mapping is.
-        return SpreadParameter(parameter.name, argument, many=spec.takes_lists, dump=_dump_options(parameter))
+        dump = _dump_options(parameter)
+        return SpreadParameter(
+            parameter.name, argument, many=spec.takes_lists, only_if_passed=dump.exclude_unset, dump=dump
+        )
     keys: list[tuple[str, str]] = []
     for attribute, (field_type, alias) in _fields_of(cls).items():
         if not _fits(field_type, spec):
@@ -817,7 +845,10 @@ def _plan_spread(parameter: ParameterInfo, argument: HttpxArgument, annotation: 
                 f"{spec.accepts}. Field {attribute!r} isn't one."
             )
         keys.append((attribute, spec.key(attribute, alias)))
-    return SpreadParameter(parameter.name, argument, tuple(keys), many=spec.takes_lists, dump=_dump_options(parameter))
+    dump = _dump_options(parameter)
+    return SpreadParameter(
+        parameter.name, argument, tuple(keys), many=spec.takes_lists, only_if_passed=dump.exclude_unset, dump=dump
+    )
 
 
 def _fields_of(cls: type[Any]) -> dict[str, tuple[Any, str | None]]:
@@ -920,7 +951,8 @@ def _plan_body(parameter: ParameterInfo, argument: HttpxArgument, *, is_async: b
     if spec.streams:
         _check_stream_kind(parameter, spec, is_async=is_async)
     # The key isn't used: the value is the whole body.
-    return PlannedParameter(parameter.name, argument, key=parameter.name, dump=_dump_options(parameter))
+    dump = _dump_options(parameter)
+    return PlannedParameter(parameter.name, argument, key=parameter.name, only_if_passed=dump.exclude_unset, dump=dump)
 
 
 def _check_stream_kind(parameter: ParameterInfo, spec: type[HttpxArgumentSpec], *, is_async: bool) -> None:

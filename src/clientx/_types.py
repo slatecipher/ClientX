@@ -69,10 +69,11 @@ class Send:
             ``{"ids": [...]}`` rather than ``[...]``. Like FastAPI's
             ``Body(embed=True)``. A parameter that's already keyed, a plain
             value or one of several ``Json()`` parameters, is sent the same.
-        exclude_unset: Leave out a model's fields that weren't set when it was
-            made, so the server's defaults apply. Pydantic models only: a
-            dataclass doesn't record which fields were set. For JSON, and for
-            a model spread into the query string, headers or form.
+        exclude_unset: Leave out what the caller didn't set, so the server's
+            defaults apply: the parameter itself, when the caller didn't pass
+            it, and a model's fields that weren't set when it was made (a
+            pydantic model's only: a dataclass doesn't record them). For JSON,
+            the query string, headers and form.
         exclude_none: Leave out the fields of a pydantic model or pydantic
             dataclass that are ``None``. For JSON only: the query string,
             headers and form leave out ``None`` already.

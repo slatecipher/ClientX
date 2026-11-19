@@ -460,6 +460,11 @@ def test_exclude_none_on_a_json_field_leaves_out_an_explicit_none(mock_transport
             id="stdlib dataclass",
         ),
         pytest.param(Annotated[str, Json(), Send(exclude_defaults=True)], "but its type has none", id="plain value"),
+        pytest.param(
+            Annotated[str, Json(), Send(exclude_unset=True)],
+            "has Send(exclude_unset=...), but it has no default, so it's always passed",
+            id="exclude_unset with nothing to leave out",
+        ),
     ],
 )
 def test_a_dump_option_where_it_cant_apply_fails(annotation: Any, message: str) -> None:
