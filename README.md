@@ -23,7 +23,7 @@ ClientX is a declarative API client framework designed to make writing and maint
 
 For client authors, ClientX reduces boilerplate by turning typed endpoint definitions into concrete `httpx2` requests and centralizing request/response behavior. For client consumers, it pushes API contracts and guard rails into the client itself, helping prevent avoidable runtime mistakes and making integrations more predictable.
 
-The result is less scaffolding and more focus on outcomes: authors, human or AI, spend less time on plumbing, and the developers and AI agents calling your API spend less time guessing how to use it correctly.
+The result is less scaffolding and more focus on outcomes: authors, human or AI, spend less time on plumbing, and the developers and AI agents calling your API spend less time guessing how to use it correctly. The same endpoints become tools an AI model can call, described by your docstrings and type hints, with errors it can act on.
 
 ## Quickstart
 
@@ -93,6 +93,7 @@ ClientX is inspired by FastAPI, which reads type hints to define server endpoint
 - **Mistakes surface early.** A missing return annotation, a parameter that doesn't say where it goes, a placeholder that names no parameter, or a type ClientX can't decode raises an error when the class is defined, not on the first request.
 - **Pydantic v2 throughout.** Send models as JSON bodies, or spread them into query parameters, headers or form fields, and decode responses into models.
 - **Built on httpx2.** A client is an `httpx2.Client`, or an `httpx2.AsyncClient`, so every option is available, including auth, timeouts, proxies and custom transports.
+- **Ready for AI agents.** `clientx.tools` turns each endpoint into a tool a model can call: its description from the docstring, a JSON Schema of its arguments, and errors that tell the model what went wrong, never your credentials.
 
 ## Features
 
