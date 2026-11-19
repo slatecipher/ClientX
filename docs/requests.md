@@ -48,7 +48,7 @@ A parameter's name has no meaning of its own: one named `json` or `headers` foll
 | `Header()` | a header | a plain value, or a model, dataclass or mapping to spread |
 | `Json()` | the JSON body, or one of its fields | anything Pydantic can turn into JSON |
 | `Body()` | the raw body | `str`, `bytes`, or a stream of `bytes`: an iterable on a sync client, an async iterable on an async one |
-| `Form()` | a form field | a plain value or a list of them, or a model, dataclass or mapping to spread |
+| `Form()` | a form field | a plain value or a list of them, or a model, dataclass or mapping to spread; with [`Send(json_part=True)`](#send), any value, as a JSON part |
 | `File()` | a file in a multipart form | `bytes`, a binary file, or a `(filename, content[, content_type[, headers]])` tuple, or a list of them; not `str` |
 
 A plain value is a `str`, `int`, `float`, `bool`, `Enum`, `date`, `datetime`, `time`, `UUID`, `Decimal` or `bytes`, a `Literal` of those, or a `NewType` of one: each has one text form. Any other type, such as a class of your own, raises `DefinitionError` when the class is defined; annotate the parameter as `str` and convert the value at the call. `Any`, or no annotation, is the escape hatch: its value is sent in Pydantic's JSON form, so a list or dict becomes one JSON text value, and as `str(value)` only if Pydantic doesn't know its type. To repeat a key, annotate the parameter as a list.
@@ -108,7 +108,7 @@ class ItemsAPI(ClientX):
 - **Names.** A value is sent under its helper's `alias`, or else under the parameter's name. A header's name has its underscores turned into hyphens, so `request_id` is sent as `request-id`; an alias is used exactly as given.
 - **Lists.** A list repeats the query parameter (`tags=new&tags=used`), and so does a list of form fields. A parameter typed `str | list[str]` takes either, decided by the value at the call, and a `str` passed for a `Sequence[str]` is one value, not one per character. A tuple or set repeats the key too, but a set's order can change from run to run, and the URL with it: use a list for a fixed order. A header takes a plain value only, so join several yourself (`", ".join(tags)`), as you would for another list style, such as `tags=new,used`.
 - **Text.** An `Enum` is sent as its value, a `date`, `time` or `datetime` as ISO 8601 text, a `UUID` or `Decimal` as its string, `bytes` as UTF-8 text, and a number or `bool` as JSON text (`2`, `1.5`, `true`). A value of any other type can only come through `Any`: a list or dict is sent as JSON text, and an object Pydantic doesn't know as `str(value)`. A value that can't become text, such as `bytes` that aren't UTF-8, raises `ArgumentError` before anything is sent.
-- **`None` and defaults.** A value of `None` is left out, and so is an empty list and a `None` in one, so an optional parameter defaults to `None`. A default that isn't `None` is sent, like any other value.
+- **`None` and defaults.** A value of `None` is left out, and so is an empty list and a `None` in one, so an optional parameter defaults to `None`. A default that isn't `None` is sent, like any other value, unless [`Send(exclude_unset=True)`](#send) leaves the parameter out when the caller doesn't pass it, so the server applies its own default.
 - **One key, one value.** Two values sent under one key, such as two parameters with the same alias, or a parameter and a field of a spread model, raise `DefinitionError` when the class is defined, since one would be lost. Header names are compared ignoring case. A spread mapping's keys are known only at the call, so avoiding a clash with them is up to you.
 - **The client's own.** Values set with the client's `params=` and `headers=` are sent too.
 
@@ -168,7 +168,32 @@ class ProfilesAPI(ClientX):
 
 A file is `bytes`, a binary file (`open(path, "rb")`, `io.BytesIO`, `IO[bytes]`), or a `(filename, content[, content_type[, headers]])` tuple, where `headers` is a mapping of the file part's own headers. A list of files sends each under the same field, and leaves out a `None` in it; a tuple is one file, so a list of files is a `list`, not a tuple. Several `File()` parameters can share a field with an alias, too. A `str` isn't a file: httpx2 would send the text itself as the file's content, so open the file yourself, or pass text as `bytes`. Any other type raises `DefinitionError` when the class is defined.
 
-Without a file, the form is sent URL-encoded, so with an optional `File()` parameter the encoding depends on whether a file is passed.
+Without a file or a JSON part, the form is sent URL-encoded, so with an optional `File()` parameter, or an optional JSON part, the encoding depends on whether one is sent.
+
+Some APIs take a JSON document as one part of a multipart form, next to the files. Add [`Send(json_part=True)`](#send) to a `Form()` parameter: its value can be anything Pydantic can serialize, and it's sent as a part of its own, as JSON with the `application/json` content type, which makes the form multipart even without a file (a `None` value sends no part):
+
+```python
+from typing import Annotated
+
+from clientx import ClientX, File, Form, Response, Send, method
+from pydantic import BaseModel
+
+
+class Message(BaseModel):
+    content: str
+
+
+class MessagesAPI(ClientX):
+    @method.post("/channels/{channel_id}/messages")
+    def send_message(
+        self,
+        channel_id: int,
+        message: Annotated[Message, Form(alias="payload_json"), Send(json_part=True)],
+        attachments: Annotated[list[tuple[str, bytes]] | None, File()] = None,
+    ) -> Response: ...
+```
+
+`send_message(7, Message(content="Hi"), [("a.png", data)])` sends a multipart form with a `payload_json` part holding `{"content":"Hi"}`, and the file under `attachments`.
 
 ## Spreading a model, dataclass or mapping
 
@@ -204,12 +229,13 @@ class IssuesAPI(ClientX):
 
 The helper says where a parameter goes; `Send` says how it's sent there. Put it in the parameter's outermost `Annotated`, next to the helper. Its options:
 
-| Option | Effect |
-|---|---|
-| `embed=True` | Sends a lone JSON parameter under its alias or name, as a field of a JSON object, instead of as the whole body. FastAPI's `Body(embed=True)` does the same for the request it receives. `Json()` only. |
-| `exclude_unset=True` | Leaves out a model's fields that weren't set when it was made, so the server's defaults apply: a PATCH with only the fields to change. `Json()`, and a model spread into `Query()`, `Header()` or `Form()`. |
-| `exclude_none=True` | Leaves out the fields of a model or Pydantic dataclass that are `None`, instead of sending `null`. `Json()` only: the other parts leave out `None` already. On a JSON field, a `None` passed explicitly is then left out too. |
-| `exclude_defaults=True` | Leaves out the fields of a model or Pydantic dataclass that equal their defaults. `Json()`, and a spread model. |
+| Option | Works with | Effect |
+|---|---|---|
+| `embed=True` | `Json()` | Sends a lone JSON parameter under its alias or name, as a field of a JSON object, instead of as the whole body. FastAPI's `Body(embed=True)` does the same for the request it receives. |
+| `exclude_unset=True` | `Json()`, `Query()`, `Header()`, `Form()` | Leaves out what the caller didn't set, so the server's defaults apply: the parameter, when the caller doesn't pass it, so `page: Annotated[int, Query(), Send(exclude_unset=True)] = 1` sends no `page` unless it's passed; and a model's fields that weren't set when it was made, for a PATCH with only the fields to change. |
+| `exclude_none=True` | `Json()`, `Form()` | Leaves out the fields of a model or Pydantic dataclass that are `None`, instead of sending `null`. With `Form()`, only on a JSON part: a plain form leaves out `None` already, as do the query string and headers. On a JSON field, a `None` passed explicitly is then left out too. |
+| `exclude_defaults=True` | `Json()`, `Query()`, `Header()`, `Form()` | Leaves out the fields of a model or Pydantic dataclass that equal their defaults. With `Query()` and `Header()`, on a spread model; with `Form()`, on a spread model or a JSON part. |
+| `json_part=True` | `Form()` | Sends the parameter's value as its own part of a multipart form, as JSON with the `application/json` content type, as some APIs take next to files (see [Forms and files](#forms-and-files)). |
 
 Many APIs take a body such as `{"ids": [...]}`. Without `embed`, a lone `ids: Annotated[list[str], Json()]` would be the whole body, `[...]`:
 
@@ -232,7 +258,7 @@ class HostsAPI(ClientX):
 
 To send it under another name, give it an alias with its helper: `ids: Annotated[list[str], Json(alias="deviceIds"), Send(embed=True)]` sends `{"deviceIds": [...]}`. ClientX reads the name only from its own helpers, so a plain `pydantic.Field(alias=...)` doesn't change it.
 
-`exclude_unset`, `exclude_none` and `exclude_defaults` are Pydantic's dump options. They apply to a model anywhere in the value, such as each item of a `list[User]`. Each must fit the type, or it raises `DefinitionError`, since Pydantic would ignore it silently: `exclude_unset` needs a Pydantic model, the only kind that records which fields were set, and the other two a model or a Pydantic dataclass (`pydantic.dataclasses.dataclass`), not a standard library one.
+`exclude_unset`, `exclude_none` and `exclude_defaults` are Pydantic's dump options. They apply to a model anywhere in the value, such as each item of a `list[User]`. Each must have something to act on, or it raises `DefinitionError`, since Pydantic would ignore it silently: `exclude_none` and `exclude_defaults` need a model or a Pydantic dataclass (`pydantic.dataclasses.dataclass`), not a standard library one, and `exclude_unset` a default other than `None` to leave out (`None` is left out anyway), or a Pydantic model, the only kind that records which fields were set.
 
 With several `Send` in one `Annotated`, such as one from a `type` alias and one on the parameter, the last one wins whole, as the last helper does.
 
@@ -263,7 +289,3 @@ class PostsAPI(ClientX):
 ## In a FastAPI app
 
 The helpers are named like FastAPI's, but they do the opposite job: FastAPI's read the incoming request, and ClientX's build the outgoing one. In a FastAPI app that calls other APIs, import one of them under another name (`from clientx import Query as ClientQuery`), or use the module (`import clientx`, then `clientx.Query()`).
-
-## Not supported yet
-
-- **Leaving out a parameter's default.** A parameter's default is always sent. `Send(exclude_defaults=True)` applies to a model's fields, not to the parameter itself.

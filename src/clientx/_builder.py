@@ -20,8 +20,11 @@ different path, or a value that can't become text or JSON.
   model or dataclass is dumped with its ``DumpOptions``, then each field is
   sent under its planned key; what a spread mapping, or a model with its own
   model serializer, dumps is sent under its own keys.
+- Not passed: a parameter planned ``only_if_passed`` is left out when the
+  caller didn't pass it, so the server's default applies.
 - Files: each file is passed as it is, and a list of them repeats the field.
-  A ``None`` in the list is left out.
+  A ``None`` in the list is left out. A form field planned ``json_part`` is
+  sent among them, as its own part: its JSON, with ``application/json``.
 - JSON fields: each is dumped with its ``DumpOptions``, by alias, into one JSON
   object. ``None`` is left out, unless it was passed explicitly and the plan
   says ``sends_null``: then it's ``null``. With no fields left, there's no
@@ -68,6 +71,8 @@ def build_request(
     keyed: dict[HttpxArgument, dict[str, object]] = {}
     files: list[tuple[str, object]] = []
     for item in plan.parameters:
+        if item.only_if_passed and item.name not in passed:
+            continue
         value = arguments[item.name]
         with _converting(item.name):
             if isinstance(item, SpreadParameter):
@@ -77,8 +82,8 @@ def build_request(
                     # that differ only in case. The planner caught every clash
                     # it could see.
                     keyed.setdefault(item.httpx_argument, {}).update(_spread(item, value))
-            elif item.httpx_argument is HttpxArgument.FILES:
-                files.extend((item.key, file) for file in _files(item, value))
+            elif item.httpx_argument is HttpxArgument.FILES or item.json_part:
+                files.extend(_multipart_entries(item, value))
             elif (sent := _keyed_value(item, value, passed)) is not _LEFT_OUT:
                 keyed.setdefault(item.httpx_argument, {})[item.key] = sent
 
@@ -86,8 +91,9 @@ def build_request(
     request_arguments: dict[str, object] = {argument.value: values for argument, values in keyed.items() if values}
     if files:
         request_arguments["files"] = files
-    if plan.body is not None:
-        request_arguments.update(_body(plan.body, arguments[plan.body.name]))
+    body = plan.body
+    if body is not None and not (body.only_if_passed and body.name not in passed):
+        request_arguments.update(_body(body, arguments[body.name]))
     return path, cast("BuildRequestKwargs", request_arguments)
 
 
@@ -242,6 +248,19 @@ def _spread(item: SpreadParameter, value: object) -> dict[str, object]:
     return fields
 
 
+def _multipart_entries(item: PlannedParameter, value: object) -> list[tuple[str, object]]:
+    """Return what a parameter adds to httpx2's ``files=``, as key-value pairs.
+
+    A file parameter's files, or a form field's JSON part: a part with no
+    filename, holding its JSON, with ``application/json``.
+    """
+    if not item.json_part:
+        return [(item.key, file) for file in _files(item, value)]
+    if value is None:
+        return []
+    return [(item.key, (None, _json_text(item, value), "application/json"))]
+
+
 def _files(item: PlannedParameter, value: object) -> list[object]:
     """Return the files to send under the parameter's key, as they are.
 
@@ -306,6 +325,24 @@ def _dump(value: object, dump: DumpOptions, *, by_alias: bool) -> object:
         exclude_defaults=dump.exclude_defaults,
         fallback=str,
     )
+
+
+def _json_text(item: PlannedParameter, value: object) -> str:
+    """Return a value as JSON text, for a JSON part of a form.
+
+    It's encoded as httpx2 encodes a JSON body: compact, with text as it is,
+    and without NaN or infinity, which JSON can't hold.
+
+    Raises:
+        ArgumentError: If the value can't be JSON. No request is sent.
+    """
+    dumped = _dump_json(item, value)
+    try:
+        return json.dumps(dumped, separators=(",", ":"), ensure_ascii=False, allow_nan=False)
+    except ValueError as error:
+        raise ArgumentError(
+            f"Can't send {item.name!r} as JSON: {error}. No request was sent.", parameter=item.name
+        ) from error
 
 
 def _dump_json(item: PlannedParameter, value: object) -> object:

@@ -69,22 +69,30 @@ class Send:
             ``{"ids": [...]}`` rather than ``[...]``. Like FastAPI's
             ``Body(embed=True)``. A parameter that's already keyed, a plain
             value or one of several ``Json()`` parameters, is sent the same.
-        exclude_unset: Leave out a model's fields that weren't set when it was
-            made, so the server's defaults apply. Pydantic models only: a
-            dataclass doesn't record which fields were set. For JSON, and for
-            a model spread into the query string, headers or form.
+        exclude_unset: Leave out what the caller didn't set, so the server's
+            defaults apply: the parameter itself, when the caller didn't pass
+            it, and a model's fields that weren't set when it was made (a
+            pydantic model's only: a dataclass doesn't record them). For JSON,
+            the query string, headers and form.
         exclude_none: Leave out the fields of a pydantic model or pydantic
-            dataclass that are ``None``. For JSON only: the query string,
-            headers and form leave out ``None`` already.
+            dataclass that are ``None``. For JSON, and a form's JSON part
+            (``json_part``): the query string, headers and a plain form leave
+            out ``None`` already.
         exclude_defaults: Leave out the fields of a pydantic model or pydantic
             dataclass that equal their defaults. For JSON, and for a model
             spread into the query string, headers or form.
+        json_part: Send a ``Form()`` parameter's value as its own part of a
+            multipart form, as JSON with the ``application/json`` content
+            type, as some APIs take a JSON document next to files. The value
+            can be anything pydantic can serialize, and the form becomes
+            multipart.
     """
 
     embed: bool | None = None
     exclude_unset: bool | None = None
     exclude_none: bool | None = None
     exclude_defaults: bool | None = None
+    json_part: bool | None = None
 
 
 # --- Type aliases -------------------------------------------------------------
