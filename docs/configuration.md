@@ -2,6 +2,7 @@
 
 Configure a client when you create it:
 
+<!-- docs_src/configuration/creating.py -->
 ```python
 from clientx import ClientX
 
@@ -27,6 +28,7 @@ For `async def` endpoints, `AsyncClientX` takes the same arguments and class arg
 
 A client class can set the base URL and the `User-Agent` its clients use, as class arguments:
 
+<!-- docs_src/configuration/class_defaults.py -->
 ```python
 from clientx import ClientX
 
@@ -77,6 +79,7 @@ The message includes the full URL, query string included, so values in `params=`
 
 To log requests in your own format, or with your own logger, use httpx2's event hooks, which a client takes as `event_hooks=`:
 
+<!-- docs_src/configuration/event_hooks.py -->
 ```python
 import logging
 

@@ -1,0 +1,11 @@
+# The docs' samples, which read like a user's code: `clientx` sorts with the
+# other third-party imports, and samples need no docstrings of their own. Their
+# comments and docstrings wrap with the code, at 120 columns, not at 80 as the
+# package's do (W505).
+extend = "../ruff.toml"
+
+[lint]
+ignore = ["D", "S101", "W505"]
+
+[lint.isort]
+known-third-party = ["clientx"]

@@ -5,6 +5,7 @@ Each parameter after `self` sends one value. Where it goes is decided once, when
 1. A parameter named like a `{placeholder}` in the path fills it.
 2. Every other parameter has a helper, such as `Annotated[int, Query()]`, and goes where the helper says. A parameter without one raises `DefinitionError`, and the message suggests the helper it most likely needs.
 
+<!-- docs_src/requests/overview.py -->
 ```python
 from typing import Annotated
 
@@ -63,6 +64,7 @@ Each `{placeholder}` in the path, including one in a [resource's prefix](resourc
 
 A value becomes text, as a query value does (see [Query parameters and headers](#query-parameters-and-headers)), and is then percent-encoded, so a value such as `"a/b"` or `"../admin"` stays one path segment and can't add a query string. Don't encode values yourself: a `%` would be encoded again. For a value that spans segments, such as a file path, use `{name:path}`, which keeps the slashes and still encodes each segment:
 
+<!-- docs_src/requests/path_parameters.py -->
 ```python
 from clientx import ClientX, Response, method
 
@@ -80,6 +82,7 @@ A value that would call a different path raises `ArgumentError` before anything 
 
 ## Query parameters and headers
 
+<!-- docs_src/requests/query_and_headers.py -->
 ```python
 from enum import Enum
 from typing import Annotated
@@ -129,6 +132,7 @@ A parameter marked `Json()` goes to the JSON body:
 
 `Body()` sends a `str`, `bytes`, or a stream of `bytes` as the body, as it is: an iterable of `bytes` on a sync client, and an async iterable on an async one. Anything else, or a stream of the other kind, raises `DefinitionError` when the class is defined. An endpoint takes at most one `Body()` parameter. Set the content type with a header:
 
+<!-- docs_src/requests/raw_content.py -->
 ```python
 from typing import Annotated
 
@@ -149,6 +153,7 @@ class NotesAPI(ClientX):
 
 `Form()` parameters are sent as form fields, URL-encoded. With a `File()` parameter, they're sent together as a multipart form:
 
+<!-- docs_src/requests/files.py -->
 ```python
 from typing import Annotated
 
@@ -172,6 +177,7 @@ Without a file or a JSON part, the form is sent URL-encoded, so with an optional
 
 Some APIs take a JSON document as one part of a multipart form, next to the files. Add [`Send(json_part=True)`](#send) to a `Form()` parameter: its value can be anything Pydantic can serialize, and it's sent as a part of its own, as JSON with the `application/json` content type, which makes the form multipart even without a file (a `None` value sends no part):
 
+<!-- docs_src/requests/json_part.py -->
 ```python
 from typing import Annotated
 
@@ -199,6 +205,7 @@ class MessagesAPI(ClientX):
 
 A model, dataclass or mapping marked `Query()`, `Header()` or `Form()` is spread into that part: each field is sent as a separate value, under its alias or name (with underscores turned into hyphens for a header), and each item of a mapping under its own key.
 
+<!-- docs_src/requests/spreading.py -->
 ```python
 from typing import Annotated
 
@@ -239,6 +246,7 @@ The helper says where a parameter goes; `Send` says how it's sent there. Put it 
 
 Many APIs take a body such as `{"ids": [...]}`. Without `embed`, a lone `ids: Annotated[list[str], Json()]` would be the whole body, `[...]`:
 
+<!-- docs_src/requests/send_embed.py -->
 ```python
 from typing import Annotated
 
@@ -272,6 +280,7 @@ Pydantic's own metadata, such as `Field(ge=1)`, isn't a helper and can go anywhe
 
 To reuse an annotation, name it with a `type` alias, plain or generic:
 
+<!-- docs_src/requests/type_aliases.py -->
 ```python
 from typing import Annotated
 

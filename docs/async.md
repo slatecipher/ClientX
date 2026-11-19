@@ -2,6 +2,7 @@
 
 For async code, such as an asyncio app or a FastAPI service, subclass `AsyncClientX` instead of `ClientX`, and write endpoints as `async def` methods with the same decorators. Await an endpoint to send its request and get the decoded result:
 
+<!-- docs_src/async_clients/client.py -->
 ```python
 import asyncio
 from typing import Annotated
@@ -54,6 +55,7 @@ asyncio.run(main())
 
 An `async def` endpoint streams with `-> AsyncIterator[str]` (text lines) or `-> AsyncIterator[bytes]` (chunks). Await the endpoint to send the request, then iterate:
 
+<!-- docs_src/async_clients/streaming.py -->
 ```python
 from collections.abc import AsyncIterator
 
@@ -77,6 +79,7 @@ async def print_events() -> None:
 
 To stream other items, pass an async generator as the decoder:
 
+<!-- docs_src/async_clients/generator_decoder.py -->
 ```python
 from collections.abc import AsyncIterator
 
@@ -105,6 +108,7 @@ class EventsAPI(AsyncClientX):
 
 `httpx2.MockTransport` serves async clients too, with the same handler. Run the tests with an async test plugin, such as anyio's, which comes with httpx2:
 
+<!-- docs_src/async_clients/mock_transport.py -->
 ```python
 import httpx2
 import pytest

@@ -64,6 +64,7 @@ Using an AI coding assistant? Point it at [llms.txt](https://github.com/slatecip
 
 ## Quickstart
 
+<!-- docs_src/readme/quickstart.py -->
 ```python
 from typing import Annotated
 

@@ -20,6 +20,7 @@ A 4xx or 5xx response raises `httpx2.HTTPStatusError` before anything is decoded
 
 For any other type, Pydantic validates the JSON body against the full annotation, so a model, a `list[User]`, a `dict[str, int]`, a dataclass, a `TypedDict` or a union all work, and so do constraints in `Annotated`:
 
+<!-- docs_src/responses/typed_results.py -->
 ```python
 from typing import Annotated
 
@@ -51,6 +52,7 @@ class UsersAPI(ClientX):
 
 `-> Iterator[str]` streams the body as text lines, and `-> Iterator[bytes]` as chunks of bytes, so a large or endless body is never held in memory. For an `async def` endpoint, annotate `-> AsyncIterator[str]` or `-> AsyncIterator[bytes]` instead (see [Async clients](async.md#streaming)).
 
+<!-- docs_src/responses/streaming.py -->
 ```python
 from collections.abc import Iterator
 
@@ -75,6 +77,7 @@ with LogsAPI("https://api.example.com") as api:
 
 With `stream=True`, an endpoint annotated `-> Response` returns the open, unread response, and you decide how to read it. You own it, so close it when you're done:
 
+<!-- docs_src/responses/open_response.py -->
 ```python
 from clientx import ClientX, Response, method
 
@@ -100,6 +103,7 @@ with FilesAPI("https://api.example.com") as api:
 
 `decoder=` takes any function that turns the `httpx2.Response` into the value the endpoint returns, in place of the decoding its annotation implies:
 
+<!-- docs_src/responses/decoder.py -->
 ```python
 from clientx import ClientX, Response, method
 from pydantic import BaseModel, TypeAdapter
@@ -130,6 +134,7 @@ class ItemsAPI(ClientX):
 
 A generator decoder streams. On an endpoint annotated `-> Iterator[...]`, it gets the response unread and yields the items as it reads them:
 
+<!-- docs_src/responses/generator_decoder.py -->
 ```python
 from collections.abc import Iterator
 
@@ -160,6 +165,7 @@ The response, and the generator, are closed when iteration ends, as for any stre
 
 A 4xx or 5xx response raises `httpx2.HTTPStatusError`, from every endpoint, before anything is decoded. The error has the request and the response, and the body is already read, so `error.response.json()` works:
 
+<!-- docs_src/responses/status_errors.py -->
 ```python
 import httpx2
 from clientx import ClientX, method
@@ -188,6 +194,7 @@ with UsersAPI("https://api.example.com") as api:
 
 Turn it off for a whole client with `raise_for_status=False`, or set it for one endpoint. An endpoint's setting wins over the client's:
 
+<!-- docs_src/responses/raise_for_status.py -->
 ```python
 from clientx import ClientX, Response, method
 

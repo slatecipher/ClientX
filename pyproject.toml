@@ -54,14 +54,16 @@ addopts = ["--import-mode=importlib", "-vv", "--cov=clientx", "--cov-report=term
 strict = true
 
 [tool.pyright]
-# Editors check both trees. CI splits them: `make typecheck` passes `src` on the
-# command line (which overrides this list) and gates the build, while
-# `make typecheck-tests` covers `test` as a non-blocking report.
-include = ["src", "test"]
+# Editors check every tree. CI splits them: `make typecheck` passes `src`,
+# `docs_src` and `scripts` on the command line (which overrides this list) and
+# gates the build, while `make typecheck-tests` covers `test` as a non-blocking
+# report.
+include = ["src", "test", "docs_src", "scripts"]
 pythonVersion = "3.12"
 typeCheckingMode = "standard"
-# The shipped package is held to strict mode; tests stay on standard.
-strict = ["src"]
+# The shipped package, the docs' samples and scripts are held to strict mode;
+# tests stay on standard.
+strict = ["src", "docs_src", "scripts"]
 # Pyright reads only `# pyright: ignore[...]` comments, and mypy only `# type: ignore[...]`.
 # test/test_typing.py marks each expected error for both checkers, and each checker reports
 # its own comment if it's unused, which it couldn't if pyright also honoured mypy's.

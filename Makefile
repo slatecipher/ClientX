@@ -1,19 +1,22 @@
-.PHONY: lint lint-ci typecheck typecheck-tests test test-ci check
+.PHONY: lint lint-ci typecheck typecheck-tests test test-ci docs check
 
+# Formats and fixes, then copies the formatted samples into the docs.
 lint:
-	uv run ruff format src test
-	uv run ruff check --fix src test
+	uv run ruff format src test docs_src scripts
+	uv run ruff check --fix src test docs_src scripts
+	uv run python scripts/sync_docs.py
 
 lint-ci:
-	uv run ruff format --check src test
-	uv run ruff check src test
+	uv run ruff format --check src test docs_src scripts
+	uv run ruff check src test docs_src scripts
 
 # Gates CI. Paths on the command line override `include` in pyproject.toml,
-# so this stays scoped to the shipped package even though `include` is wider.
-# test/test_typing.py is the static typing contract for decorated endpoints,
-# so it gates alongside src rather than riding the advisory test check.
+# so this stays scoped to the shipped package, the docs' samples and scripts,
+# even though `include` is wider. test/test_typing.py is the static typing
+# contract for decorated endpoints, so it gates alongside src rather than riding
+# the advisory test check.
 typecheck:
-	uv run pyright src test/test_typing.py
+	uv run pyright src docs_src scripts test/test_typing.py
 	uv run mypy
 
 # Advisory: reported in CI via continue-on-error, never blocks a merge.
@@ -27,5 +30,9 @@ test:
 # a single test file would always fall short.
 test-ci:
 	uv run pytest --cov=clientx --cov-report=term-missing --cov-fail-under=95
+
+# Copies each sample in docs_src/ into the code block that shows it in the docs.
+docs:
+	uv run python scripts/sync_docs.py
 
 check: lint typecheck test

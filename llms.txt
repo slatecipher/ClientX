@@ -6,6 +6,7 @@ Install with `pip install clientx`. ClientX depends on `httpx2`, which is a diff
 
 A complete client:
 
+<!-- docs_src/llms/client.py -->
 ```python
 from typing import Annotated
 
