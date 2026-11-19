@@ -1,8 +1,10 @@
 .PHONY: lint lint-ci typecheck typecheck-tests test test-ci docs check
 
+# Formats and fixes, then copies the formatted samples into the docs.
 lint:
 	uv run ruff format src test docs_src scripts
 	uv run ruff check --fix src test docs_src scripts
+	uv run python scripts/sync_docs.py
 
 lint-ci:
 	uv run ruff format --check src test docs_src scripts

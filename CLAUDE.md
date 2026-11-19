@@ -11,7 +11,7 @@ ClientX turns typed method declarations into HTTP API clients, the way FastAPI t
 ```bash
 uv sync --all-groups --reinstall-package clientx   # install; rerun after changing pyproject.toml (the version comes from metadata)
 make check            # lint + typecheck + test
-make lint             # ruff format + ruff check --fix on src and test
+make lint             # ruff format + ruff check --fix on src, test, docs_src and scripts, then make docs
 make typecheck        # pyright on src, docs_src and scripts (strict) and test/test_typing.py, then mypy on test/test_typing.py; gates CI
 make typecheck-tests  # pyright on test/; advisory in CI
 make docs             # copy the samples in docs_src/ into the pages that show them
@@ -56,7 +56,7 @@ Rules that span modules:
 ## Docs
 
 - `README.md` is the PyPI page: short, with absolute GitHub links into the guide in `docs/`, whose pages link to each other relatively. `llms.txt` is a compact guide for AI assistants and must match the docs and the API.
-- Code samples are modules in `docs_src/<page>/<name>.py`, checked by `make lint` and `make typecheck` and run by `test/test_docs.py` up to their first request. A page shows a copy after a `<!-- docs_src/... -->` comment: edit the file, then run `make docs` (`scripts/sync_docs.py`). The tests fail while a copy is stale or a ```` ```python ```` block has no file; a deliberate fragment is fenced ```` ```python no-check ````.
+- Code samples are modules in `docs_src/<page>/<name>.py`, checked by `make lint` and `make typecheck` and run by `test/test_docs.py` up to their first request. A page shows a copy after a `<!-- docs_src/... -->` comment: edit the file, then run `make docs` (`scripts/sync_docs.py`), which `make lint` runs too. The tests fail while a copy is stale or a ```` ```python ```` block has no file; a deliberate fragment is fenced ```` ```python no-check ````.
 - Snippets use `from clientx import method` and `@method.get(...)`, put `clientx` imports in the third-party block next to `httpx2` and `pydantic`, and send credentials only through httpx2's `auth=`. Link to httpx2's docs rather than restating them.
 
 ## Conventions and releasing

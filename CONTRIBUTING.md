@@ -25,7 +25,7 @@ uv installs the package in editable mode, so your changes to `src/` take effect 
 Other useful commands:
 
 ```bash
-make lint                                       # format and auto-fix with ruff
+make lint                                       # format and auto-fix with ruff, then make docs
 make typecheck                                  # pyright (strict on src/, docs_src/ and scripts/), and pyright and mypy on the typing contract
 make docs                                       # copy the samples in docs_src/ into the docs
 uv run pytest test/test_paths.py::test_name     # run a single test
@@ -39,7 +39,7 @@ When you change code:
 - In tests that send requests, take the `mock_transport` fixture from `test/conftest.py` as a parameter: it records what's sent and answers without a network. pytest runs in its recommended `importlib` import mode, where test modules can't import helper modules, so share test helpers as fixtures in `conftest.py`. It also runs in strict mode: an unregistered marker or a duplicate parametrize ID is an error.
 - Ruff formats and lints the code with a 120-character line limit, and checks that docstrings and comments wrap at 80 (W505). `make lint` fixes most issues for you, but not W505: rewrap those lines yourself.
 - Write docstrings by the rules in [Docstrings](#docstrings).
-- The code samples in the docs live in `docs_src/`, one module per sample, so ruff and pyright check them like any other code, and `test/test_docs.py` runs each one up to its first request. A page shows a copy of each sample, after a comment naming its file, such as `<!-- docs_src/requests/overview.py -->`. Edit the file, not the copy, then run `make docs`: the tests fail while a copy is out of date, or while a ```` ```python ```` block has no file. Fence a block that's deliberately incomplete as ```` ```python no-check ````.
+- The code samples in the docs live in `docs_src/`, one module per sample, so ruff and pyright check them like any other code, and `test/test_docs.py` runs each one up to its first request. A page shows a copy of each sample, after a comment naming its file, such as `<!-- docs_src/requests/overview.py -->`. Edit the file, not the copy, then run `make docs`, which `make lint` and `make check` run too: the tests fail while a copy is out of date, or while a ```` ```python ```` block has no file. Fence a block that's deliberately incomplete as ```` ```python no-check ````.
 
 ## Docstrings
 
