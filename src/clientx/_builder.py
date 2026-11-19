@@ -328,8 +328,21 @@ def _dump(value: object, dump: DumpOptions, *, by_alias: bool) -> object:
 
 
 def _json_text(item: PlannedParameter, value: object) -> str:
-    """Return a value as compact JSON text, for a JSON part of a form."""
-    return json.dumps(_dump_json(item, value), separators=(",", ":"))
+    """Return a value as JSON text, for a JSON part of a form.
+
+    It's encoded as httpx2 encodes a JSON body: compact, with text as it is,
+    and without NaN or infinity, which JSON can't hold.
+
+    Raises:
+        ArgumentError: If the value can't be JSON. No request is sent.
+    """
+    dumped = _dump_json(item, value)
+    try:
+        return json.dumps(dumped, separators=(",", ":"), ensure_ascii=False, allow_nan=False)
+    except ValueError as error:
+        raise ArgumentError(
+            f"Can't send {item.name!r} as JSON: {error}. No request was sent.", parameter=item.name
+        ) from error
 
 
 def _dump_json(item: PlannedParameter, value: object) -> object:

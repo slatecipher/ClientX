@@ -75,8 +75,9 @@ class Send:
             pydantic model's only: a dataclass doesn't record them). For JSON,
             the query string, headers and form.
         exclude_none: Leave out the fields of a pydantic model or pydantic
-            dataclass that are ``None``. For JSON only: the query string,
-            headers and form leave out ``None`` already.
+            dataclass that are ``None``. For JSON, and a form's JSON part
+            (``json_part``): the query string, headers and a plain form leave
+            out ``None`` already.
         exclude_defaults: Leave out the fields of a pydantic model or pydantic
             dataclass that equal their defaults. For JSON, and for a model
             spread into the query string, headers or form.

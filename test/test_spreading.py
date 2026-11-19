@@ -260,7 +260,7 @@ def test_send_dump_options_on_a_spread_model(send: Send, query: str, mock_transp
 
 
 def test_exclude_none_doesnt_apply_to_a_spread_model() -> None:
-    message = "has Send(exclude_none=...), which applies only to a Json() parameter, but it's marked Query()"
+    message = "has Send(exclude_none=...), which applies only to a Form() or Json() parameter, but it's marked Query()"
     with pytest.raises(DefinitionError, match=re.escape(message)):
 
         class API(ClientX):

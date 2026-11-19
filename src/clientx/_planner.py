@@ -54,7 +54,8 @@ argument, so a rule that differs by argument lives in that argument's class:
   as well as a model's unset fields. The dump options must fit the type, since
   pydantic ignores them silently otherwise: ``exclude_none`` and
   ``exclude_defaults`` need a model or pydantic dataclass, and
-  ``exclude_unset`` a default or a pydantic model to act on.
+  ``exclude_unset`` a default other than ``None``, or a pydantic model, to act
+  on. A ``Form()`` takes ``exclude_none`` only on a JSON part.
 
 The path template has ``{name}``, filled with one segment, and ``{name:path}``,
 whose value keeps its slashes. There are no literal braces: any brace that
@@ -304,6 +305,14 @@ class HttpxArgumentSpec:
         return _is_plain(annotation)
 
     @classmethod
+    def check_send(cls, send: Send, name: str) -> None:
+        """Raise ``DefinitionError`` if ``Send`` options don't go together here.
+
+        ``send_options`` says which options the argument takes; this checks how
+        they combine. Nothing to check, by default.
+        """
+
+    @classmethod
     def what_fits(cls) -> str:
         """Return what a value can be, for messages: a plain value."""
         plain_names = ", ".join(plain_type.__name__ for plain_type in _PLAIN_TYPES)
@@ -325,7 +334,8 @@ class ParamsSpec(HttpxArgumentSpec):
     accepts = "the query string, which takes a plain value or a collection of them"
     takes_text = True
     takes_lists = True
-    # For a spread model. Not exclude_none: a query string leaves out None.
+    # exclude_unset for a parameter with a default, or a model; exclude_defaults
+    # for a spread model. Not exclude_none: a query string leaves out None.
     send_options = frozenset({"exclude_unset", "exclude_defaults"})
 
 
@@ -334,7 +344,8 @@ class HeadersSpec(HttpxArgumentSpec):
     helper = "Header()"
     accepts = "the headers, which take a plain value"
     takes_text = True
-    # For a spread model. Not exclude_none: headers leave out None.
+    # exclude_unset for a parameter with a default, or a model; exclude_defaults
+    # for a spread model. Not exclude_none: headers leave out None.
     send_options = frozenset({"exclude_unset", "exclude_defaults"})
 
     @classmethod
@@ -356,10 +367,18 @@ class DataSpec(HttpxArgumentSpec):
     takes_text = True
     takes_lists = True
     body_kind = "a form"
-    # exclude_unset and exclude_defaults for a spread model, or a JSON part.
-    # Not exclude_none: a form leaves out None. json_part sends a value as a
-    # JSON part of a multipart form, as some APIs take next to files.
-    send_options = frozenset({"exclude_unset", "exclude_defaults", "json_part"})
+    # json_part sends a value as a JSON part of a multipart form, as some APIs
+    # take next to files. The dump options act on a spread model or a JSON
+    # part; exclude_none on a JSON part only, since a form leaves out None.
+    send_options = frozenset({"exclude_unset", "exclude_none", "exclude_defaults", "json_part"})
+
+    @classmethod
+    def check_send(cls, send: Send, name: str) -> None:
+        if send.exclude_none is not None and not send.json_part:
+            raise DefinitionError(
+                f"Parameter {name!r} has Send(exclude_none=...), but a Form() field leaves out None already. It "
+                "applies only to a JSON part, with Send(json_part=True). Remove it."
+            )
 
 
 class FilesSpec(HttpxArgumentSpec):
@@ -564,6 +583,7 @@ def _helper_argument(parameter: ParameterInfo, path_template: str) -> HttpxArgum
             f"Parameter {parameter.name!r} has Send({option.name}=...), which applies only to a "
             f"{supported_by} parameter, but it's marked {spec.helper}. Remove it."
         )
+    spec.check_send(parameter.send, parameter.name)
     _check_dump_options(parameter)
     return argument
 
@@ -614,25 +634,34 @@ def _check_dump_options(parameter: ParameterInfo) -> None:
     only (``_DUMP_OPTIONS``), so the type must have one, at any depth:
     ``list[User]`` counts. ``exclude_unset`` leaves out the parameter when it
     isn't passed, and a pydantic model's unset fields, so it needs a default
-    or a model.
+    other than ``None``, which is left out anyway, or a model.
     """
     for option, (affects, described) in _DUMP_OPTIONS.items():
         if getattr(parameter.send, option) is None:
             continue
         if not _contains_class(parameter.annotation, affects, frozenset()):
+            hint = (
+                " To leave out the parameter itself when the caller doesn't pass it, use Send(exclude_unset=True)."
+                if option == "exclude_defaults"
+                else ""
+            )
             raise DefinitionError(
                 f"Parameter {parameter.name!r} has Send({option}=...), which leaves out fields of "
-                f"{described}, but its type has none. Remove it."
+                f"{described}, but its type has none. Remove it.{hint}"
             )
     if (
         parameter.send.exclude_unset is not None
-        and parameter.default is NO_VALUE
+        and (parameter.default is NO_VALUE or parameter.default is None)
         and not _contains_class(parameter.annotation, _is_model, frozenset())
     ):
+        why = (
+            "it has no default, so it's always passed"
+            if parameter.default is NO_VALUE
+            else "its default is None, which is left out anyway"
+        )
         raise DefinitionError(
-            f"Parameter {parameter.name!r} has Send(exclude_unset=...), but it has no default, so it's always "
-            "passed, and its type has no pydantic model, whose unset fields it would leave out. Give it a "
-            "default, or remove it."
+            f"Parameter {parameter.name!r} has Send(exclude_unset=...), but {why}, and its type has no pydantic "
+            "model, whose unset fields it would leave out. Give it another default, or remove it."
         )
 
 
@@ -827,6 +856,7 @@ def _plan_spread(parameter: ParameterInfo, argument: HttpxArgument, annotation: 
     model raises ``DefinitionError``.
     """
     spec = _SPECS[argument]
+    dump = _dump_options(parameter)
     cls = cast("type[Any]", _class_of(annotation))
     if issubclass(cls, Mapping):
         # dict[str, int] lists the key and value types; a bare dict, neither.
@@ -837,12 +867,9 @@ def _plan_spread(parameter: ParameterInfo, argument: HttpxArgument, annotation: 
                 f"Parameter {parameter.name!r} is marked {spec.helper}, so each item of the mapping goes to "
                 f"{spec.accepts}. Its value type isn't one."
             )
-        return SpreadParameter(
-            parameter.name, argument, many=spec.takes_lists, only_if_passed=bool(parameter.send.exclude_unset)
-        )
+        return SpreadParameter(parameter.name, argument, many=spec.takes_lists, only_if_passed=dump.exclude_unset)
     if _has_model_serializer(cls):
         # It decides its own keys, so what it dumps is sent, as a mapping is.
-        dump = _dump_options(parameter)
         return SpreadParameter(
             parameter.name, argument, many=spec.takes_lists, only_if_passed=dump.exclude_unset, dump=dump
         )
@@ -854,7 +881,6 @@ def _plan_spread(parameter: ParameterInfo, argument: HttpxArgument, annotation: 
                 f"{spec.accepts}. Field {attribute!r} isn't one."
             )
         keys.append((attribute, spec.key(attribute, alias)))
-    dump = _dump_options(parameter)
     return SpreadParameter(
         parameter.name, argument, tuple(keys), many=spec.takes_lists, only_if_passed=dump.exclude_unset, dump=dump
     )

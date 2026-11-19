@@ -436,6 +436,22 @@ def test_send_dump_options_shape_the_json(
     assert json.loads(only_request(sent).content) == body
 
 
+DEFAULT_PROFILE = Profile()
+
+
+def test_send_exclude_unset_leaves_out_a_lone_body_not_passed(mock_transport: MockTransport) -> None:
+    # A PATCH that sends nothing unless asked, and then only the fields set.
+    class API(ClientX):
+        @method.patch("/me")
+        def update(self, profile: Annotated[Profile, Json(), Send(exclude_unset=True)] = DEFAULT_PROFILE) -> None: ...
+
+    sent: list[httpx2.Request] = []
+    api = API(BASE_URL, transport=mock_transport(sent))
+    api.update()
+    api.update(Profile(nickname="s"))
+    assert [request.content for request in sent] == [b"", b'{"nickname":"s"}']
+
+
 def test_exclude_none_on_a_json_field_leaves_out_an_explicit_none(mock_transport: MockTransport) -> None:
     class API(ClientX):
         @method.patch("/me")
@@ -461,9 +477,9 @@ def test_exclude_none_on_a_json_field_leaves_out_an_explicit_none(mock_transport
         ),
         pytest.param(Annotated[str, Json(), Send(exclude_defaults=True)], "but its type has none", id="plain value"),
         pytest.param(
-            Annotated[str, Json(), Send(exclude_unset=True)],
-            "has Send(exclude_unset=...), but it has no default, so it's always passed",
-            id="exclude_unset with nothing to leave out",
+            Annotated[NewUser, Form(), Send(exclude_none=True)],
+            "but a Form() field leaves out None already. It applies only to a JSON part",
+            id="exclude_none on a plain form field",
         ),
     ],
 )
@@ -619,15 +635,15 @@ def test_send_json_part_sends_a_form_field_as_a_json_part(mock_transport: MockTr
         @method.post("/messages")
         def create(
             self,
-            message: Annotated[NewUser, Form(alias="payload_json"), Send(json_part=True)],
+            message: Annotated[NewUser, Form(alias="payload_json"), Send(json_part=True, exclude_none=True)],
             doc: Annotated[bytes, File()],
         ) -> None: ...
 
     sent: list[httpx2.Request] = []
-    API(BASE_URL, transport=mock_transport(sent)).create(NewUser(name="A", emailAddress="a@x"), b"%PDF")
+    API(BASE_URL, transport=mock_transport(sent)).create(NewUser(name="Á", emailAddress="a@x"), b"%PDF")
     request = only_request(sent)
-    part = (
-        'name="payload_json"\r\nContent-Type: application/json\r\n\r\n{"name":"A","emailAddress":"a@x","joined":null}'
-    )
+    # As httpx2 encodes a JSON body: compact, with text as it is. exclude_none
+    # leaves out "joined".
+    part = 'name="payload_json"\r\nContent-Type: application/json\r\n\r\n{"name":"Á","emailAddress":"a@x"}'
     assert content_type(request) == "multipart/form-data"
     assert part in request.read().decode()

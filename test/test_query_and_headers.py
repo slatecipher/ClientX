@@ -2,6 +2,7 @@
 
 import datetime
 import enum
+import inspect
 import json
 import re
 from collections.abc import Callable, Collection, Sequence
@@ -429,14 +430,37 @@ def test_a_value_that_cant_become_text_raises_before_sending(mock_transport: Moc
     assert sent == []
 
 
+DEFAULT_FILTERS = Filters(status="open")
+
+
 def test_send_exclude_unset_leaves_out_a_parameter_not_passed(mock_transport: MockTransport) -> None:
     # So the server applies its own default; passing the same value sends it.
     class API(ClientX):
         @method.get("/items")
-        def search(self, page: Annotated[int, Query(), Send(exclude_unset=True)] = 1) -> None: ...
+        def search(
+            self,
+            page: Annotated[int, Query(), Send(exclude_unset=True)] = 1,
+            filters: Annotated[Filters, Query(), Send(exclude_unset=True)] = DEFAULT_FILTERS,
+        ) -> None: ...
 
     sent: list[httpx2.Request] = []
     api = API(BASE_URL, transport=mock_transport(sent))
     api.search()
-    api.search(1)
-    assert [request.url.query.decode() for request in sent] == ["", "page=1"]
+    api.search(1, DEFAULT_FILTERS)
+    assert [request.url.query.decode() for request in sent] == ["", "page=1&status=open"]
+
+
+@pytest.mark.parametrize(
+    ("default", "why"),
+    [
+        pytest.param(inspect.Parameter.empty, "it has no default, so it's always passed", id="no default"),
+        pytest.param(None, "its default is None, which is left out anyway", id="None default"),
+    ],
+)
+def test_send_exclude_unset_with_nothing_to_leave_out_fails(default: object, why: str) -> None:
+    def search(self: ClientX, page: Annotated[int | None, Query(), Send(exclude_unset=True)]) -> None: ...
+
+    if default is not inspect.Parameter.empty:
+        search.__defaults__ = (default,)
+    with pytest.raises(DefinitionError, match=re.escape(f"has Send(exclude_unset=...), but {why}")):
+        type("API", (ClientX,), {"search": method.get("/items")(search)})
