@@ -85,6 +85,51 @@ A model chooses a tool and fills in its arguments from what the tool says, so th
 - **An argument's description** is its helper's `description=`, such as `Query(description="...")`, or else its entry in the docstring's `Args:` section. A [Google-style](../CONTRIBUTING.md#docstrings) `Args:` section then serves a model, editors' hovers and `help()` at once.
 - **The schemas are compact.** Pydantic's `title` on every property is left out, and a model or `type` alias is written in place rather than behind a `$ref`, unless it refers to itself. Constraints, such as `Query(ge=1)`, and defaults are kept.
 
+### Writing descriptions for a model
+
+A model has only the descriptions and the schema to go on, never the code, so write the docstring for a reader who can't see anything else:
+
+- **Start with what the endpoint does,** in one line.
+- **In the paragraph after it, say when to use it,** rather than a similar endpoint, and what to expect: side effects, limits, paging, and errors such as a 404 for an unknown ID. Everything before the first section is the tool's description, so `Returns:`, `Raises:` and the other sections don't reach the model: keep nothing it needs there.
+- **In `Args:`, give each argument's format, unit and allowed values,** such as an ISO date, seconds, or a maximum.
+- **Let the types say what they can.** A `Literal` gives the model the allowed values as a list, and a constraint such as `Query(le=100)` gives it a limit.
+- **Markdown is fine,** such as `single backticks` and short lists. Avoid reStructuredText's ` ``double backticks`` ` and `::` blocks, which reach the model as they are.
+
+Before, the model has to guess what `since` takes, which values `status` has, and how this tool differs from others:
+
+```py
+@method.get("/orders")
+def list_orders(
+    self,
+    since: Annotated[str | None, Query()] = None,
+    status: Annotated[str | None, Query()] = None,
+) -> list[Order]:
+    """Get orders."""
+    ...
+```
+
+After, the description and the schema answer all three:
+
+```py
+@method.get("/orders")
+def list_orders(
+    self,
+    since: Annotated[str | None, Query()] = None,
+    status: Annotated[Literal["open", "shipped", "cancelled"] | None, Query()] = None,
+) -> list[Order]:
+    """List the account's orders, newest first, 50 at most.
+
+    Use `retrieve_order` for one order whose ID you know. Without `since`,
+    only the last 30 days are listed.
+
+    Args:
+        since: Only orders placed on or after this day, as an ISO date such
+            as `2026-01-31`.
+        status: Only orders in this state.
+    """
+    ...
+```
+
 ## Calling a tool
 
 `tool.call(arguments)` takes the arguments as a model sends them, a mapping from parameter names to JSON values, and returns the result as JSON-ready data, with a model dumped as Pydantic dumps it in JSON mode:
