@@ -118,9 +118,35 @@ jobs:
       - name: Run tests
         run: make test-ci
 
+  # Build and check the package as release.yml does, so a packaging problem shows
+  # up on the pull request that causes it, not on release day. Nothing is uploaded.
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Set up Python
+        run: uv python install
+
+      - name: Build
+        run: uv build
+
+      - name: Check package metadata
+        run: uvx twine check --strict dist/*
+
+      - name: Smoke-test the wheel in a clean environment
+        run: uv run --isolated --no-project --with dist/*.whl python -c "import clientx; print(clientx.__version__)"
+
   # Merge Dependabot patch/minor updates once all jobs pass; majors need manual review.
   dependabot-auto-merge:
-    needs: [lint, typecheck, test, test-lowest]
+    needs: [lint, typecheck, test, test-lowest, build]
     if: github.event_name == 'pull_request' && github.event.pull_request.user.login == 'dependabot[bot]'
     runs-on: ubuntu-latest
     permissions:
