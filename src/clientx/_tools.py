@@ -51,13 +51,54 @@ if TYPE_CHECKING:
     from clientx._endpoint import Endpoint
     from clientx._signature import ParameterInfo
 
+
+# --- Entry point --------------------------------------------------------------
+def list_tools(client: ClientX | AsyncClientX) -> list[Tool]:
+    """Return a tool for each endpoint a model can call, resources' included.
+
+    Every endpoint on the client and the resources mounted on it is a tool,
+    named by its attribute path (``users_create``), except one a model can't
+    use well:
+
+    - one that streams, annotated ``-> Iterator[...]`` or with
+      ``stream=True``;
+    - one that returns the raw ``Response``: annotate what the API returns
+      instead, such as a model or ``dict[str, Any]``;
+    - one with an argument that has no JSON form, such as a binary file.
+
+    An endpoint's second name in its class is listed once.
+    """
+    tools: list[Tool] = []
+    _collect(client, "", tools, set())
+    return tools
+
+
+def _collect(owner: object, prefix: str, tools: list[Tool], seen: set[int]) -> None:
+    """Add a tool for each endpoint on ``owner``, then on its resources.
+
+    ``seen`` holds each endpoint met so far, by ``id``, so an endpoint's second
+    name is left out.
+    """
+    for name, value in _members(type(owner)).items():
+        endpoint = endpoint_for(value)
+        if endpoint is not None and id(endpoint) not in seen:
+            seen.add(id(endpoint))
+            tool = _tool(prefix + name, endpoint, getattr(owner, name))
+            if tool is not None:
+                tools.append(tool)
+        elif hasattr(type(value), "__clientx_prefix__"):  # A mounted resource.
+            _collect(getattr(owner, name), f"{prefix}{name}_", tools, seen)
+
+
+def _members(cls: type) -> dict[str, object]:
+    """Return the attributes ``cls`` and its parents define, in class order."""
+    members: dict[str, object] = {}
+    for class_ in reversed(cls.__mro__):
+        members.update(vars(class_))
+    return members
+
+
 # --- Tools --------------------------------------------------------------------
-# What each HTTP method implies, for the hints.
-_READ_ONLY = frozenset({"GET", "HEAD", "OPTIONS"})
-_IDEMPOTENT = frozenset({"GET", "HEAD", "OPTIONS", "PUT", "DELETE"})
-_DESTRUCTIVE = frozenset({"PUT", "PATCH", "DELETE"})
-
-
 @dataclass(frozen=True, kw_only=True)
 class Tool:
     """An endpoint described for a model, and called with a model's arguments.
@@ -182,71 +223,13 @@ class _Call:
         return None if self.output is None else self.output.dump_python(result, mode="json")
 
 
-# How much of an error response's body a message shows.
-_BODY_LIMIT = 2000
-
-
-def _truncated(text: str) -> str:
-    if len(text) <= _BODY_LIMIT:
-        return text
-    return f"{text[:_BODY_LIMIT]}... ({len(text) - _BODY_LIMIT} more characters)"
-
-
-def _problems(error: ValidationError, *, values: bool) -> str:
-    """Return each of Pydantic's errors as ``where: what``, without its URL.
-
-    With ``values``, a value that's there but doesn't fit is shown too, short:
-    it's the model's own argument. A response's values aren't.
-    """
-    problems: list[str] = []
-    for problem in error.errors(include_url=False, include_context=False):
-        where = ".".join(str(part) for part in problem["loc"]) or "the arguments"
-        # A missing argument is reported as keyword-only, as the stand-in's are.
-        if problem["type"].startswith("missing"):
-            problems.append(f"{where}: is required")
-            continue
-        text = f"{where}: {problem['msg']}"
-        if values:
-            text += f" (got {problem['input']!r:.80})"
-        problems.append(text)
-    return "; ".join(problems)
-
-
-# --- Listing a client's tools -------------------------------------------------
-def list_tools(client: ClientX | AsyncClientX) -> list[Tool]:
-    """Return a tool for each endpoint a model can call, resources' included.
-
-    See the module docstring for which endpoints are left out, and how each
-    tool is described.
-    """
-    tools: list[Tool] = []
-    _collect(client, "", tools, set())
-    return tools
-
-
-def _collect(owner: object, prefix: str, tools: list[Tool], seen: set[int]) -> None:
-    """Add a tool for each endpoint on ``owner``, then on its resources.
-
-    ``seen`` holds each endpoint met so far, by ``id``, so an endpoint's second
-    name is left out.
-    """
-    for name, value in _members(type(owner)).items():
-        endpoint = endpoint_for(value)
-        if endpoint is not None and id(endpoint) not in seen:
-            seen.add(id(endpoint))
-            tool = _tool(prefix + name, endpoint, getattr(owner, name))
-            if tool is not None:
-                tools.append(tool)
-        elif hasattr(type(value), "__clientx_prefix__"):  # A mounted resource.
-            _collect(getattr(owner, name), f"{prefix}{name}_", tools, seen)
-
-
-def _members(cls: type) -> dict[str, object]:
-    """Return the attributes ``cls`` and its parents define, in class order."""
-    members: dict[str, object] = {}
-    for class_ in reversed(cls.__mro__):
-        members.update(vars(class_))
-    return members
+# --- Building a tool ----------------------------------------------------------
+# What each HTTP method implies, for the hints. POST is in none of them: it
+# usually adds something, so it's neither read-only nor idempotent, and not
+# destructive either, which is for replacing or removing what's there.
+_READ_ONLY = frozenset({"GET", "HEAD", "OPTIONS"})
+_IDEMPOTENT = frozenset({"GET", "HEAD", "OPTIONS", "PUT", "DELETE"})
+_DESTRUCTIVE = frozenset({"PUT", "PATCH", "DELETE"})
 
 
 def _tool(name: str, endpoint: Endpoint, function: Callable[..., Any]) -> Tool | None:
@@ -309,6 +292,37 @@ def _arguments_adapter(parameters: Sequence[ParameterInfo]) -> TypeAdapter[dict[
     arguments.__annotations__ = {p.name: p.annotation for p in parameters}
     # Pydantic validates a call to a function, which its types don't allow.
     return TypeAdapter[dict[str, Any]](cast("Any", arguments), config=_BY_NAME)
+
+
+# --- Error messages -----------------------------------------------------------
+# How much of an error response's body a message shows.
+_BODY_LIMIT = 2000
+
+
+def _truncated(text: str) -> str:
+    if len(text) <= _BODY_LIMIT:
+        return text
+    return f"{text[:_BODY_LIMIT]}... ({len(text) - _BODY_LIMIT} more characters)"
+
+
+def _problems(error: ValidationError, *, values: bool) -> str:
+    """Return each of Pydantic's errors as ``where: what``, without its URL.
+
+    With ``values``, a value that's there but doesn't fit is shown too, short:
+    it's the model's own argument. A response's values aren't.
+    """
+    problems: list[str] = []
+    for problem in error.errors(include_url=False, include_context=False):
+        where = ".".join(str(part) for part in problem["loc"]) or "the arguments"
+        # A missing argument is reported as keyword-only, as the stand-in's are.
+        if problem["type"].startswith("missing"):
+            problems.append(f"{where}: is required")
+            continue
+        text = f"{where}: {problem['msg']}"
+        if values:
+            text += f" (got {problem['input']!r:.80})"
+        problems.append(text)
+    return "; ".join(problems)
 
 
 # --- Descriptions -------------------------------------------------------------

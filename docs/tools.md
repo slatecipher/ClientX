@@ -54,6 +54,18 @@ except ToolError as error:
 
 `clientx.tools` doesn't depend on any AI library. Register the tools with the framework your model runs in, such as an MCP server: each tool has what a framework asks for (see [Using a framework](#using-a-framework)).
 
+## Which endpoints become tools
+
+Every endpoint on the client, and on the resources mounted on it, is a tool, except one a model can't use well. `list_tools` leaves these out:
+
+| The endpoint | Why it's left out | To make it a tool |
+|---|---|---|
+| Streams: `-> Iterator[...]`, `-> AsyncIterator[...]` or `stream=True` | A stream can be endless, and wouldn't fit in a model's context. | Add an endpoint that returns the data whole, or a page of it. |
+| Returns the raw `Response` | A response object isn't data a model can read. | Annotate what the API returns, such as a model or `dict[str, Any]`. |
+| Takes an argument with no JSON form, such as a binary file (`BinaryIO`) | A model sends its arguments as JSON. | Keep it for your code: a model can't send a file. |
+
+An endpoint's second name in its class is the same endpoint, so it's listed once.
+
 ## What a tool has
 
 | Attribute | What it is |
@@ -64,8 +76,6 @@ except ToolError as error:
 | `output_schema` | The JSON Schema of the result, from the return annotation, or `None` for `-> None`. |
 | `read_only`, `destructive`, `idempotent` | Hints from the HTTP method: `GET`, `HEAD` and `OPTIONS` only read; `PUT`, `PATCH` and `DELETE` can change or delete what's there; and `GET`, `HEAD`, `OPTIONS`, `PUT` and `DELETE` have the same effect when called twice. |
 | `is_async` | The endpoint is `async def`, so the tool is called with `await tool.acall(arguments)` instead of `call()`. |
-
-Every endpoint on the client, and on the resources mounted on it, is a tool, except one a model can't use well: an endpoint that streams (`-> Iterator[...]` or `stream=True`), one that returns the raw `Response`, and one with an argument that has no JSON form, such as a binary file. An endpoint's second name in its class is the same endpoint, so it's listed once.
 
 ## Descriptions
 
