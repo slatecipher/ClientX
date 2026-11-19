@@ -244,8 +244,7 @@ def test_without_send_embed_a_lone_list_is_the_whole_body(mock_transport: MockTr
         pytest.param(
             "/items",
             Annotated[int, Query(), Send(embed=True)],
-            "has Send(embed=...), which sends a JSON body parameter under its name, but it goes to the request's "
-            "params",
+            "has Send(embed=...), which applies only to a Json() parameter, but it's marked Query()",
             id="query parameter",
         ),
         pytest.param(
@@ -257,7 +256,7 @@ def test_without_send_embed_a_lone_list_is_the_whole_body(mock_transport: MockTr
         pytest.param(
             "/items",
             Annotated[bytes, Body(), Send(embed=True)],
-            "but it goes to the request's content",
+            "but it's marked Body()",
             id="raw content",
         ),
         pytest.param(

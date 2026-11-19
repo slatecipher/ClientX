@@ -18,8 +18,9 @@ from typing import Any, get_origin
 
 from httpx2 import USE_CLIENT_DEFAULT, Response, Timeout
 
+from clientx._builder import build_request
 from clientx._decoding import default_decoder, is_stream
-from clientx._request import RequestPlan, plan_request
+from clientx._planner import RequestPlan, plan_request
 from clientx._signature import NO_VALUE, BoundCall, ParameterInfo, ParameterKind, SignatureInfo
 from clientx._types import BuildRequestKwargs, Decoder, MethodType, UseClientDefault
 from clientx.exceptions import DefinitionError
@@ -234,7 +235,7 @@ class Endpoint:
                 together; see ``plan_request``.
         """
         try:
-            self.request = plan_request(self.raw_path, self.parameters())
+            self.request = plan_request(self.raw_path, self.parameters(), is_async=self.signature.is_async)
         except DefinitionError as error:
             raise DefinitionError(f"Endpoint '{self.signature.qualname}': {error}") from error
 
@@ -257,7 +258,7 @@ class Endpoint:
                 f"Endpoint '{self.signature.qualname}' can't be called: it isn't declared in the body of a "
                 "ClientX, AsyncClientX, Resource or AsyncResource subclass."
             )
-        url, request_arguments = self.request.build(bound.arguments)
+        url, request_arguments = build_request(self.request, bound.arguments, bound.passed)
         request_arguments["timeout"] = self.timeout
         return url, request_arguments
 

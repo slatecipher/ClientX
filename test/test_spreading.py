@@ -172,20 +172,18 @@ class WithList(BaseModel):
     [
         pytest.param(
             Annotated[Nested, Query()],
-            "sends each field of Nested to the query string, which takes a plain value, such as str or int, "
-            "or a list of them; field 'inner' isn't one",
+            "so each field of Nested goes to the query string, which takes a plain value or a collection of "
+            "them. Field 'inner' isn't one",
             id="query field that's a model",
         ),
         pytest.param(
             Annotated[WithList, Header()],
-            "sends each field of WithList to the headers, which take a plain value, such as str or int; "
-            "field 'tags' isn't one",
+            "so each field of WithList goes to the headers, which take a plain value. Field 'tags' isn't one",
             id="header field that's a list",
         ),
         pytest.param(
             Annotated[dict[str, list[str]], Header()],
-            "sends each item of the mapping to the headers, which take a plain value, such as str or int; "
-            "its value type isn't one",
+            "so each item of the mapping goes to the headers, which take a plain value. Its value type isn't one",
             id="header mapping of lists",
         ),
     ],

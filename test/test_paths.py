@@ -5,7 +5,7 @@ import enum
 import re
 import uuid
 from collections.abc import Callable
-from typing import Annotated
+from typing import Annotated, Any
 
 import httpx2
 import pytest
@@ -76,7 +76,7 @@ def test_an_empty_path_calls_the_base_url(mock_transport: MockTransport) -> None
 def test_a_value_becomes_one_encoded_segment(value: object, segment: str, mock_transport: MockTransport) -> None:
     class API(ClientX):
         @method.get("/items/{item}")
-        def item(self, item: object) -> None: ...
+        def item(self, item: Any) -> None: ...
 
     sent: list[httpx2.Request] = []
     API(BASE_URL, transport=mock_transport(sent)).item(value)
@@ -101,14 +101,12 @@ def test_a_path_placeholder_keeps_its_slashes(value: str, segments: str, mock_tr
     assert sent_path(sent) == f"/v1/files/{segments}"
 
 
-def test_doubled_braces_are_literal_braces(mock_transport: MockTransport) -> None:
-    class API(ClientX):
-        @method.get("/a/{{literal}}/{item}")
-        def item(self, item: int) -> None: ...
+def test_doubled_braces_arent_literal_braces() -> None:
+    with pytest.raises(DefinitionError, match=re.escape("has a brace that isn't part of a placeholder")):
 
-    sent: list[httpx2.Request] = []
-    API(BASE_URL, transport=mock_transport(sent)).item(7)
-    assert sent_path(sent) == "/v1/a/%7Bliteral%7D/7"
+        class API(ClientX):
+            @method.get("/a/{{literal}}/{item}")
+            def item(self, item: int) -> None: ...
 
 
 def test_a_resource_prefix_can_have_placeholders(mock_transport: MockTransport) -> None:
@@ -161,7 +159,7 @@ def test_a_value_that_would_change_the_path_raises_before_sending(
 ) -> None:
     class API(ClientX):
         @method.get(template)
-        def fetch(self, name: str | None) -> None: ...
+        def fetch(self, name: Any) -> None: ...
 
     sent: list[httpx2.Request] = []
     with pytest.raises(ArgumentError, match=re.escape(problem)) as caught:
@@ -234,7 +232,7 @@ def test_a_url_parameter_needs_a_placeholder() -> None:
 
 
 def test_a_placeholders_parameter_cant_go_elsewhere_too() -> None:
-    with pytest.raises(DefinitionError, match=re.escape("so it can't also go to the request's params")):
+    with pytest.raises(DefinitionError, match=re.escape("so it can't also be marked Query()")):
 
         class API(ClientX):
             @method.get("/users/{user_id}")
