@@ -114,6 +114,7 @@ with ExampleAPI("https://api.example.com") as api:
 - [Async clients](https://github.com/slatecipher/ClientX/blob/mainline/docs/async.md): `AsyncClientX` and `AsyncResource` for `async def` endpoints, concurrent requests, and async streaming.
 - [Testing](https://github.com/slatecipher/ClientX/blob/mainline/docs/testing.md): testing a client without the network.
 - [Errors](https://github.com/slatecipher/ClientX/blob/mainline/docs/errors.md): the errors ClientX raises, and when.
+- [API reference](https://github.com/slatecipher/ClientX/blob/mainline/docs/reference.md): every public name, with its signature and arguments.
 
 ## Development
 
