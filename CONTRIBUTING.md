@@ -66,7 +66,7 @@ Docstrings follow the [Google Python Style Guide](https://google.github.io/style
 - Keep each pull request to one change, on a branch named `<type>/<short-description>`, for example `fix/stream-close`.
 - In the description, say what changed and why, and how you tested it. If the pull request resolves an issue, add `Closes #N`.
 - For changes users will notice, add an entry under `## [Unreleased]` in [CHANGELOG.md](CHANGELOG.md), and update [README.md](README.md), the guide in [docs/](docs/), and [llms.txt](llms.txt) if they describe the behavior.
-- CI must pass: lint, type check, and tests on Python 3.12 to 3.14 and on the lowest supported dependency versions.
+- CI must pass: lint, type check, tests on Python 3.12 to 3.14 and on the lowest supported dependency versions, and a build of the package.
 - Pull requests are squash-merged, so each one becomes a single commit on `mainline`. That commit's subject comes from the pull request title, or from the commit subject when there is only one commit. Use the format below for both.
 
 ## Commit messages
