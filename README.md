@@ -110,7 +110,7 @@ with ExampleAPI("https://api.example.com") as api:
 - [Building requests](https://github.com/slatecipher/ClientX/blob/mainline/docs/requests.md): how parameters become the path, query string, headers and body.
 - [Responses](https://github.com/slatecipher/ClientX/blob/mainline/docs/responses.md): how the return annotation decides what an endpoint returns, streaming, your own decoder, and errors for 4xx and 5xx responses.
 - [Resources](https://github.com/slatecipher/ClientX/blob/mainline/docs/resources.md): grouping endpoints under a path prefix, nesting them, and plain methods for logic such as pagination.
-- [Client configuration](https://github.com/slatecipher/ClientX/blob/mainline/docs/configuration.md): creating and closing a client, the `User-Agent` class default, authentication, logging and event hooks.
+- [Client configuration](https://github.com/slatecipher/ClientX/blob/mainline/docs/configuration.md): creating and closing a client, the base URL and `User-Agent` class defaults, authentication, logging and event hooks.
 - [Async clients](https://github.com/slatecipher/ClientX/blob/mainline/docs/async.md): `AsyncClientX` and `AsyncResource` for `async def` endpoints, concurrent requests, and async streaming.
 - [Testing](https://github.com/slatecipher/ClientX/blob/mainline/docs/testing.md): testing a client without the network.
 - [Errors](https://github.com/slatecipher/ClientX/blob/mainline/docs/errors.md): the errors ClientX raises, and when.

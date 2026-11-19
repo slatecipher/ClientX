@@ -121,9 +121,9 @@ A request has one kind of body: JSON, raw content, or a form. Parameters that wo
 A parameter marked `Json()` goes to the JSON body:
 
 - **One parameter that isn't a plain value, or is typed `Any`, is the whole body.** A `post: Annotated[NewPost, Json()]` parameter sends the model's JSON, and an `items: Annotated[list[Item], Json()]` parameter sends the list. To send it under its name instead, add [`Send(embed=True)`](#send): `ids: Annotated[list[str], Json(), Send(embed=True)]` sends `{"ids": [...]}`. Adding a second `Json()` parameter moves the first under its name, as in FastAPI, so `Send(embed=True)` also keeps the body's shape fixed if you might add one later.
-- **Otherwise, each JSON parameter is a field of a JSON object**, under its alias or name: `title: Annotated[str, Json()]` and `tags: Annotated[list[str], Json()]` send `{"title": "Hello", "tags": ["a", "b"]}`.
+- **Otherwise, each JSON parameter is a field of a JSON object**, under its alias or name: `title: Annotated[str, Json()]` and `tags: Annotated[list[str], Json()]` send `{"title":"Hello","tags":["a","b"]}`.
 - **Values are sent as Pydantic sends them in JSON mode.** A model uses its own serializers and is sent by alias, so `user_id: int = Field(alias="userId")` is sent as `"userId"`. Dates, UUIDs and enums become JSON values. A model's field that's `None` is sent as `null`, unless [`Send`](#send) says otherwise. A value Pydantic can't serialize raises `ArgumentError` before anything is sent, and so does a value holding NaN or infinity, which JSON can't hold.
-- **`None`.** A JSON field that isn't passed is left out, and one passed explicitly as `None` is sent as `null`, as a PATCH that clears a field needs: `update(nickname=None)` sends `{"nickname": null}`. A body parameter that's `None` sends no body.
+- **`None` and defaults.** A JSON field left at its `None` default is left out, and one passed explicitly as `None` is sent as `null`, as a PATCH that clears a field needs: `update(nickname=None)` sends `{"nickname":null}`. A default other than `None` is sent, as in the query string, unless [`Send(exclude_unset=True)`](#send) leaves the field out when the caller doesn't pass it. A body parameter that's `None` sends no body.
 
 ### Raw content
 
