@@ -25,6 +25,63 @@ For client authors, ClientX reduces boilerplate by turning typed endpoint defini
 
 The result is less scaffolding and more focus on outcomes: authors, human or AI, spend less time on plumbing, and the developers and AI agents calling your API spend less time guessing how to use it correctly.
 
+## Quickstart
+
+<!-- docs_src/readme/quickstart.py -->
+```python
+from typing import Annotated
+
+from clientx import ClientX, Header, Json, Query, Resource, method
+from pydantic import BaseModel
+
+
+class User(BaseModel):
+    id: int
+    name: str
+
+
+class NewUser(BaseModel):
+    name: str
+
+
+class Users(Resource, prefix="/users"):
+    @method.get("/{user_id}")
+    def retrieve(self, user_id: int) -> User:
+        """Fetch one user by ID."""
+        ...
+
+    @method.get()
+    def search(self, name: Annotated[str | None, Query()] = None) -> list[User]:
+        """List users, or only those with this name."""
+        ...
+
+    @method.post()
+    def create(
+        self,
+        user: Annotated[NewUser, Json()],
+        request_id: Annotated[str | None, Header()] = None,
+    ) -> User:
+        """Create a user."""
+        ...
+
+
+class ExampleAPI(ClientX, user_agent="example-app/1.0"):
+    users = Users()
+
+
+with ExampleAPI("https://api.example.com") as api:
+    user = api.users.retrieve(42)  # GET /users/42 -> User
+    matches = api.users.search(name="Ada")  # GET /users?name=Ada -> list[User]
+    new = api.users.create(NewUser(name="Ada"), request_id="r-1")  # POST /users, JSON body, request-id header -> User
+```
+
+- Endpoint bodies never run. ClientX builds each request from the method's signature, sends it, and decodes the response into the return annotation.
+- Type checkers see the real signatures: `api.users.retrieve(user_id: int) -> User`.
+- A 4xx or 5xx response raises `httpx2.HTTPStatusError`.
+- The `with` block closes the client's connections when it ends. It's optional: a long-lived client is created once and closed with `close()` at shutdown, as [Closing a client](https://github.com/slatecipher/ClientX/blob/mainline/docs/configuration.md#closing-a-client) explains.
+- For async code, subclass `AsyncClientX` and `AsyncResource`, write the endpoints as `async def` methods, and `await` them, as [Async clients](https://github.com/slatecipher/ClientX/blob/mainline/docs/async.md) explains.
+- Using mypy? Turn off its `empty-body` check for your client modules, as [Defining endpoints](https://github.com/slatecipher/ClientX/blob/mainline/docs/endpoints.md#empty-method-bodies-and-mypy) explains.
+
 ## Why ClientX
 
 ClientX is inspired by FastAPI, which reads type hints to define server endpoints. ClientX applies the same idea to the client side:
@@ -61,49 +118,6 @@ pip install clientx
 ```
 
 Using an AI coding assistant? Point it at [llms.txt](https://github.com/slatecipher/ClientX/blob/mainline/llms.txt), a compact guide to ClientX's patterns and pitfalls.
-
-## Quickstart
-
-<!-- docs_src/readme/quickstart.py -->
-```python
-from typing import Annotated
-
-from clientx import ClientX, Query, Resource, method
-from pydantic import BaseModel
-
-
-class User(BaseModel):
-    id: int
-    name: str
-
-
-class Users(Resource, prefix="/users"):
-    @method.get("/{user_id}")
-    def retrieve(self, user_id: int) -> User:
-        """Fetch one user by ID."""
-        ...
-
-    @method.get()
-    def search(self, name: Annotated[str | None, Query()] = None) -> list[User]:
-        """List users, or only those with this name."""
-        ...
-
-
-class ExampleAPI(ClientX, user_agent="example-app/1.0"):
-    users = Users()
-
-
-with ExampleAPI("https://api.example.com") as api:
-    user = api.users.retrieve(42)  # GET /users/42 -> User
-    matches = api.users.search(name="Ada")  # GET /users?name=Ada -> list[User]
-```
-
-- Endpoint bodies never run. ClientX builds each request from the method's signature, sends it, and decodes the response into the return annotation.
-- Type checkers see the real signatures: `api.users.retrieve(user_id: int) -> User`.
-- A 4xx or 5xx response raises `httpx2.HTTPStatusError`.
-- The `with` block closes the client's connections when it ends. It's optional: a long-lived client is created once and closed with `close()` at shutdown, as [Closing a client](https://github.com/slatecipher/ClientX/blob/mainline/docs/configuration.md#closing-a-client) explains.
-- For async code, subclass `AsyncClientX` and `AsyncResource`, write the endpoints as `async def` methods, and `await` them, as [Async clients](https://github.com/slatecipher/ClientX/blob/mainline/docs/async.md) explains.
-- Using mypy? Turn off its `empty-body` check for your client modules, as [Defining endpoints](https://github.com/slatecipher/ClientX/blob/mainline/docs/endpoints.md#empty-method-bodies-and-mypy) explains.
 
 ## Guide
 
