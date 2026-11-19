@@ -163,6 +163,31 @@ Each framework registers tools its own way, but asks for the same things:
 - a handler that calls `tool.call(arguments)`, or `await tool.acall(arguments)`, and turns a `ToolError` into an error result with its message;
 - for MCP, the hints `read_only`, `destructive` and `idempotent`, as its `readOnlyHint`, `destructiveHint` and `idempotentHint`.
 
+`input_schema` is plain JSON Schema, which each of them takes as it is: only the definition around it differs. A tool's definition for each:
+
+```py
+# Anthropic's Messages API
+{"name": tool.name, "description": tool.description, "input_schema": tool.input_schema}
+
+# OpenAI's Responses API
+{"type": "function", "name": tool.name, "description": tool.description, "parameters": tool.input_schema}
+
+# OpenAI's Chat Completions API
+{"type": "function", "function": {"name": tool.name, "description": tool.description, "parameters": tool.input_schema}}
+
+# An MCP tool
+{
+    "name": tool.name,
+    "description": tool.description,
+    "inputSchema": tool.input_schema,
+    "annotations": {"readOnlyHint": tool.read_only, "destructiveHint": tool.destructive, "idempotentHint": tool.idempotent},
+}
+```
+
+MCP's `outputSchema` must describe an object, so a tool whose result isn't one, such as a list, needs it wrapped, as `{"result": ...}`, if you give it one.
+
+Strict modes, which constrain the model's arguments to the schema exactly, have rules of their own: OpenAI's needs every property listed in `required`, with optional ones made nullable, and Anthropic's needs `additionalProperties: false` and a `required` list. ClientX doesn't change its schemas for either, so adjust a schema before you turn a strict mode on.
+
 A model can call any tool you register, so register only what it should use. For example, start with the `read_only` tools, and add others as you need them. The hints come from the HTTP method, so they can be wrong for an endpoint such as `POST /search`, which only reads.
 
 ## Serving many users
