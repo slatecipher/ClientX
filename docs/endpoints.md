@@ -5,6 +5,7 @@ An endpoint is a method whose signature describes one API call, in two halves:
 - **The parameters build the request.** A parameter named like a `{placeholder}` in the path fills it, and the others become query parameters, headers, form fields, files or the body (see [Building requests](requests.md)).
 - **The return annotation describes the response.** ClientX decodes the response into that type (see [Responses](responses.md)).
 
+<!-- docs_src/endpoints/defining.py -->
 ```python
 from clientx import ClientX, method
 from pydantic import BaseModel
@@ -44,6 +45,7 @@ Each decorator takes the path, then these keyword options:
 | `timeout` | the client's | Seconds, or an `httpx2.Timeout`, for this endpoint's requests. `None` turns the timeout off. |
 | `raise_for_status` | the client's | Whether a 4xx or 5xx response raises `httpx2.HTTPStatusError`. Clients raise by default. See [Errors for 4xx and 5xx responses](responses.md#errors-for-4xx-and-5xx-responses). |
 
+<!-- docs_src/endpoints/options.py -->
 ```python
 from clientx import ClientX, Response, method
 
@@ -69,7 +71,7 @@ A mistake in an endpoint, such as a missing return annotation or a placeholder t
 
 Pyright accepts a body of `...`, but not a body that's only a docstring: for an endpoint whose return type isn't `None`, it reports `Function with declared return type "User" must return value on all code paths`. Mypy reports `Missing return statement  [empty-body]` for every endpoint whose return type isn't `None`, even with `...`. Turn that one check off for your client modules, either at the top of the file:
 
-```python
+```python no-check
 # mypy: disable-error-code="empty-body"
 ```
 
@@ -87,6 +89,7 @@ Mypy still checks everything else in those modules, including the return types o
 
 Give `deprecated=` the message to show:
 
+<!-- docs_src/endpoints/deprecated.py -->
 ```python
 from clientx import ClientX, method
 from pydantic import BaseModel
@@ -122,6 +125,7 @@ An endpoint's name hides any other meaning of that name for the rest of the clas
 
 A client is an `httpx2.Client`, so its own methods send a request with the client's base URL and settings, for a one-off call that doesn't need an endpoint:
 
+<!-- docs_src/endpoints/one_off_request.py -->
 ```python
 from clientx import ClientX
 

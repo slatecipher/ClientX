@@ -2,6 +2,7 @@
 
 For larger APIs, group related endpoints into `Resource` classes, much like FastAPI's `APIRouter`. Mount an instance on your client, and its endpoints send through the client's connection and settings, so there's no second client to create or pass around. For `async def` endpoints, subclass `AsyncResource` and mount it on an `AsyncClientX` (see [Async clients](async.md)):
 
+<!-- docs_src/resources/mounting.py -->
 ```python
 from typing import Annotated
 
@@ -52,6 +53,7 @@ With `class Admins(Users, prefix="/admins")`, a new endpoint `@method.get("/{adm
 
 `tags=` labels a resource's endpoints, to group them:
 
+<!-- docs_src/resources/tags.py -->
 ```python
 from clientx import Resource, method
 
@@ -86,6 +88,7 @@ Names that a client reserves, such as `get` or `headers`, are free for endpoints
 
 A client or resource can also have ordinary, undecorated methods. They aren't endpoints, but they can call endpoints through `self`. They're the place for logic around requests, such as following pages or normalizing an argument:
 
+<!-- docs_src/resources/plain_methods.py -->
 ```python
 from typing import Annotated
 
