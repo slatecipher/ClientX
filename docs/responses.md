@@ -183,7 +183,7 @@ with UsersAPI("https://api.example.com") as api:
         print(error.response.status_code, error.response.json())  # for example: 404 {'detail': 'Not found'}
 ```
 
-- A redirect isn't an error. With the client's `follow_redirects=True`, only the final response is checked.
+- A redirect isn't an error, and httpx2 follows one only with the client's `follow_redirects=True`. Without it, the redirect response itself is decoded, which fails for a typed result; with it, only the final response is checked.
 - For a streaming endpoint, an error response is read and closed before the error is raised, so its connection is released. A successful one still streams.
 
 Turn it off for a whole client with `raise_for_status=False`, or set it for one endpoint. An endpoint's setting wins over the client's:

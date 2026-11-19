@@ -36,7 +36,7 @@ Each decorator takes the path, then these keyword options:
 
 | Option | Default | Effect |
 |---|---|---|
-| `path` | `""` | The path template, relative to the client's base URL. A resource's prefix is joined onto it, so `@method.get()` on a resource with `prefix="/users"` is `GET /users`. See [Path parameters](requests.md#path-parameters). |
+| `path` | `""` | The path template, relative to the client's base URL. A resource's prefix is joined onto it, so `@method.get()` on a resource with `prefix="/users"` is `GET /users`. On a client, `@method.get()` calls the base URL, which httpx2 always ends with `/`. See [Path parameters](requests.md#path-parameters). |
 | `decoder` | none | A function that turns the `httpx2.Response` into the return value, instead of the decoding the return annotation implies. See [Your own decoder](responses.md#your-own-decoder). |
 | `stream` | `False` | `True` returns the open, unread response: annotate the endpoint `-> Response`, with no `decoder`. See [The open response](responses.md#the-open-response). |
 | `deprecated` | `None` | A message: each call emits a `DeprecationWarning` with it. See [Deprecating endpoints](#deprecating-endpoints). |

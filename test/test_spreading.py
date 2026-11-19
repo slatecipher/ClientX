@@ -320,4 +320,4 @@ def test_a_list_in_a_spread_header_is_one_value(mock_transport: MockTransport) -
 
     sent: list[httpx2.Request] = []
     API(BASE_URL, transport=mock_transport(sent)).find({"x-tags": ["a", "b"]})
-    assert only_request(sent).headers["x-tags"] == '["a", "b"]'
+    assert only_request(sent).headers["x-tags"] == '["a","b"]'

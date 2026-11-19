@@ -4,6 +4,7 @@ import dataclasses
 import datetime
 import io
 import json
+import math
 import pathlib
 import re
 from collections.abc import AsyncIterator, Callable, Iterator
@@ -502,6 +503,35 @@ def test_a_json_value_pydantic_cant_serialize_raises_before_sending(mock_transpo
     ) as caught:
         API(BASE_URL, transport=mock_transport(sent)).create(Opaque(), "x")
     assert caught.value.parameter == "price"
+    assert sent == []
+
+
+class Reading(BaseModel):
+    value: float
+
+
+@pytest.mark.parametrize(
+    ("annotation", "value"),
+    [
+        pytest.param(Annotated[Reading, Json()], Reading(value=math.nan), id="model body"),
+        pytest.param(Annotated[Any, Json()], math.nan, id="Any body"),
+        pytest.param(Annotated[float, Json(), Send(embed=True)], math.inf, id="field"),
+        pytest.param(Annotated[dict[str, float], Form(), Send(json_part=True)], {"v": math.nan}, id="JSON part"),
+    ],
+)
+def test_a_json_value_holding_nan_raises_before_sending(
+    mock_transport: MockTransport, annotation: Any, value: object
+) -> None:
+    class API(ClientX):
+        @method.post("/readings")
+        def create(self, reading: annotation) -> None: ...  # pyright: ignore[reportInvalidTypeForm]
+
+    sent: list[httpx2.Request] = []
+    with pytest.raises(
+        ArgumentError, match=re.escape("Can't send 'reading' as JSON: Out of range float values are not JSON compliant")
+    ) as caught:
+        API(BASE_URL, transport=mock_transport(sent)).create(value)
+    assert caught.value.parameter == "reading"
     assert sent == []
 
 
