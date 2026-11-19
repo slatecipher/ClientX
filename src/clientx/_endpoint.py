@@ -20,7 +20,7 @@ from httpx2 import USE_CLIENT_DEFAULT, Response, Timeout
 
 from clientx._decoding import default_decoder, is_stream
 from clientx._request import RequestPlan, plan_request
-from clientx._signature import NO_VALUE, ParameterInfo, ParameterKind, SignatureInfo
+from clientx._signature import NO_VALUE, BoundCall, ParameterInfo, ParameterKind, SignatureInfo
 from clientx._types import BuildRequestKwargs, Decoder, MethodType, UseClientDefault
 from clientx.exceptions import DefinitionError
 
@@ -203,7 +203,7 @@ class Endpoint:
                 f"-> {iterator}[...]."
             )
 
-    def bind(self, owner: object, *args: Any, **kwargs: Any) -> dict[str, Any]:
+    def bind(self, owner: object, *args: Any, **kwargs: Any) -> BoundCall:
         """Return a call's arguments by name, in order, with defaults filled in.
 
         ``owner``, the client or resource the endpoint was called on, fills the
@@ -213,9 +213,10 @@ class Endpoint:
             TypeError: If the arguments don't fit the signature, as in a normal
                 call.
         """
-        arguments = self.signature.bind(owner, *args, **kwargs)
-        del arguments[self.signature.parameters[0].name]
-        return arguments
+        bound = self.signature.bind(owner, *args, **kwargs)
+        owner_name = self.signature.parameters[0].name
+        del bound.arguments[owner_name]
+        return BoundCall(bound.arguments, bound.passed - {owner_name})
 
     def parameters(self) -> tuple[ParameterInfo, ...]:
         """Return all parameters but the first: the client or resource."""
@@ -237,15 +238,14 @@ class Endpoint:
         except DefinitionError as error:
             raise DefinitionError(f"Endpoint '{self.signature.qualname}': {error}") from error
 
-    def request_arguments(self, arguments: dict[str, Any]) -> tuple[str, BuildRequestKwargs]:
+    def request_arguments(self, bound: BoundCall) -> tuple[str, BuildRequestKwargs]:
         """Return a call's URL path and its other ``build_request`` arguments.
 
         The plan supplies the parts that carry the call's arguments; the
         endpoint adds its ``timeout``.
 
         Args:
-            arguments: The call's arguments by parameter name, as ``bind``
-                returns them.
+            bound: The call's arguments, as ``bind`` returns them.
 
         Raises:
             DefinitionError: If the endpoint isn't declared in the body of a
@@ -257,7 +257,7 @@ class Endpoint:
                 f"Endpoint '{self.signature.qualname}' can't be called: it isn't declared in the body of a "
                 "ClientX, AsyncClientX, Resource or AsyncResource subclass."
             )
-        url, request_arguments = self.request.build(arguments)
+        url, request_arguments = self.request.build(bound.arguments)
         request_arguments["timeout"] = self.timeout
         return url, request_arguments
 

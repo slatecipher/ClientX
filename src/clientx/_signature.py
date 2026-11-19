@@ -131,6 +131,22 @@ class ReturnInfo:
     metadata: tuple[Any, ...]
 
 
+@dataclass(frozen=True, slots=True)
+class BoundCall:
+    """A call's arguments, bound to a signature, with defaults filled in.
+
+    Attributes:
+        arguments: Each parameter's value by name, in signature order. A
+            ``*args`` parameter gets a tuple and a ``**kwargs`` parameter a
+            dict, empty when the call passes none.
+        passed: The names of the parameters the caller passed a value for, so
+            a ``None`` passed explicitly can be told from a default ``None``.
+    """
+
+    arguments: dict[str, Any]
+    passed: frozenset[str]
+
+
 @dataclass(frozen=True)
 class SignatureInfo:
     """What ClientX needs from a callable's signature, read once.
@@ -159,21 +175,18 @@ class SignatureInfo:
     returns: ReturnInfo
     signature: inspect.Signature = field(repr=False)
 
-    def bind(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
+    def bind(self, *args: Any, **kwargs: Any) -> BoundCall:
         """Bind a call's arguments to the signature, with defaults filled in.
-
-        Returns:
-            Each parameter's value by name, in signature order. A ``*args``
-            parameter gets a tuple and a ``**kwargs`` parameter a dict, empty
-            when the call passes none.
 
         Raises:
             TypeError: If the arguments don't fit the signature, as in a normal
                 call.
         """
         bound = self.signature.bind(*args, **kwargs)
+        # Read before apply_defaults, which adds the parameters not passed.
+        passed = frozenset(bound.arguments)
         bound.apply_defaults()
-        return bound.arguments
+        return BoundCall(bound.arguments, passed)
 
 
 def unwrap_annotated(type_hint: Any) -> tuple[Any, tuple[Any, ...]]:

@@ -153,8 +153,8 @@ class Method:
                     # stay in the wrapper's own frame.
                     warnings.warn(endpoint.deprecated, DeprecationWarning, stacklevel=2)
                 client = client_of(_self, ClientX)
-                arguments = endpoint.bind(_self, *args, **kwargs)
-                url, request_arguments = endpoint.request_arguments(arguments)
+                bound = endpoint.bind(_self, *args, **kwargs)
+                url, request_arguments = endpoint.request_arguments(bound)
                 request = client.build_request(endpoint.method, url, **request_arguments)
                 response = client.send(request, stream=endpoint.stream)
                 if response.is_error and _raises_for_status(endpoint, client):
@@ -168,8 +168,8 @@ class Method:
                 if endpoint.deprecated is not None:
                     warnings.warn(endpoint.deprecated, DeprecationWarning, stacklevel=2)
                 client = client_of(_self, AsyncClientX)
-                arguments = endpoint.bind(_self, *args, **kwargs)
-                url, request_arguments = endpoint.request_arguments(arguments)
+                bound = endpoint.bind(_self, *args, **kwargs)
+                url, request_arguments = endpoint.request_arguments(bound)
                 request = client.build_request(endpoint.method, url, **request_arguments)
                 response = await client.send(request, stream=endpoint.stream)
                 if response.is_error and _raises_for_status(endpoint, client):

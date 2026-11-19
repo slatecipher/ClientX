@@ -149,9 +149,11 @@ def test_returns_keeps_the_annotations_metadata() -> None:
     assert [type(item).__name__ for item in returns.metadata] == ["FieldInfo"]
 
 
-def test_bind_fills_in_defaults() -> None:
-    def endpoint(self: object, user_id: int, page: int = 1) -> None: ...
+def test_bind_fills_in_defaults_and_records_what_was_passed() -> None:
+    def endpoint(self: object, user_id: int, page: int = 1, note: str | None = None) -> None: ...
 
-    assert inspect_signature(endpoint).bind("owner", 7) == {"self": "owner", "user_id": 7, "page": 1}
+    bound = inspect_signature(endpoint).bind("owner", 7, note=None)
+    assert bound.arguments == {"self": "owner", "user_id": 7, "page": 1, "note": None}
+    assert bound.passed == {"self", "user_id", "note"}
     with pytest.raises(TypeError):
         inspect_signature(endpoint).bind("owner")
