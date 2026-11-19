@@ -1,14 +1,12 @@
-"""Pin the public import surface.
+"""The names ClientX exports. A change here is a change to the public API."""
 
-Anything listed here is a compatibility promise to users. Removing or renaming a
-name should be a deliberate, changelogged decision, so it must fail a test first.
-"""
+import importlib.metadata
 
 import clientx
-from clientx import decoders, exceptions, mcp, method, tools
+from clientx import arguments, exceptions, method
 
 
-def test_top_level_exports():
+def test_package_exports() -> None:
     assert sorted(clientx.__all__) == sorted(
         [
             "__version__",
@@ -16,58 +14,42 @@ def test_top_level_exports():
             "Request",
             "Response",
             "Timeout",
-            "Body",
-            "DumpConfig",
-            "File",
-            "Form",
-            "Header",
-            "PathParam",
-            "Query",
             "AsyncClientX",
             "AsyncResource",
             "ClientX",
             "Resource",
-            "DeprecatedMessage",
+            "Body",
+            "File",
+            "Form",
+            "Header",
+            "Json",
+            "Query",
+            "Send",
+            "Url",
+            "ArgumentError",
             "ClientXError",
+            "DefinitionError",
+            "method",
         ]
     )
     for name in clientx.__all__:
         assert hasattr(clientx, name), name
 
 
-def test_submodule_exports():
+def test_submodule_exports() -> None:
     assert method.__all__ == ["delete", "get", "head", "options", "patch", "post", "put"]
-    assert sorted(decoders.__all__) == [
-        "AsyncStreamChunksDecoder",
-        "AsyncStreamDecoder",
-        "AsyncStreamLinesDecoder",
-        "FromResponseDecoder",
-        "ModelDecoder",
-        "StreamChunksDecoder",
-        "StreamDecoder",
-        "StreamLinesDecoder",
-        "StreamResponseDecoder",
-        "TypeAdapterDecoder",
-        "content_decoder",
-        "json_decoder",
-        "text_decoder",
-    ]
-    assert sorted(exceptions.__all__) == [
-        "ArgumentValidationError",
-        "ClientXError",
-        "EndpointNameConflictError",
-        "EndpointSignatureError",
-        "MisplacedHelperError",
-        "MissingDecoderError",
-        "MissingPathArgumentsError",
-        "MissingReturnTypeError",
-        "PathTemplateError",
-        "PathValueError",
-        "UnboundResourceError",
-        "UnconsumableArgumentError",
-    ]
-    assert sorted(tools.__all__) == ["Tool", "list_tools"]
-    assert sorted(mcp.__all__) == ["create_mcp_server", "run_mcp_server"]
-    for module in (method, decoders, exceptions, tools, mcp):
-        for name in module.__all__:
-            assert hasattr(module, name), f"{module.__name__}.{name}"
+    assert sorted(arguments.__all__) == ["Body", "File", "Form", "Header", "Json", "Query", "Send", "Url"]
+    assert sorted(exceptions.__all__) == ["ArgumentError", "ClientXError", "DefinitionError"]
+
+
+def test_version_is_the_installed_one() -> None:
+    assert clientx.__version__ == importlib.metadata.version("clientx")
+
+
+def test_exceptions_keep_a_built_in_base() -> None:
+    # So `except TypeError` and `except ValueError` handlers keep catching them.
+    assert issubclass(exceptions.DefinitionError, exceptions.ClientXError)
+    assert issubclass(exceptions.DefinitionError, TypeError)
+    assert issubclass(exceptions.ArgumentError, exceptions.ClientXError)
+    assert issubclass(exceptions.ArgumentError, ValueError)
+    assert exceptions.ArgumentError("message", parameter="user_id").parameter == "user_id"

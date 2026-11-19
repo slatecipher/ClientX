@@ -1,20 +1,19 @@
 .PHONY: lint lint-ci typecheck typecheck-tests test test-ci check
 
 lint:
-	uv run ruff format src test examples
-	uv run ruff check --fix src test examples
+	uv run ruff format src test
+	uv run ruff check --fix src test
 
 lint-ci:
-	uv run ruff format --check src test examples
-	uv run ruff check src test examples
+	uv run ruff format --check src test
+	uv run ruff check src test
 
 # Gates CI. Paths on the command line override `include` in pyproject.toml,
 # so this stays scoped to the shipped package even though `include` is wider.
 # test/test_typing.py is the static typing contract for decorated endpoints,
 # so it gates alongside src rather than riding the advisory test check.
-# examples/ is checked in standard mode so the example client keeps working.
 typecheck:
-	uv run pyright src test/test_typing.py examples
+	uv run pyright src test/test_typing.py
 	uv run mypy
 
 # Advisory: reported in CI via continue-on-error, never blocks a merge.
@@ -24,7 +23,9 @@ typecheck-tests:
 test:
 	uv run pytest
 
+# CI fails below 95% line coverage, so new code arrives with its tests. Only here: local runs of
+# a single test file would always fall short.
 test-ci:
-	uv run pytest --cov=clientx --cov-report=term-missing
+	uv run pytest --cov=clientx --cov-report=term-missing --cov-fail-under=95
 
 check: lint typecheck test

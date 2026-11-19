@@ -6,142 +6,100 @@ Configure a client when you create it:
 from clientx import ClientX
 
 
-class ExampleAPI(ClientX):
-    ...
+class ExampleAPI(ClientX): ...
 
 
 api = ExampleAPI("https://api.example.com", user_agent="my-app/1.0", timeout=5.0)
 ```
 
-- `base_url`: the API's base URL. Optional when the class sets one (see below).
-- `user_agent`: the `User-Agent` to send. Without it, the first of these is sent: a `User-Agent` in `headers=`, the class's `user_agent=`, or `ClientX/<version>`.
-- `raise_for_status` and `validate_arguments`: see [Raising errors for 4xx and 5xx responses](#raising-errors-for-4xx-and-5xx-responses) and [Validating arguments](#validating-arguments) below.
-- Any other `httpx2.Client` option, such as `timeout`, `headers`, `auth` (see [Authentication](#authentication)), `params`, `transport`, or `follow_redirects`. ClientX passes them to the httpx2 client it creates.
+- `base_url`: the API's base URL, which every endpoint's path is relative to. It's required.
+- `user_agent`: the `User-Agent` to send. Without it, the first of these is sent: a `User-Agent` in `headers=`, the class's `user_agent=` (see [Class defaults](#class-defaults)), or `ClientX/<version>`.
+- `raise_for_status`: whether a 4xx or 5xx response raises `httpx2.HTTPStatusError`. It's on by default; see [Errors for 4xx and 5xx responses](responses.md#errors-for-4xx-and-5xx-responses).
+- Any other `httpx2.Client` option, such as `timeout`, `headers`, `params`, `auth` (see [Authentication](#authentication)), `transport`, `proxy` or `follow_redirects`.
 
-For `async def` endpoints, `AsyncClientX` takes the same arguments and class arguments (see [Async clients](async.md)).
+A `ClientX` is an `httpx2.Client`, so those options, and everything else httpx2 documents for a client, work as they do there. That includes changing `headers`, `params`, `auth` or `timeout` on a client after it's created: the change applies to every endpoint. Each client has its own connections, settings and credentials, so clients for production and staging, or one per account, can be used side by side.
 
-Settings can't be changed afterwards; to use different ones, create another client. Instances are independent: each has its own connections, settings, and credentials, so clients for production and staging, or one client per account, can be used side by side. Class arguments (below) are only defaults for new instances.
+A client's `repr` shows its class, its base URL and its `User-Agent`, with any password in the base URL replaced by `[redacted]`: `ExampleAPI(base_url='https://api.example.com', user_agent='my-app/1.0')`.
 
-A client class can ship its own base URL and `User-Agent` as class arguments, so callers can create it without arguments:
+For `async def` endpoints, `AsyncClientX` takes the same arguments and class argument (see [Async clients](async.md)).
+
+## Class defaults
+
+A client class can set the `User-Agent` its clients send, as a class argument:
 
 ```python
 from clientx import ClientX
 
 
-class ExampleAPI(ClientX, base_url="https://api.example.com", user_agent="example-api/1.0"):
-    ...
+class ExampleAPI(ClientX, user_agent="example-api/1.0"): ...
 
 
-api = ExampleAPI()  # https://api.example.com, User-Agent: example-api/1.0
-staging = ExampleAPI("https://staging.example.com", timeout=10.0)  # arguments given here win
+api = ExampleAPI("https://api.example.com")  # User-Agent: example-api/1.0
 ```
 
-A subclass keeps its parent's class arguments unless it sets its own. Without a base URL in the class or in the call, creating the client raises `TypeError`.
+A subclass keeps its parent's `user_agent` unless it sets its own, and a `user_agent` given when creating a client wins over the class's.
 
-`base_url` and `user_agent` are the only class arguments. Pass every other option, such as `timeout=` or `transport=`, when creating the client. Python rejects any other keyword in the class statement, a misspelling included, with `TypeError: ExampleAPI.__init_subclass__() takes no keyword arguments`.
+`user_agent` is the only class argument. Pass the base URL and every other option when creating the client: Python rejects any other keyword in the class statement, a misspelling included, with `TypeError: ExampleAPI.__init_subclass__() takes no keyword arguments`.
 
 ## Authentication
 
-Give a client its credentials with `auth=` when you create it. `auth=` is httpx2's authentication option: ClientX passes it to the httpx2 client, which applies it to every request. For what it accepts and how to write your own scheme, see httpx2's [Authentication](https://pydantic.dev/docs/httpx2/advanced/authentication/) documentation.
+Give a client its credentials with `auth=` when you create it. `auth=` is httpx2's authentication option: the client applies it to every request. For what it accepts and how to write your own scheme, see httpx2's [Authentication](https://pydantic.dev/docs/httpx2/advanced/authentication/) documentation.
 
-Keep credentials out of endpoint parameters: every caller would have to pass them, and when endpoints are [AI tools](ai-tools.md), parameters are what the model sees and fills in.
+Keep credentials out of endpoint parameters: every caller would have to pass them.
 
-Don't add credentials in a request [event hook](logging.md#your-own-request-logging). httpx2 documents hooks for logging, monitoring, and tracing. A request hook also runs again for every redirect, so it would put back an `Authorization` header that httpx2 dropped for another host. And it can't send a token request through the client's flow or send a request again after a 401.
+Don't add credentials in a request [event hook](#logging-and-event-hooks). httpx2 documents hooks for logging, monitoring and tracing. A request hook also runs again for every redirect, so it would put back an `Authorization` header that httpx2 dropped for another host. And it can't send a token request through the client's flow or send a request again after a 401.
 
-For other schemes, httpx2's [Third Party Packages](https://pydantic.dev/docs/httpx2/community/third_party_packages/) page lists libraries that support it. ClientX creates its own httpx2 client, so use a library's `Auth` class as `auth=`, not its client class.
-
-[`examples/oauth2/`](https://github.com/slatecipher/ClientX/tree/mainline/examples/oauth2) has an `Auth` class that gets an OAuth 2 bearer token with a client ID and secret, run against Duende's public demo server.
+For other schemes, httpx2's [Third Party Packages](https://pydantic.dev/docs/httpx2/community/third_party_packages/) page lists libraries that support it. Use a library's `Auth` class as `auth=`, not its client class.
 
 ## Closing a client
 
 Close a client when you're done with it, to release its connections:
 
-- For a script or one batch of calls, use a `with` block, as the README's quickstart does. It closes the client when the block ends, even if an exception is raised.
+- For a script or one batch of calls, use a `with` block. It closes the client when the block ends, even if an exception is raised.
 - For a long-lived client, such as one in a web app or a worker, create it once, reuse it for every request so its connections are pooled, and call `close()` at shutdown. Don't create a client for each request.
 - A closed client can't be reused: a call raises `RuntimeError: Cannot send a request, as the client has been closed.` Create a new one.
 - An `AsyncClientX` closes the same way, with `async with` or `await client.aclose()`.
 - `with` is optional. A client that's never closed still works; its connections stay open until the process exits or the client is garbage-collected.
 
-## Raising errors for 4xx and 5xx responses
+## Logging and event hooks
 
-A 4xx or 5xx response raises `httpx2.HTTPStatusError`, from every endpoint, before any decoder runs. The error has the request and the response, and the body is already read, so `exc.response.json()` works:
+ClientX doesn't log anything itself. httpx2 logs every request at `INFO` level on the `httpx2` logger:
+
+```
+INFO:httpx2:HTTP Request: GET https://api.example.com/users/42 "HTTP/1.1 200 OK"
+```
+
+The message includes the full URL, query string included, so values in `params=` appear in your logs whenever that logger is on. That's one more reason to keep credentials in `auth=`. To hide these records, use `logging.getLogger("httpx2").setLevel(logging.WARNING)`.
+
+To log requests in your own format, or with your own logger, use httpx2's event hooks, which a client takes as `event_hooks=`:
 
 ```python
+import logging
+
 import httpx2
-from clientx import ClientX, method
-from clientx.decoders import ModelDecoder
-from pydantic import BaseModel
+from clientx import ClientX
+
+log = logging.getLogger("myapp.http")
 
 
-class User(BaseModel):
-    id: int
+def log_request(request: httpx2.Request) -> None:
+    log.info("-> %s %s", request.method, request.url.path)
 
 
-class UsersClient(ClientX):
-    @method.get("/users/{user_id}", decoder=ModelDecoder(User))
-    def get_user(self, user_id: int) -> User:
-        ...
+def log_response(response: httpx2.Response) -> None:
+    log.info("<- %s %s %s", response.request.method, response.request.url.path, response.status_code)
 
 
-with UsersClient("https://api.example.com") as client:
-    try:
-        client.get_user(1000)
-    except httpx2.HTTPStatusError as exc:
-        print(exc.response.status_code, exc.response.json())  # for example: 404 {"error": "not found"}
+class ExampleAPI(ClientX): ...
+
+
+api = ExampleAPI(
+    "https://api.example.com",
+    event_hooks={"request": [log_request], "response": [log_response]},
+)
 ```
 
-- Redirects aren't errors. With `follow_redirects=True`, only the final response is checked; without it, a 3xx response is returned as it is.
-- For a streaming endpoint, an error response is read and closed before the error is raised, so its connection is released. A successful one still streams.
-- Endpoints called as AI tools raise it too. Over MCP, it comes back to the model as an error result.
-
-Turn it off for a whole client with `raise_for_status=False`, or set it per endpoint. An endpoint's setting wins over the client's:
-
-```python
-from clientx import ClientX, Response, method
-
-
-class FilesClient(ClientX):
-    @method.get("/files/{name}", raise_for_status=False)
-    def get_file(self, name: str) -> Response:
-        """Return a 404 as a response instead of raising it, so the caller can check `status_code`."""
-        ...
-
-
-client = FilesClient("https://api.example.com")  # every other endpoint still raises
-unchecked = FilesClient("https://api.example.com", raise_for_status=False)  # no endpoint raises
-```
-
-With the check off, a decoder gets every response, so it can handle error statuses itself.
-
-## Validating arguments
-
-Type checkers catch wrong argument types in your own code, but not in values that arrive at run time, such as user input or data from another service. Turn on `validate_arguments` to check each argument against its parameter's annotation before the request is sent:
-
-```python
-from typing import Annotated
-
-from clientx import ClientX, Query, Response, method
-from clientx.exceptions import ArgumentValidationError
-from pydantic import Field
-
-
-class SearchClient(ClientX):
-    @method.get("/search")
-    def search(self, page: Annotated[int, Query(), Field(ge=1)]) -> Response: ...
-
-
-client = SearchClient("https://api.example.com", validate_arguments=True)
-
-try:
-    client.search(0)
-except ArgumentValidationError as exc:
-    print(exc.parameter)  # page: no request was sent
-```
-
-- It's off by default. Turn it on for a whole client with `validate_arguments=True`, or set it per endpoint with the decorators' `validate_arguments=` option. An endpoint's setting wins over the client's.
-- The check is strict, like a type checker's: `"1"` doesn't match `int`, and a string doesn't match an `Enum`. Values are never converted, so a request is the same with validation on or off. Constraints in the annotation, such as `Field(ge=1)`, are checked too.
-- To normalize a value instead of rejecting it, such as lowercasing a name, call the endpoint from a [plain method](resources.md#plain-methods) that changes the value first.
-- Only the arguments the caller passes are checked, not defaults.
-- A parameter whose type Pydantic can't validate, such as `BinaryIO`, isn't checked. Neither is a parameter without an annotation.
-- `ArgumentValidationError` has the `parameter` name and Pydantic's error as `validation_error`. It's a `ClientXError` and a `ValueError`.
-- `Tool.call()` already validates a model's arguments, and converts JSON values such as `"red"` to the parameter's type, so tool calls pass this check.
+- Request hooks receive the `httpx2.Request` just before it's sent. Response hooks receive the `httpx2.Response` once its headers arrive, before the body is read.
+- Hooks run for every request, including streamed ones. Don't read the body in a response hook: for a streaming endpoint, that would load the whole stream.
+- Hooks see everything, including header values and query strings, so redact anything sensitive yourself.
+- An `AsyncClientX`'s hooks must be `async` functions. See httpx2's [Event Hooks](https://pydantic.dev/docs/httpx2/advanced/event-hooks/) documentation for more.

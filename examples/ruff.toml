@@ -1,8 +1,0 @@
-# The examples show a user's project: ClientX is a third-party package there, and the
-# example packages (beeceptor, jsonplaceholder) are first-party. Sorting their imports
-# that way keeps them correct to copy into a project that runs ruff's isort rules.
-extend = "../ruff.toml"
-src = ["."]
-
-[lint.isort]
-known-third-party = ["clientx"]

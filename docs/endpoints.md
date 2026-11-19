@@ -2,51 +2,72 @@
 
 An endpoint is a method whose signature describes one API call, in two halves:
 
-- **The parameters build the request.** A parameter named like a `{placeholder}` in the path fills it. The others become query parameters, headers, form fields, files, or the body (see [Building requests](requests.md)).
-- **The return type describes the response.** The decorator's `decoder` turns the response into a value of that type.
+- **The parameters build the request.** A parameter named like a `{placeholder}` in the path fills it, and the others become query parameters, headers, form fields, files or the body (see [Building requests](requests.md)).
+- **The return annotation describes the response.** ClientX decodes the response into that type (see [Responses](responses.md)).
 
 ```python
-@method.get("/users/{user_id}", decoder=ModelDecoder(User))
-def retrieve(self, user_id: int) -> User: ...
+from clientx import ClientX, method
+from pydantic import BaseModel
+
+
+class User(BaseModel):
+    id: int
+    name: str
+
+
+class UsersAPI(ClientX):
+    @method.get("/users/{user_id}")
+    def get_user(self, user_id: int) -> User:
+        """Fetch one user by ID."""
+        ...
+
+
+with UsersAPI("https://api.example.com") as api:
+    user = api.get_user(42)  # GET /users/42, decoded into a User
 ```
 
-`retrieve(42)` sends `GET /users/42`, because `user_id` matches `{user_id}`, and returns the JSON response as a `User`. The two halves are independent: `User`'s fields come from the API's response, not from the arguments.
+`get_user(42)` sends `GET /users/42`, because `user_id` matches `{user_id}`, and returns the JSON response as a `User`. The two halves are independent: `User`'s fields come from the response, not from the arguments.
 
-Import the decorators' module, `from clientx import method`, and decorate each endpoint with `@method.get(...)`, `@method.post(...)`, and so on. They decorate `def` methods of a `ClientX` or `Resource`, and `async def` methods of an `AsyncClientX` or `AsyncResource` (see [Async clients](async.md)). The decorators are:
+Import the decorators' module, `from clientx import method`, and decorate each endpoint with the verb it sends: `@method.get(...)`, `@method.post(...)`, `@method.put(...)`, `@method.patch(...)`, `@method.delete(...)`, `@method.head(...)` or `@method.options(...)`. They decorate `def` methods of a `ClientX` or a `Resource`, and `async def` methods of an `AsyncClientX` or an `AsyncResource` (see [Async clients](async.md)).
 
-- `get`
-- `post`
-- `put`
-- `patch`
-- `delete`
-- `head`
-- `options`
+## Options
 
-Each decorator accepts:
+Each decorator takes the path, then these keyword options:
 
-- `path` (optional; defaults to `""`, the base URL, or on a resource the prefix itself: `@method.get()` in a resource with `prefix="/users"` is `GET /users`)
-- `decoder` (required when return type is not `Response` or `None`)
-- `deprecated` (optional callable, including `DeprecatedMessage`)
-- `tags` (optional list of labels; `list_tools()` can filter by them)
-- `timeout` (optional per-endpoint `httpx2.Timeout` or seconds; defaults to the client's timeout)
-- `raise_for_status` (optional `True` or `False`; defaults to the client's setting, which is `True`: a 4xx or 5xx response raises `httpx2.HTTPStatusError`. See [Raising errors for 4xx and 5xx responses](configuration.md#raising-errors-for-4xx-and-5xx-responses))
-- `validate_arguments` (optional `True` or `False`; defaults to the client's setting, which is `False`: arguments aren't checked. See [Validating arguments](configuration.md#validating-arguments))
+| Option | Default | Effect |
+|---|---|---|
+| `path` | `""` | The path template, relative to the client's base URL. A resource's prefix is joined onto it, so `@method.get()` on a resource with `prefix="/users"` is `GET /users`. See [Path parameters](requests.md#path-parameters). |
+| `decoder` | none | A function that turns the `httpx2.Response` into the return value, instead of the decoding the return annotation implies. See [Your own decoder](responses.md#your-own-decoder). |
+| `stream` | `False` | `True` returns the open, unread response: annotate the endpoint `-> Response`, with no `decoder`. See [The open response](responses.md#the-open-response). |
+| `deprecated` | `None` | A message: each call emits a `DeprecationWarning` with it. See [Deprecating endpoints](#deprecating-endpoints). |
+| `tags` | none | Labels that group endpoints, each kept once. A resource's tags go in front (see [Tags](resources.md#tags)). Nothing in ClientX uses them yet. |
+| `timeout` | the client's | Seconds, or an `httpx2.Timeout`, for this endpoint's requests. `None` turns the timeout off. |
+| `raise_for_status` | the client's | Whether a 4xx or 5xx response raises `httpx2.HTTPStatusError`. Clients raise by default. See [Errors for 4xx and 5xx responses](responses.md#errors-for-4xx-and-5xx-responses). |
 
 ```python
 from clientx import ClientX, Response, method
 
 
-class ItemsClient(ClientX):
-    @method.post("/items")
-    def create_item(self, json: dict[str, object]) -> Response:
+class FilesAPI(ClientX):
+    @method.get("/files/{name}", timeout=60.0, raise_for_status=False)
+    def download(self, name: str) -> Response:
+        """Fetch a file. A 404 is returned as a response instead of raising."""
         ...
 ```
 
-There's no method for sending a raw request through a client: to call a URL the client has no method for, add an endpoint for it.
+## The method
+
+- **The body never runs.** Write `...`, after the docstring if there is one.
+- **The first parameter receives the client or resource.** Name it `self`, as usual. It must be positional.
+- **Every other parameter sends one value.** Positional-only and keyword-only parameters work as in any method, but `*args` and `**kwargs` can't be endpoint parameters: each value needs a parameter of its own, which decides where it goes in the request.
+- **The return annotation is required.** It decides what the endpoint returns.
+- **Type checkers see the method's own signature**, so `api.get_user` takes `user_id: int` and returns a `User`. With `decoder=`, they also check that the decoder returns what the annotation says.
+
+A mistake in an endpoint, such as a missing return annotation or a placeholder that names no parameter, raises `DefinitionError` when the class is defined, so it fails when its module is imported, not on its first call (see [Errors](errors.md)).
 
 ## Empty method bodies and mypy
 
-Endpoint bodies never run, so `...` is all they need, after the docstring if there is one. Pyright accepts `...`, but not a body that's only a docstring: for an endpoint whose return type isn't `None`, it reports `Function with declared return type "User" must return value on all code paths`. Mypy reports `Missing return statement  [empty-body]` for every endpoint whose return type isn't `None`, even with `...`. Turn that one check off for your client modules, either at the top of the file:
+Pyright accepts a body of `...`, but not a body that's only a docstring: for an endpoint whose return type isn't `None`, it reports `Function with declared return type "User" must return value on all code paths`. Mypy reports `Missing return statement  [empty-body]` for every endpoint whose return type isn't `None`, even with `...`. Turn that one check off for your client modules, either at the top of the file:
 
 ```python
 # mypy: disable-error-code="empty-body"
@@ -62,21 +83,55 @@ disable_error_code = ["empty-body"]
 
 Mypy still checks everything else in those modules, including the return types of calls to your endpoints.
 
-## Deprecating Endpoints
+## Deprecating endpoints
 
-Use `DeprecatedMessage` for warning-based deprecation:
+Give `deprecated=` the message to show:
 
 ```python
-from clientx import ClientX, DeprecatedMessage, Response, method
+from clientx import ClientX, method
+from pydantic import BaseModel
 
 
-class LegacyClient(ClientX):
-    @method.get(
-        "/v1/legacy",
-        deprecated=DeprecatedMessage("Deprecated: use /v2/new-endpoint instead."),
-    )
-    def legacy(self) -> Response:
-        ...
+class User(BaseModel):
+    id: int
+    name: str
+
+
+class UsersAPI(ClientX):
+    @method.get("/v1/users/{user_id}", deprecated="Use get_user() instead.")
+    def get_user_v1(self, user_id: int) -> User: ...
+
+    @method.get("/v2/users/{user_id}")
+    def get_user(self, user_id: int) -> User: ...
 ```
 
-You can also pass any callable as `deprecated`, and it will run on endpoint invocation.
+Each call to `get_user_v1` emits a `DeprecationWarning` with that message, pointing at the caller's line, before the request is sent. Python shows a `DeprecationWarning` only when it's triggered by code in `__main__`, or under a test runner such as pytest. To send warnings to your logs, call `logging.captureWarnings(True)`: they then appear on the `py.warnings` logger.
+
+## Endpoint names
+
+A `ClientX` is an `httpx2.Client`, so an endpoint or mounted resource on a client can't use a name the client already has: every name of `httpx2.Client`, such as `get`, `post`, `send`, `headers` or `close`, as well as ClientX's own. Such a name raises `DefinitionError` when the class is defined, because overriding it would break the client. Put the endpoint on a [resource](resources.md) instead, where those names are free. An `AsyncClientX` reserves the names of `httpx2.AsyncClient` the same way.
+
+An endpoint belongs to the class whose body it's in. It can have a second name there (`QueryDevices = query_devices`), which sends the same request. Putting it in another client's or resource's body raises `DefinitionError`, since that class's prefix would change its path too: declare it again there.
+
+An endpoint's name hides any other meaning of that name for the rest of the class body:
+
+- If you import the decorators themselves (`from clientx.method import get`), an endpoint named like one, such as `get`, replaces it, so a later `@get(...)` fails when the class is defined. Decorating with `@method.get(...)`, as these docs do, avoids that.
+- If an endpoint is named `list` (or `dict`, `type`...), a later `list[Post]` in an annotation or a decorator argument fails when the class is defined: `TypeError: 'function' object is not subscriptable`. Pyright reports it too. Define that endpoint last in the class, or write `builtins.list[Post]` after it.
+
+## Requests without an endpoint
+
+A client is an `httpx2.Client`, so its own methods send a request with the client's base URL and settings, for a one-off call that doesn't need an endpoint:
+
+```python
+from clientx import ClientX
+
+
+class ExampleAPI(ClientX): ...
+
+
+with ExampleAPI("https://api.example.com") as api:
+    response = api.get("/status")
+    response.raise_for_status()
+```
+
+These are httpx2's methods, so they return the `httpx2.Response` as it is: nothing is decoded, and a 4xx or 5xx response doesn't raise until you call `raise_for_status()`. For a call you make more than once, declare an endpoint.

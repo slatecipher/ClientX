@@ -1,11 +1,12 @@
+"""A typed, declarative HTTP API client framework for Python."""
+
 from httpx2 import Auth, Request, Response, Timeout
 
-from clientx._annotations import Body, File, Form, Header, PathParam, Query
+from clientx import method
 from clientx._client import AsyncClientX, AsyncResource, ClientX, Resource
-from clientx._client_types import DumpConfig
-from clientx._endpoint_context import DeprecatedMessage
 from clientx._version import __version__
-from clientx.exceptions import ClientXError
+from clientx.arguments import Body, File, Form, Header, Json, Query, Send, Url
+from clientx.exceptions import ArgumentError, ClientXError, DefinitionError
 
 __all__ = [
     # clientx._version
@@ -15,22 +16,24 @@ __all__ = [
     "Request",
     "Response",
     "Timeout",
-    # clientx._annotations
-    "Body",
-    "File",
-    "Form",
-    "Header",
-    "PathParam",
-    "Query",
     # clientx._client
     "AsyncClientX",
     "AsyncResource",
     "ClientX",
     "Resource",
-    # clientx._client_types
-    "DumpConfig",
-    # clientx._endpoint_context
-    "DeprecatedMessage",
+    # clientx.arguments
+    "Body",
+    "File",
+    "Form",
+    "Header",
+    "Json",
+    "Query",
+    "Send",
+    "Url",
     # clientx.exceptions
+    "ArgumentError",
     "ClientXError",
+    "DefinitionError",
+    # submodules
+    "method",
 ]

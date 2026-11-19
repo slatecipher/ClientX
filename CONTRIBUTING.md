@@ -27,7 +27,7 @@ Other useful commands:
 ```bash
 make lint                                       # format and auto-fix with ruff
 make typecheck                                  # pyright (strict on src/), and pyright and mypy on the typing contract
-uv run pytest test/test_clientx.py::test_name   # run a single test
+uv run pytest test/test_paths.py::test_name     # run a single test
 ```
 
 When you change code:
@@ -36,7 +36,30 @@ When you change code:
 - `test/test_typing.py` checks that decorated endpoints keep their signatures for type checkers, under both pyright and mypy. Update it if you change the decorators or other public signatures, and mark each call that must be rejected for both checkers: `# type: ignore[code]  # pyright: ignore[rule]`.
 - Add tests for new behavior and for bug fixes. `make test` prints a coverage report.
 - In tests that send requests, take the `mock_transport` fixture from `test/conftest.py` as a parameter: it records what's sent and answers without a network. pytest runs in its recommended `importlib` import mode, where test modules can't import helper modules, so share test helpers as fixtures in `conftest.py`. It also runs in strict mode: an unregistered marker or a duplicate parametrize ID is an error.
-- Ruff formats and lints the code with a 120-character line limit. `make lint` fixes most issues for you.
+- Ruff formats and lints the code with a 120-character line limit, and checks that docstrings and comments wrap at 80 (W505). `make lint` fixes most issues for you, but not W505: rewrap those lines yourself.
+- Write docstrings by the rules in [Docstrings](#docstrings).
+
+## Docstrings
+
+Docstrings follow the [Google Python Style Guide](https://google.github.io/styleguide/pyguide.html#38-comments-and-docstrings), kept short: don't restate what the signature, type hints and names already say. Ruff checks the layout with its `D` rules and the Google convention.
+
+- **When to write one:**
+  - Public modules, classes, and complex functions: always.
+  - Simple public functions: a one-line docstring only (`"""Do X."""`). Leave out `Args:`, `Returns:` and `Raises:` when the signature and type hints make them obvious.
+  - Private helpers (`_helper`): none, unless the logic is non-obvious or tricky, or has side effects.
+  - Standard dunder methods (`__str__`, `__repr__`, `__eq__`): none. Document `__init__` only if it takes non-trivial arguments or has setup side effects. Ruff's D105 and D107 are off for this.
+  - Test functions (`test_*`): none. The name says what the test checks.
+- **No bloat:**
+  - Don't repeat type hints: no `(int)` or `(str)` in `Args:` or `Returns:`.
+  - No filler, such as `user_id: The user ID.` If every parameter is self-explanatory, leave out `Args:`. Ruff's D417 wants every parameter once there's an `Args:` section, so when only one needs explaining, explain it in the description instead.
+  - Use the description for why, edge cases, units (seconds or milliseconds), mutations, and exceptions callers must handle.
+- **Format:**
+  - Use triple double quotes, and wrap lines at 80 characters, though code wraps at 120. Ruff's W505 checks this, for comments too.
+  - Start with a one-line imperative summary that ends with a period, such as `"""Fetch active users."""`, and follow it with a blank line if more follows. The summary fits on one line.
+  - Write section headers exactly as `Args:`, `Returns:`, `Yields:`, `Raises:` and `Attributes:`. Indent their content 4 spaces, with a hanging indent for wrapped lines.
+  - Leave out `Returns:` for a function that returns `None`.
+  - Mark code with double backticks, as in `` ``name`` ``.
+  - A private helper that checks something names its exception in the summary, such as `"""Raise ``DefinitionError`` if there's no return annotation."""`, rather than in a `Raises:` section.
 
 ## Pull requests
 
