@@ -16,6 +16,8 @@ type EndpointOwner = ClientX | AsyncClientX | Resource | AsyncResource
 
 # --- Clients ------------------------------------------------------------------
 class _BaseClientX:
+    # The class arguments: what a client uses when its caller doesn't say.
+    __clientx_base_url__: ClassVar[URL | None] = None
     __clientx_user_agent__: ClassVar[str] = f"ClientX/{__version__}"
     __clientx_raise_for_status__: bool = True
 
@@ -45,11 +47,11 @@ class ClientX(_BaseClientX, Client):
     decode the response. A ``ClientX`` is an ``httpx2.Client``, so it's
     configured, used and closed like one::
 
-        class UsersAPI(ClientX, user_agent="UsersAPI/1.0"):
+        class UsersAPI(ClientX, base_url="https://api.example.com"):
             @method.get("/users/{user_id}")
             def get_user(self, user_id: int) -> User: ...
 
-        with UsersAPI("https://api.example.com") as api:
+        with UsersAPI() as api:
             user = api.get_user(1)
     """
 
@@ -59,7 +61,7 @@ class ClientX(_BaseClientX, Client):
 
     def __init__(
         self,
-        base_url: URL | str,
+        base_url: URL | str | None = None,
         *,
         user_agent: str | None = None,
         raise_for_status: bool | None = None,
@@ -68,7 +70,8 @@ class ClientX(_BaseClientX, Client):
         """Initialize with a base URL and ``httpx2.Client`` options.
 
         Args:
-            base_url: Base URL used for all relative request paths.
+            base_url: Base URL used for all relative request paths. When
+                ``None``, the class's ``base_url=`` class argument.
             user_agent: The ``User-Agent`` header to send. When ``None``, a
                 ``User-Agent`` given in ``headers=`` is kept, or else the
                 class's default: its ``user_agent=`` class argument, or
@@ -78,8 +81,11 @@ class ClientX(_BaseClientX, Client):
                 ``None``. An endpoint's own ``raise_for_status=`` overrides it.
             **kwargs: Additional keyword arguments passed directly to
                 ``httpx2.Client``.
+
+        Raises:
+            TypeError: If there's no base URL, here or on the class.
         """
-        super().__init__(base_url=base_url, **kwargs)
+        super().__init__(base_url=_base_url(type(self), base_url), **kwargs)
         _configure(
             self,
             user_agent=user_agent,
@@ -87,18 +93,25 @@ class ClientX(_BaseClientX, Client):
             raise_for_status=raise_for_status,
         )
 
-    def __init_subclass__(cls, *, user_agent: str | None = None, **kwargs: Any) -> None:
-        """Check the class, store its ``User-Agent``, and set up its endpoints.
+    def __init_subclass__(
+        cls, *, base_url: URL | str | None = None, user_agent: str | None = None, **kwargs: Any
+    ) -> None:
+        """Check the class, store its class arguments, and set up its endpoints.
 
         An endpoint or mounted resource can't use a name ``ClientX`` already
         uses, which includes all of ``httpx2.Client``'s, such as ``get`` or
-        ``send``. Those names are free on a ``Resource``. The ``user_agent=``
-        class argument is sent unless the caller gives one. A subclass without
-        it keeps its parent's, and a direct subclass sends
-        ``ClientX/<version>``.
+        ``send``. Those names are free on a ``Resource``. The ``base_url=`` and
+        ``user_agent=`` class arguments are used unless the caller gives its
+        own. A subclass without one keeps its parent's, and a direct subclass
+        has no base URL and sends ``ClientX/<version>``.
+
+        Raises:
+            DefinitionError: If ``base_url`` isn't an absolute URL, with a
+                scheme and a host, or the class breaks a rule for endpoints or
+                resources.
         """
         super().__init_subclass__(**kwargs)
-        set_up_client(cls, base=ClientX, user_agent=user_agent)
+        set_up_client(cls, base=ClientX, base_url=base_url, user_agent=user_agent)
 
 
 class AsyncClientX(_BaseClientX, AsyncClient):
@@ -115,7 +128,7 @@ class AsyncClientX(_BaseClientX, AsyncClient):
 
     def __init__(
         self,
-        base_url: URL | str,
+        base_url: URL | str | None = None,
         *,
         user_agent: str | None = None,
         raise_for_status: bool | None = None,
@@ -127,7 +140,7 @@ class AsyncClientX(_BaseClientX, AsyncClient):
         ``mounts`` take async transports, and event hooks must be ``async``
         functions.
         """
-        super().__init__(base_url=base_url, **kwargs)
+        super().__init__(base_url=_base_url(type(self), base_url), **kwargs)
         _configure(
             self,
             user_agent=user_agent,
@@ -135,10 +148,29 @@ class AsyncClientX(_BaseClientX, AsyncClient):
             raise_for_status=raise_for_status,
         )
 
-    def __init_subclass__(cls, *, user_agent: str | None = None, **kwargs: Any) -> None:
+    def __init_subclass__(
+        cls, *, base_url: URL | str | None = None, user_agent: str | None = None, **kwargs: Any
+    ) -> None:
         """Check the class and set up its endpoints, like ``ClientX``."""
         super().__init_subclass__(**kwargs)
-        set_up_client(cls, base=AsyncClientX, user_agent=user_agent)
+        set_up_client(cls, base=AsyncClientX, base_url=base_url, user_agent=user_agent)
+
+
+def _base_url(cls: type[ClientX | AsyncClientX], base_url: URL | str | None) -> URL | str:
+    """Return the base URL given, or else the class's.
+
+    Raises:
+        TypeError: If there's neither, as for a missing argument.
+    """
+    if base_url is not None:
+        return base_url
+    if cls.__clientx_base_url__ is not None:
+        return cls.__clientx_base_url__
+    name, base = cls.__qualname__, ("AsyncClientX" if cls.__clientx_is_async__ else "ClientX")
+    raise TypeError(
+        f'{name} needs a base URL: pass one, as in {name}("https://api.example.com"), or set it in the class '
+        f'statement, as in class {name}({base}, base_url="https://api.example.com").'
+    )
 
 
 def _configure(

@@ -76,6 +76,9 @@ class AsyncAPI(AsyncClientX):
     async def logs(self) -> AsyncIterator[str]: ...
 
 
+class Configured(ClientX, base_url="https://api.example.com"): ...
+
+
 def answering(**response: Any) -> httpx2.MockTransport:
     """Return a transport that answers ``httpx2.Response(200, **response)``."""
     return httpx2.MockTransport(lambda request: httpx2.Response(200, **response))
@@ -86,6 +89,10 @@ def test_endpoints_keep_their_return_types() -> None:
     assert_type(api.list_users(), list[User])
     assert_type(api.health(), Response)
     assert_type(api.delete_user(1), None)
+
+
+def test_a_class_base_url_makes_the_argument_optional() -> None:
+    assert_type(Configured(transport=answering()), Configured)
 
 
 def test_endpoints_keep_their_parameters() -> None:

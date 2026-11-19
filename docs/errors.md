@@ -21,6 +21,7 @@ When an endpoint is decorated:
 When the client or resource class is defined:
 
 - The class subclasses both `ClientX` and `AsyncClientX`, or both `Resource` and `AsyncResource`.
+- A client class's `base_url=` isn't an absolute URL, with a scheme and a host.
 - An endpoint is the wrong kind for its class: `async def` on a `ClientX` or `Resource`, or `def` on an `AsyncClientX` or `AsyncResource`.
 - An endpoint or mounted resource has a name the client already uses (see [Endpoint names](endpoints.md#endpoint-names)), or the endpoint is already in another class's body.
 - A resource is mounted on the other kind of client or resource, or on a class that isn't one, or a resource class is assigned where an instance should be (`users = Users` rather than `users = Users()`).
