@@ -76,7 +76,7 @@ class ReposAPI(ClientX):
 
 There are no literal braces: a brace that isn't part of a placeholder, `{{` and `}}` included, raises `DefinitionError` when the class is defined, and so does a placeholder such as `{user-id}` or one with a converter other than `path` (`{user_id:int}`).
 
-A value that would call a different path raises `ArgumentError` before anything is sent: `None`, which would be sent as `null` (it can only come through `Any`); an empty value, since `/users/{user_id}` with `""` would call `/users/`; and in a `{name:path}` value, a leading, trailing or doubled slash. The error's `parameter` attribute names the parameter.
+A value that would call a different path raises `ArgumentError` before anything is sent: `None`, which would be sent as `null` (it can only come through `Any`, or a parameter without an annotation); an empty value, since `/users/{user_id}` with `""` would call `/users/`; and in a `{name:path}` value, a leading, trailing or doubled slash. The error's `parameter` attribute names the parameter.
 
 ## Query parameters and headers
 
@@ -107,7 +107,7 @@ class ItemsAPI(ClientX):
 
 - **Names.** A value is sent under its helper's `alias`, or else under the parameter's name. A header's name has its underscores turned into hyphens, so `request_id` is sent as `request-id`; an alias is used exactly as given.
 - **Lists.** A list repeats the query parameter (`tags=new&tags=used`), and so does a list of form fields. A tuple or set does too, but a set's order can change from run to run, and the URL with it: use a list for a fixed order. A header takes a plain value only, so join several yourself (`", ".join(tags)`), as you would for another list style, such as `tags=new,used`.
-- **Text.** An `Enum` is sent as its value, a `datetime` as ISO 8601 text, a `UUID` as its string, and a number or `bool` as JSON text (`2`, `1.5`, `true`). A value of any other type can only come through `Any`, and is sent as `str(value)`.
+- **Text.** An `Enum` is sent as its value, a `date`, `time` or `datetime` as ISO 8601 text, a `UUID` or `Decimal` as its string, `bytes` as UTF-8 text, and a number or `bool` as JSON text (`2`, `1.5`, `true`). A value of any other type can only come through `Any`, and is sent as `str(value)`.
 - **`None` and defaults.** A value of `None` is left out, and so is an empty list and a `None` in one, so an optional parameter defaults to `None`. A default that isn't `None` is sent, like any other value.
 - **One key, one value.** Two values sent under one key, such as two parameters with the same alias, or a parameter and a field of a spread model, raise `DefinitionError` when the class is defined, since one would be lost. Header names are compared ignoring case. A spread mapping's keys are known only at the call, so avoiding a clash with them is up to you.
 - **The client's own.** Values set with the client's `params=` and `headers=` are sent too.

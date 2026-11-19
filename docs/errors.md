@@ -28,7 +28,7 @@ When the client or resource class is defined:
 - A helper is nested inside a parameter's type, has a default inside it, or is on a model's field. The same goes for a `Send`, and for a `Send` option where it can't apply, such as `Send(embed=True)` on a parameter that isn't sent as JSON, any option on a path parameter, or `Send(exclude_unset=True)` on a type with no Pydantic model.
 - A parameter's value can't go to its part: a type that isn't a plain value, such as a class of your own, for a path, query, header or form value; a list for a header; a field of a spread model that isn't a plain value; a `File()` that isn't `bytes`, a binary file or a file tuple (`str` included); or a `Body()` that isn't `str`, `bytes` or a stream of `bytes`, or a stream of the wrong kind for the client. The parameters make more than one kind of body, or more than one is marked `Body()`. Two values would be sent under one key.
 
-See [Building requests](requests.md) for the rules behind the last four.
+See [Building requests](requests.md) for the rules behind the last three.
 
 At call time:
 

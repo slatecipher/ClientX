@@ -47,6 +47,7 @@ asyncio.run(main())
 - `async def` endpoints go on an `AsyncClientX` or an `AsyncResource`, and `def` endpoints on a `ClientX` or a `Resource`. An `AsyncResource` mounts only on an `AsyncClientX` or another `AsyncResource`. Mixing them raises `DefinitionError` when the class is defined, and type checkers report a `def` endpoint on an async class at its decorator.
 - `transport=` and `mounts=` take async transports (`httpx2.MockTransport` works for both kinds of client), and event hooks must be `async` functions. An `auth=` class works for both kinds.
 - Plain methods can be `async def` too, and await endpoints through `self`, for example to follow pages (see [Plain methods](resources.md#plain-methods)).
+- A streamed `Body()` on an `async def` endpoint is an async iterable of bytes, such as an async generator. A sync one, a `list[bytes]` included, raises `DefinitionError` when the class is defined, since an `httpx2.AsyncClient` can't send it (see [Raw content](requests.md#raw-content)).
 - ClientX itself only awaits httpx2, so a client runs on any event loop httpx2 supports, such as asyncio or trio.
 
 ## Streaming

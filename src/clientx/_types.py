@@ -70,12 +70,14 @@ class Send:
             value or one of several ``Json()`` parameters, is sent the same.
         exclude_unset: Leave out a model's fields that weren't set when it was
             made, so the server's defaults apply. Pydantic models only: a
-            dataclass doesn't record which fields were set.
+            dataclass doesn't record which fields were set. For JSON, and for
+            a model spread into the query string, headers or form.
         exclude_none: Leave out the fields of a pydantic model or pydantic
             dataclass that are ``None``. For JSON only: the query string,
             headers and form leave out ``None`` already.
         exclude_defaults: Leave out the fields of a pydantic model or pydantic
-            dataclass that equal their defaults.
+            dataclass that equal their defaults. For JSON, and for a model
+            spread into the query string, headers or form.
     """
 
     embed: bool | None = None
@@ -246,7 +248,7 @@ class BuildRequestKwargs(TypedDict, total=False):
     """
 
     content: RequestContent | None
-    """The raw body: ``str``, ``bytes``, or an iterable of ``bytes``.
+    """The raw body: ``str``, ``bytes``, or a sync or async iterable of bytes.
 
     A ``Body()`` parameter sets it.
     """
