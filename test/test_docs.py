@@ -8,6 +8,9 @@ highlights it as Python, since it reads only the first word.
 Each block also runs on its own, up to the first request it sends, which raises
 instead of reaching the network. That catches what only running finds, such as
 the ``DefinitionError`` for a parameter without a helper.
+
+The ``Send`` table in docs/requests.md lists the helpers each option works
+with, and must match what the code allows.
 """
 
 import json
@@ -16,12 +19,15 @@ import subprocess  # noqa: S404 - runs pyright on the docs' own samples
 import sys
 import traceback
 import types
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from pathlib import Path
 from typing import NoReturn
 
 import httpx2
 import pytest
+
+from clientx import Send
+from clientx._planner import _SPECS  # pyright: ignore[reportPrivateUsage]
 
 ROOT = Path(__file__).parent.parent
 
@@ -217,3 +223,19 @@ def test_the_run_reports_errors_at_their_line_in_the_page(monkeypatch: pytest.Mo
 
     [error] = errors
     assert error.startswith("page.md:4: DefinitionError: Endpoint 'API.items': Parameter 'page' needs a helper")
+
+
+def test_the_send_table_lists_the_helpers_each_option_works_with() -> None:
+    # Each spec's send_options decide where an option works; the table must say
+    # the same, for every Send option.
+    page = (ROOT / "docs/requests.md").read_text()
+    table = page[page.index("| Option | Works with | Effect |") :].split("\n\n", 1)[0]
+    documented: dict[str, set[str]] = {}
+    for row in table.splitlines()[2:]:
+        option, works_with = row.split("|")[1:3]
+        documented[option.strip().strip("`").split("=")[0]] = set(re.findall(r"`(\w+\(\))`", works_with))
+    allowed = {
+        option.name: {spec.helper for spec in _SPECS.values() if option.name in spec.send_options}
+        for option in fields(Send)
+    }
+    assert documented == allowed
