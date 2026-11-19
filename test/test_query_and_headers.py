@@ -318,11 +318,13 @@ def test_literal_newtype_and_any_values_are_sent_as_text(mock_transport: MockTra
             sort: Annotated[Literal["asc", "desc"], Query()],
             order: Annotated[OrderId, Query()],
             price: Annotated[Any, Query()],
+            extra: Annotated[Any, Query()],
         ) -> None: ...
 
     sent: list[httpx2.Request] = []
-    API(BASE_URL, transport=mock_transport(sent)).search("asc", OrderId(7), Price())
-    assert only_request(sent).url.query.decode() == "sort=asc&order=7&price=9.90+EUR"
+    API(BASE_URL, transport=mock_transport(sent)).search("asc", OrderId(7), Price(), {"tags": ["é", 1]})
+    params = only_request(sent).url.params
+    assert dict(params) == {"sort": "asc", "order": "7", "price": "9.90 EUR", "extra": '{"tags":["é",1]}'}
 
 
 @pytest.mark.parametrize(
@@ -427,6 +429,27 @@ def test_a_value_that_cant_become_text_raises_before_sending(mock_transport: Moc
     with pytest.raises(ArgumentError, match=re.escape("Can't send 'token'")) as caught:
         API(BASE_URL, transport=mock_transport(sent)).search(b"\xff")
     assert caught.value.parameter == "token"
+    assert sent == []
+
+
+@pytest.mark.parametrize(
+    ("annotation", "value"),
+    [
+        pytest.param(Annotated[str, Header()], "é", id="value"),
+        pytest.param(Annotated[dict[str, str], Header()], {"x-note": "é"}, id="spread"),
+    ],
+)
+def test_a_header_value_that_isnt_ascii_raises_before_sending(
+    mock_transport: MockTransport, annotation: Any, value: object
+) -> None:
+    class API(ClientX):
+        @method.get("/items")
+        def search(self, note: annotation) -> None: ...  # pyright: ignore[reportInvalidTypeForm]
+
+    sent: list[httpx2.Request] = []
+    with pytest.raises(ArgumentError, match=re.escape("Can't send 'note' as a header: 'é' isn't ASCII")) as caught:
+        API(BASE_URL, transport=mock_transport(sent)).search(value)
+    assert caught.value.parameter == "note"
     assert sent == []
 
 

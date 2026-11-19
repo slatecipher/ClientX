@@ -37,7 +37,7 @@ At call time:
 
 ## `ArgumentError`
 
-An `ArgumentError` is raised before the request is sent, when an argument's value can't be sent as it is. Its `parameter` attribute names the parameter. A path value raises it when it would call a different path: `None`, an empty value, or a `{name:path}` value with a leading, trailing or doubled slash (see [Path parameters](requests.md#path-parameters)). A JSON value raises it when Pydantic can't serialize it, such as an object of an unknown class passed through `Any`, and a text value when it can't become text, such as `bytes` that aren't UTF-8.
+An `ArgumentError` is raised before the request is sent, when an argument's value can't be sent as it is. Its `parameter` attribute names the parameter. A path value raises it when it would call a different path: `None`, an empty value, or a `{name:path}` value with a leading, trailing or doubled slash (see [Path parameters](requests.md#path-parameters)). A JSON value raises it when Pydantic can't serialize it, such as an object of an unknown class passed through `Any`, or when it holds NaN or infinity, which JSON can't. A text value raises it when it can't become text, such as `bytes` that aren't UTF-8, and a header value when it isn't ASCII.
 
 ```python
 from clientx import ArgumentError, ClientX, method

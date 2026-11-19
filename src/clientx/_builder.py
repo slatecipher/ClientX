@@ -5,7 +5,8 @@
 names the caller passed. The builder only follows the plan: it never reads
 annotations, ``Send`` or the specs, and the only error it raises is
 ``ArgumentError``, before anything is sent, for a path value that would call a
-different path, or a value that can't become text or JSON.
+different path, a value that can't become text or JSON, or a header value that
+isn't ASCII.
 
 - Path: each placeholder is filled with percent-encoded text, one segment, or
   several for ``{name:path}``. ``.`` and ``..`` are encoded too. A ``None`` or
@@ -13,10 +14,11 @@ different path, or a value that can't become text or JSON.
 - Text: a value becomes text by one rule, for the path, query, headers and
   form: pydantic's JSON form, so an ``Enum`` is its value, a ``datetime`` ISO
   8601 text, a number or ``bool`` JSON text (``true``), and a list or dict
-  JSON text. ``str`` is used only for an object pydantic doesn't know.
+  compact JSON text. ``str`` is used only for an object pydantic doesn't know.
 - Query, headers, form: ``None`` is left out, and so is an empty collection
   and a ``None`` item in one. Where the plan says ``many``, a collection
-  repeats the key, decided by the value: a ``str`` is one value. A spread
+  repeats the key, decided by the value: a ``str`` is one value. A header
+  value must be ASCII, as httpx2 sends it, or it raises. A spread
   model or dataclass is dumped with its ``DumpOptions``, then each field is
   sent under its planned key; what a spread mapping, or a model with its own
   model serializer, dumps is sent under its own keys.
@@ -28,7 +30,8 @@ different path, or a value that can't become text or JSON.
 - JSON fields: each is dumped with its ``DumpOptions``, by alias, into one JSON
   object. ``None`` is left out, unless it was passed explicitly and the plan
   says ``sends_null``: then it's ``null``. With no fields left, there's no
-  JSON body.
+  JSON body. A value JSON can't hold, NaN or infinity, raises, in a JSON
+  part too.
 - Body: ``Body()`` is passed as it is; a lone JSON body is dumped with its
   ``DumpOptions``. ``None`` means no body, never ``null``.
 """
@@ -113,7 +116,25 @@ def _keyed_value(item: PlannedParameter, value: object, passed: Collection[str])
             return _dump_json(item, value)
         return None if item.sends_null and item.name in passed else _LEFT_OUT
     text = _text_value(value, many=item.many)
-    return _LEFT_OUT if text is None else text
+    if text is None:
+        return _LEFT_OUT
+    if item.httpx_argument is HttpxArgument.HEADERS:
+        _check_header_text(item, text)
+    return text
+
+
+def _check_header_text(item: PlannedParameter | SpreadParameter, text: str | list[str]) -> None:
+    """Raise ``ArgumentError`` if a header value isn't ASCII.
+
+    httpx2 sends header values as ASCII, and would raise ``UnicodeEncodeError``
+    without naming the parameter.
+    """
+    if isinstance(text, str) and not text.isascii():
+        raise ArgumentError(
+            f"Can't send {item.name!r} as a header: {text!r} isn't ASCII, and header values must be. Encode it as "
+            "the API expects, such as with urllib.parse.quote(). No request was sent.",
+            parameter=item.name,
+        )
 
 
 @contextmanager
@@ -245,6 +266,9 @@ def _spread(item: SpreadParameter, value: object) -> dict[str, object]:
         text = _text_value(field, many=item.many and isinstance(field, list))
         if text is not None:
             fields[key] = text
+    if item.httpx_argument is HttpxArgument.HEADERS:
+        for text in fields.values():
+            _check_header_text(item, cast("str", text))
     return fields
 
 
@@ -295,11 +319,12 @@ def _to_text(value: object) -> str:
 
     It's pydantic's JSON form: an ``Enum`` becomes its value, a ``datetime``
     ISO 8601 text, a ``UUID`` or ``Decimal`` its string, a number or ``bool``
-    JSON text (``2``, ``true``), and a list or dict JSON text. Only an object
-    pydantic doesn't know uses ``str``: the ``Any`` escape hatch.
+    JSON text (``2``, ``true``), and a list or dict compact JSON text, with
+    text as it is, as in a JSON body. Only an object pydantic doesn't know uses
+    ``str``: the ``Any`` escape hatch.
     """
     jsonable = to_jsonable_python(value, fallback=str)
-    return jsonable if isinstance(jsonable, str) else json.dumps(jsonable)
+    return jsonable if isinstance(jsonable, str) else json.dumps(jsonable, separators=(",", ":"), ensure_ascii=False)
 
 
 # --- Dumping values -----------------------------------------------------------
@@ -328,35 +353,24 @@ def _dump(value: object, dump: DumpOptions, *, by_alias: bool) -> object:
 
 
 def _json_text(item: PlannedParameter, value: object) -> str:
-    """Return a value as JSON text, for a JSON part of a form.
-
-    It's encoded as httpx2 encodes a JSON body: compact, with text as it is,
-    and without NaN or infinity, which JSON can't hold.
-
-    Raises:
-        ArgumentError: If the value can't be JSON. No request is sent.
-    """
-    dumped = _dump_json(item, value)
-    try:
-        return json.dumps(dumped, separators=(",", ":"), ensure_ascii=False, allow_nan=False)
-    except ValueError as error:
-        raise ArgumentError(
-            f"Can't send {item.name!r} as JSON: {error}. No request was sent.", parameter=item.name
-        ) from error
+    """Return a value as JSON text, for a JSON part of a form."""
+    return _encode_json(item, _dump_json(item, value))
 
 
 def _dump_json(item: PlannedParameter, value: object) -> object:
     """Return a JSON field's or body's value as JSON-ready data, by alias.
 
     There's no ``str`` fallback here: JSON has no one text form for an object
-    pydantic doesn't know.
+    pydantic doesn't know. The data is encoded once as httpx2 will encode it,
+    so a value JSON can't hold raises here, naming the parameter.
 
     Raises:
         ArgumentError: If pydantic can't serialize the value, as for a class it
-            doesn't know passed through ``Any``. No request is sent.
+            doesn't know passed through ``Any``, or the value holds NaN or
+            infinity. No request is sent.
     """
     try:
-        return _BY_VALUE.dump_python(
+        dumped = _BY_VALUE.dump_python(
             value,
             mode="json",
             by_alias=True,
@@ -369,4 +383,23 @@ def _dump_json(item: PlannedParameter, value: object) -> object:
             f"Can't send {item.name!r} as JSON: {error}. Pass a value pydantic can serialize, such as a model, "
             "dataclass, dict or list, or convert it at the call. No request was sent.",
             parameter=item.name,
+        ) from error
+    _encode_json(item, dumped)
+    return dumped
+
+
+def _encode_json(item: PlannedParameter, data: object) -> str:
+    """Return JSON-ready data as JSON text, as httpx2 encodes a JSON body.
+
+    It's compact, with text as it is, and without NaN or infinity, which JSON
+    can't hold. Pydantic keeps them in a model's ``float`` field.
+
+    Raises:
+        ArgumentError: If the data holds NaN or infinity. No request is sent.
+    """
+    try:
+        return json.dumps(data, separators=(",", ":"), ensure_ascii=False, allow_nan=False)
+    except ValueError as error:
+        raise ArgumentError(
+            f"Can't send {item.name!r} as JSON: {error}. No request was sent.", parameter=item.name
         ) from error

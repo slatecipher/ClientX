@@ -505,6 +505,32 @@ def test_a_json_value_pydantic_cant_serialize_raises_before_sending(mock_transpo
     assert sent == []
 
 
+class Reading(BaseModel):
+    value: float
+
+
+@pytest.mark.parametrize(
+    "annotation",
+    [
+        pytest.param(Annotated[Reading, Json()], id="body"),
+        pytest.param(Annotated[Reading, Json(), Send(embed=True)], id="field"),
+        pytest.param(Annotated[Reading, Form(), Send(json_part=True)], id="JSON part"),
+    ],
+)
+def test_a_json_value_holding_nan_raises_before_sending(mock_transport: MockTransport, annotation: Any) -> None:
+    class API(ClientX):
+        @method.post("/readings")
+        def create(self, reading: annotation) -> None: ...  # pyright: ignore[reportInvalidTypeForm]
+
+    sent: list[httpx2.Request] = []
+    with pytest.raises(
+        ArgumentError, match=re.escape("Can't send 'reading' as JSON: Out of range float values are not JSON compliant")
+    ) as caught:
+        API(BASE_URL, transport=mock_transport(sent)).create(Reading(value=float("nan")))
+    assert caught.value.parameter == "reading"
+    assert sent == []
+
+
 # Files: what a file can be
 
 
