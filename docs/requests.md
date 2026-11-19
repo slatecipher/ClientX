@@ -229,13 +229,13 @@ class IssuesAPI(ClientX):
 
 The helper says where a parameter goes; `Send` says how it's sent there. Put it in the parameter's outermost `Annotated`, next to the helper. Its options:
 
-| Option | Effect |
-|---|---|
-| `embed=True` | Sends a lone JSON parameter under its alias or name, as a field of a JSON object, instead of as the whole body. FastAPI's `Body(embed=True)` does the same for the request it receives. `Json()` only. |
-| `exclude_unset=True` | Leaves out what the caller didn't set, so the server's defaults apply: the parameter, when the caller doesn't pass it, so `page: Annotated[int, Query(), Send(exclude_unset=True)] = 1` sends no `page` unless it's passed; and a model's fields that weren't set when it was made, for a PATCH with only the fields to change. `Json()`, `Query()`, `Header()` and `Form()`. |
-| `exclude_none=True` | Leaves out the fields of a model or Pydantic dataclass that are `None`, instead of sending `null`. `Json()` only: the other parts leave out `None` already. On a JSON field, a `None` passed explicitly is then left out too. |
-| `exclude_defaults=True` | Leaves out the fields of a model or Pydantic dataclass that equal their defaults. `Json()`, and a spread model. |
-| `json_part=True` | Sends a `Form()` parameter's value as its own part of a multipart form, as JSON with the `application/json` content type, as some APIs take next to files (see [Forms and files](#forms-and-files)). `Form()` only. |
+| Option | Works with | Effect |
+|---|---|---|
+| `embed=True` | `Json()` | Sends a lone JSON parameter under its alias or name, as a field of a JSON object, instead of as the whole body. FastAPI's `Body(embed=True)` does the same for the request it receives. |
+| `exclude_unset=True` | `Json()`, `Query()`, `Header()`, `Form()` | Leaves out what the caller didn't set, so the server's defaults apply: the parameter, when the caller doesn't pass it, so `page: Annotated[int, Query(), Send(exclude_unset=True)] = 1` sends no `page` unless it's passed; and a model's fields that weren't set when it was made, for a PATCH with only the fields to change. |
+| `exclude_none=True` | `Json()` | Leaves out the fields of a model or Pydantic dataclass that are `None`, instead of sending `null`. The other parts leave out `None` already. On a JSON field, a `None` passed explicitly is then left out too. |
+| `exclude_defaults=True` | `Json()`, `Query()`, `Header()`, `Form()` | Leaves out the fields of a model or Pydantic dataclass that equal their defaults. With `Query()`, `Header()` and `Form()`, on a spread model. |
+| `json_part=True` | `Form()` | Sends the parameter's value as its own part of a multipart form, as JSON with the `application/json` content type, as some APIs take next to files (see [Forms and files](#forms-and-files)). |
 
 Many APIs take a body such as `{"ids": [...]}`. Without `embed`, a lone `ids: Annotated[list[str], Json()]` would be the whole body, `[...]`:
 
