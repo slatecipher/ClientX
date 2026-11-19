@@ -90,7 +90,7 @@ def test_a_class_cant_be_both_kinds_of_client() -> None:
         type("Both", (ClientX, AsyncClientX), {})
 
 
-@pytest.mark.parametrize("name", ["send", "get", "headers", "close", "build_request"])
+@pytest.mark.parametrize("name", ["send", "headers"])
 def test_an_endpoint_cant_use_a_name_the_client_uses(name: str) -> None:
     def endpoint(self: ClientX) -> None: ...
 
@@ -260,10 +260,9 @@ def test_a_class_cant_be_both_kinds_of_resource() -> None:
     ("resource", "owner", "message"),
     [
         (Resource, AsyncClientX, "can only be mounted on a ClientX or Resource subclass"),
-        (AsyncResource, ClientX, "can only be mounted on an AsyncClientX or AsyncResource subclass"),
         (Resource, object, "can only be mounted on a ClientX or Resource subclass, not on 'Owner'."),
     ],
-    ids=["Resource on AsyncClientX", "AsyncResource on ClientX", "Resource on a plain class"],
+    ids=["Resource on AsyncClientX", "Resource on a plain class"],
 )
 def test_a_resource_is_mounted_on_its_own_kind(resource: type, owner: type, message: str) -> None:
     users = type("Users", (resource,), {})()

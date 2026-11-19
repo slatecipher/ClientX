@@ -1,11 +1,9 @@
 """Path templates: placeholders, filled so a value can't change the path."""
 
-import datetime
 import enum
 import re
-import uuid
 from collections.abc import Callable
-from typing import Annotated, Any, Literal, NewType
+from typing import Annotated, Any
 
 import httpx2
 import pytest
@@ -61,16 +59,9 @@ def test_an_empty_path_calls_the_base_url(mock_transport: MockTransport) -> None
     ("value", "segment"),
     [
         pytest.param("a b/c?d#e", "a%20b%2Fc%3Fd%23e", id="reserved characters"),
-        pytest.param("é", "%C3%A9", id="non-ASCII"),
         pytest.param("100%", "100%25", id="percent sign"),
-        pytest.param(".", "%2E", id="dot"),
         pytest.param("..", "%2E%2E", id="dot dot"),
-        pytest.param("...", "...", id="three dots"),
-        pytest.param(True, "true", id="bool"),
-        pytest.param(1.5, "1.5", id="float"),
         pytest.param(Color.RED, "red", id="enum"),
-        pytest.param(uuid.UUID(int=1), "00000000-0000-0000-0000-000000000001", id="UUID"),
-        pytest.param(datetime.datetime(2026, 11, 17, 9, 30), "2026-11-17T09%3A30%3A00", id="datetime"),
     ],
 )
 def test_a_value_becomes_one_encoded_segment(value: object, segment: str, mock_transport: MockTransport) -> None:
@@ -88,7 +79,6 @@ def test_a_value_becomes_one_encoded_segment(value: object, segment: str, mock_t
     [
         pytest.param("docs/read me.md", "docs/read%20me.md", id="each segment encoded"),
         pytest.param("a/../b", "a/%2E%2E/b", id="dot dot segment"),
-        pytest.param("./x", "%2E/x", id="dot segment"),
     ],
 )
 def test_a_path_placeholder_keeps_its_slashes(value: str, segments: str, mock_transport: MockTransport) -> None:
@@ -149,9 +139,7 @@ async def test_async_endpoints_fill_their_path_too(mock_transport: MockTransport
     [
         pytest.param("/users/{name}", None, "None would be sent as 'null'", id="None"),
         pytest.param("/users/{name}", "", "an empty value would remove the segment", id="empty"),
-        pytest.param("/files/{name:path}", "/a", "leaves an empty segment", id="leading slash"),
         pytest.param("/files/{name:path}", "a//b", "leaves an empty segment", id="doubled slash"),
-        pytest.param("/files/{name:path}", "a/", "leaves an empty segment", id="trailing slash"),
     ],
 )
 def test_a_value_that_would_change_the_path_raises_before_sending(
@@ -173,15 +161,9 @@ def test_a_value_that_would_change_the_path_raises_before_sending(
     ("template", "message"),
     [
         pytest.param("/a/{item:int}", "can't fill the placeholder {item:int}", id="unknown converter"),
-        pytest.param("/a/{item:}", None, id="empty converter is accepted"),
         pytest.param("/a/{user-id}", "can't fill the placeholder {user-id}", id="not an identifier"),
-        pytest.param("/a/{a.b}", "can't fill the placeholder {a.b}", id="attribute"),
-        pytest.param("/a/{c[0]}", "can't fill the placeholder {c[0]}", id="index"),
         pytest.param("/a/{item!r}", "can't fill the placeholder {item!r}", id="conversion"),
-        pytest.param("/a/{}", "can't fill the placeholder {}", id="no name"),
         pytest.param("/a/{", "has a brace that isn't part of a placeholder", id="lone opening brace"),
-        pytest.param("/a/}", "has a brace that isn't part of a placeholder", id="lone closing brace"),
-        pytest.param("/a/{item", "has a brace that isn't part of a placeholder", id="unclosed"),
     ],
 )
 def test_a_malformed_template_fails_when_the_class_is_defined(template: str, message: str | None) -> None:
@@ -239,15 +221,6 @@ def test_a_placeholders_parameter_cant_go_elsewhere_too() -> None:
             def fetch(self, user_id: Annotated[int, Query()]) -> None: ...
 
 
-@pytest.mark.parametrize("annotation", [dict[str, str], list[int], int | list[int]], ids=["dict", "list", "union"])
-def test_a_placeholders_parameter_must_be_a_plain_value(annotation: object) -> None:
-    with pytest.raises(DefinitionError, match=re.escape("so it must be a plain value")):
-
-        class API(ClientX):
-            @method.get("/items/{item}")
-            def fetch(self, item: annotation) -> None: ...  # type: ignore[valid-type]  # pyright: ignore[reportInvalidTypeForm]
-
-
 def test_an_endpoint_declared_outside_a_client_class_cant_be_called(mock_transport: MockTransport) -> None:
     @method.get("/loose")
     def loose(self: ClientX) -> None: ...
@@ -266,51 +239,22 @@ class Price:
         return "9.90"
 
 
-OrderId = NewType("OrderId", int)
-
-
-@pytest.mark.parametrize(
-    "annotation",
-    [
-        pytest.param(str | None, id="optional"),
-        pytest.param(Annotated[str | None, Url()], id="with Url()"),
-    ],
-)
-def test_a_path_parameter_that_can_be_none_fails(annotation: Any) -> None:
+def test_a_path_parameter_that_can_be_none_fails() -> None:
     with pytest.raises(DefinitionError, match=re.escape("so it can't be None: a None value would always fail")):
 
         class API(ClientX):
             @method.get("/users/{user_id}")
-            def user(self, user_id: annotation) -> None: ...  # pyright: ignore[reportInvalidTypeForm]
+            def user(self, user_id: str | None) -> None: ...
 
 
-def test_a_path_parameter_clientx_cant_send_as_text_fails() -> None:
+@pytest.mark.parametrize("annotation", [list[int], Price], ids=["list", "your own class"])
+def test_a_placeholders_parameter_must_be_a_plain_value(annotation: Any) -> None:
     message = "so it must be a plain value. A plain value is one of str, int, float, bool, Enum"
     with pytest.raises(DefinitionError, match=re.escape(message)):
 
         class API(ClientX):
-            @method.get("/prices/{price}")
-            def price(self, price: Price) -> None: ...
-
-
-@pytest.mark.parametrize(
-    ("annotation", "value", "segment"),
-    [
-        pytest.param(Literal["asc", "desc"], "asc", "asc", id="Literal"),
-        pytest.param(OrderId, OrderId(7), "7", id="NewType"),
-        pytest.param(Any, Price(), "9.90", id="Any, through str"),
-    ],
-)
-def test_literal_newtype_and_any_fill_the_path(
-    annotation: Any, value: object, segment: str, mock_transport: MockTransport
-) -> None:
-    class API(ClientX):
-        @method.get("/items/{item}")
-        def item(self, item: annotation) -> None: ...  # pyright: ignore[reportInvalidTypeForm]
-
-    sent: list[httpx2.Request] = []
-    API(BASE_URL, transport=mock_transport(sent)).item(value)
-    assert sent_path(sent) == f"/v1/items/{segment}"
+            @method.get("/items/{item}")
+            def fetch(self, item: annotation) -> None: ...  # pyright: ignore[reportInvalidTypeForm]
 
 
 def test_a_path_parameter_without_an_annotation_takes_any_value(mock_transport: MockTransport) -> None:

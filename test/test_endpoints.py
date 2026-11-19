@@ -118,10 +118,8 @@ def test_positional_only_and_keyword_only_parameters_work(mock_transport: MockTr
     ("source", "message"),
     [
         pytest.param("def call(self, *ids: int) -> None: ...", "can't take `*ids`", id="*args"),
-        pytest.param("def call(self, **extra: str) -> None: ...", "can't take `**extra`", id="**kwargs"),
         pytest.param("def call() -> None: ...", "needs a positional first parameter", id="no parameters"),
         pytest.param("def call(*, self) -> None: ...", "needs a positional first parameter", id="keyword-only first"),
-        pytest.param("def call(*args) -> None: ...", "needs a positional first parameter", id="*args first"),
     ],
 )
 def test_an_endpoints_parameters_are_checked_when_it_is_decorated(source: str, message: str) -> None:

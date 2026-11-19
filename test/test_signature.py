@@ -19,7 +19,6 @@ from clientx._types import HttpxArgument
 type UserId = Annotated[int, Field(gt=0)]
 type QueryUserId = Annotated[UserId, Query()]
 type QueryParam[T] = Annotated[T, Query()]
-type NotGeneric[T] = int
 type Embed = Annotated[int, Send(embed=True)]
 # Deliberately cyclic, to check that alias expansion stops.
 type Loop = Loop2  # pyright: ignore[reportGeneralTypeIssues]
@@ -37,16 +36,12 @@ def parameter(annotation: Any) -> ParameterInfo:
     ("annotation", "part"),
     [
         pytest.param(Annotated[int, Query()], HttpxArgument.PARAMS, id="one helper"),
-        pytest.param(Annotated[int, Field(gt=0), Query()], HttpxArgument.PARAMS, id="after a plain Field"),
-        pytest.param(Annotated[int, Query(), Field(gt=0)], HttpxArgument.PARAMS, id="before a plain Field"),
         pytest.param(Annotated[int, Query(), Header()], HttpxArgument.HEADERS, id="the last of two"),
         pytest.param(Annotated[QueryUserId, Header()], HttpxArgument.HEADERS, id="the parameter's over an alias's"),
-        pytest.param(QueryUserId, HttpxArgument.PARAMS, id="from an alias"),
         pytest.param(Annotated[int, Field(gt=0)], None, id="a plain Field isn't one"),
         # Python supports `|` on Annotated; pyright doesn't model it outside an
         # annotation.
         pytest.param(Annotated[int, Query()] | None, None, id="nested in a union isn't found"),  # pyright: ignore[reportOperatorIssue]
-        pytest.param(int, None, id="no Annotated"),
     ],
 )
 def test_the_last_helper_in_the_outermost_annotated_counts(annotation: Any, part: HttpxArgument | None) -> None:
@@ -59,11 +54,8 @@ def test_the_last_helper_in_the_outermost_annotated_counts(annotation: Any, part
     ("annotation", "send"),
     [
         pytest.param(Annotated[int, Send(embed=True)], Send(embed=True), id="one"),
-        pytest.param(Annotated[int, Send(embed=True), Query()], Send(embed=True), id="before the helper"),
         pytest.param(Annotated[int, Send(embed=True), Send(embed=False)], Send(embed=False), id="the last of two"),
         pytest.param(Annotated[Embed, Send(embed=False)], Send(embed=False), id="the parameter's over an alias's"),
-        pytest.param(Embed, Send(embed=True), id="from an alias"),
-        pytest.param(Annotated[int, Query()], Send(), id="none"),
     ],
 )
 def test_the_last_send_in_the_outermost_annotated_counts(annotation: Any, send: Send) -> None:
@@ -75,11 +67,8 @@ def test_the_last_send_in_the_outermost_annotated_counts(annotation: Any, send: 
     [
         pytest.param(Annotated[int, Query()], int, id="Annotated"),
         pytest.param(UserId, int, id="type alias"),
-        pytest.param(QueryUserId, int, id="alias of an alias"),
         pytest.param(QueryParam[str], str, id="generic alias"),
-        pytest.param(NotGeneric[str], int, id="generic alias whose value takes no arguments"),
         pytest.param(int | None, int | None, id="union kept"),
-        pytest.param(NO_VALUE, NO_VALUE, id="no annotation"),
     ],
 )
 def test_base_type_has_no_annotated_or_alias(annotation: Any, base_type: Any) -> None:

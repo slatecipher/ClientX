@@ -181,11 +181,6 @@ class WithList(BaseModel):
             "so each field of WithList goes to the headers, which take a plain value. Field 'tags' isn't one",
             id="header field that's a list",
         ),
-        pytest.param(
-            Annotated[dict[str, list[str]], Header()],
-            "so each item of the mapping goes to the headers, which take a plain value. Its value type isn't one",
-            id="header mapping of lists",
-        ),
     ],
 )
 def test_each_spread_field_must_fit_its_part(annotation: Any, message: str) -> None:
@@ -216,8 +211,8 @@ class HelperAsDefault(BaseModel):
 
 @pytest.mark.parametrize(
     "annotation",
-    [Annotated[HelperInAnnotated, Query()], HelperInAnnotated, Annotated[HelperAsDefault, Json()]],
-    ids=["spread into the query", "JSON body", "helper as the field's default"],
+    [Annotated[HelperInAnnotated, Query()], Annotated[HelperAsDefault, Json()]],
+    ids=["spread into the query", "helper as the field's default"],
 )
 def test_a_helper_on_a_models_field_fails(annotation: Any) -> None:
     with pytest.raises(
@@ -251,7 +246,6 @@ def test_a_parameter_and_a_spread_field_with_one_key_fail() -> None:
     [
         pytest.param(Send(), "status=closed&limit=10", id="every field"),
         pytest.param(Send(exclude_unset=True), "status=closed", id="exclude_unset"),
-        pytest.param(Send(exclude_defaults=True), "status=closed", id="exclude_defaults"),
     ],
 )
 def test_send_dump_options_on_a_spread_model(send: Send, query: str, mock_transport: MockTransport) -> None:

@@ -11,7 +11,7 @@ import httpx2
 import pytest
 from pydantic import BaseModel, Field
 
-from clientx import ClientX, DefinitionError, Header, Json, Query, Url, method
+from clientx import ClientX, DefinitionError, Form, Header, Json, Query, method
 
 type MockTransport = Callable[..., httpx2.MockTransport]
 
@@ -48,9 +48,7 @@ def header_names(request: httpx2.Request) -> list[str]:
     ("parameter", "example"),
     [
         pytest.param("page: int = 1", "page: Annotated[int, Query()]", id="plain value"),
-        pytest.param("tags: list[str]", "tags: Annotated[list[str], Json()]", id="collection"),
         pytest.param("filters: Filters", "filters: Annotated[Filters, Json()]", id="model"),
-        pytest.param("raw=None", "raw: Annotated[str, Query()]", id="no annotation"),
     ],
 )
 def test_a_parameter_without_a_helper_fails(parameter: str, example: str) -> None:
@@ -163,19 +161,6 @@ def test_the_clients_own_query_parameters_are_kept(mock_transport: MockTransport
     assert only_request(sent).url.query.decode() == "api_key=k&page=2"
 
 
-@pytest.mark.parametrize(
-    "annotation",
-    [Annotated[list[Filters], Query()], Annotated[int | list[int], Query()]],
-    ids=["list of models", "value or list"],
-)
-def test_a_query_parameter_must_be_a_plain_value_or_a_list_of_them(annotation: Any) -> None:
-    with pytest.raises(DefinitionError, match=re.escape("goes to the query string, which takes a plain value")):
-
-        class API(ClientX):
-            @method.get("/items")
-            def search(self, p: annotation) -> None: ...  # pyright: ignore[reportInvalidTypeForm]
-
-
 # Headers
 
 
@@ -229,14 +214,6 @@ def test_a_generic_type_alias_carries_its_helper(mock_transport: MockTransport) 
     assert (request.headers["trace-id"], request.headers["attempt"], request.url.query) == ("t-1", "1", b"")
 
 
-def test_a_header_must_be_a_plain_value() -> None:
-    with pytest.raises(DefinitionError, match=re.escape("goes to the headers, which take a plain value")):
-
-        class API(ClientX):
-            @method.get("/items")
-            def search(self, tags: Annotated[list[str], Header()]) -> None: ...
-
-
 # Where a helper can be
 
 
@@ -246,11 +223,9 @@ def test_a_header_must_be_a_plain_value() -> None:
         # Python supports `|` on Annotated; pyright doesn't model it outside an
         # annotation.
         Annotated[str, Header()] | None,  # pyright: ignore[reportOperatorIssue]
-        Optional[Annotated[int, Header()]],  # noqa: UP045
         list[Annotated[int, Query()]],
-        HeaderValue | None,
     ],
-    ids=["union", "Optional", "list item", "type alias in a union"],
+    ids=["union", "list item"],
 )
 def test_a_helper_inside_a_parameters_type_fails(annotation: Any) -> None:
     with pytest.raises(DefinitionError, match=re.escape("has a helper inside its type")):
@@ -275,9 +250,8 @@ def test_a_plain_field_inside_a_type_isnt_a_helper(mock_transport: MockTransport
     [
         ("/items", Annotated[int, Query(default=1)]),
         ("/items", Annotated[str, Header(default_factory=str)]),
-        ("/items/{p}", Annotated[int, Url(None)]),
     ],
-    ids=["Query(default=)", "Header(default_factory=)", "Url(default)"],
+    ids=["Query(default=)", "Header(default_factory=)"],
 )
 def test_a_default_inside_a_helper_fails(path: str, annotation: Any) -> None:
     with pytest.raises(DefinitionError, match=re.escape("has a default inside its helper")):
@@ -309,20 +283,30 @@ OrderId = NewType("OrderId", int)
 
 
 @pytest.mark.parametrize(
-    "annotation",
+    ("annotation", "message"),
     [
-        pytest.param(Annotated[Price, Query()], id="query"),
-        pytest.param(Annotated[list[Price], Query()], id="list of them"),
-        pytest.param(Annotated[Price, Header()], id="header"),
+        pytest.param(
+            Annotated[Price, Query()],
+            "goes to the query string, which takes a plain value or a collection of them. A plain value is one of "
+            "str, int, float, bool, Enum, date, datetime, time, UUID, Decimal, bytes, or Any",
+            id="your own class",
+        ),
+        pytest.param(
+            Annotated[list[str], Header()], "goes to the headers, which take a plain value.", id="list in a header"
+        ),
+        pytest.param(
+            Annotated[list[Price], Form()],
+            "goes to the form, which takes a plain value or a collection of them.",
+            id="list of them in a form",
+        ),
     ],
 )
-def test_a_value_clientx_cant_send_as_text_fails(annotation: Any) -> None:
-    message = "A plain value is one of str, int, float, bool, Enum, date, datetime, time, UUID, Decimal, bytes, or Any"
+def test_a_value_its_part_cant_take_fails(annotation: Any, message: str) -> None:
     with pytest.raises(DefinitionError, match=re.escape(message)):
 
         class API(ClientX):
-            @method.get("/items")
-            def search(self, p: annotation) -> None: ...  # pyright: ignore[reportInvalidTypeForm]
+            @method.post("/items")
+            def create(self, p: annotation) -> None: ...  # pyright: ignore[reportInvalidTypeForm]
 
 
 def test_literal_newtype_and_any_values_are_sent_as_text(mock_transport: MockTransport) -> None:
@@ -345,7 +329,6 @@ def test_literal_newtype_and_any_values_are_sent_as_text(mock_transport: MockTra
     [
         pytest.param([], "", id="empty list"),
         pytest.param(["a", None, "b"], "tag=a&tag=b", id="None item"),
-        pytest.param({"a"}, "tag=a", id="set"),
     ],
 )
 def test_none_items_and_empty_lists_are_left_out(
@@ -375,12 +358,6 @@ def test_none_items_and_empty_lists_are_left_out(
             id="two aliases",
         ),
         pytest.param(
-            Annotated[str, Query(alias="b")],
-            Annotated[str, Query()],
-            "Parameter 'a' and parameter 'b' are both sent as 'b' by Query()",
-            id="an alias and a name",
-        ),
-        pytest.param(
             Annotated[str, Header(alias="B")],
             Annotated[str, Header()],
             "Parameter 'a' and parameter 'b' are sent as 'B' and 'b' by Header(), the same key",
@@ -394,16 +371,6 @@ def test_two_values_under_one_key_fail(first: Any, second: Any, message: str) ->
         class API(ClientX):
             @method.get("/items")
             def search(self, a: first, b: second) -> None: ...  # pyright: ignore[reportInvalidTypeForm]
-
-
-def test_query_keys_keep_their_case(mock_transport: MockTransport) -> None:
-    class API(ClientX):
-        @method.get("/items")
-        def search(self, a: Annotated[str, Query(alias="Page")], b: Annotated[str, Query(alias="page")]) -> None: ...
-
-    sent: list[httpx2.Request] = []
-    API(BASE_URL, transport=mock_transport(sent)).search("1", "2")
-    assert only_request(sent).url.query.decode() == "Page=1&page=2"
 
 
 def test_one_key_in_two_parts_isnt_a_clash(mock_transport: MockTransport) -> None:

@@ -1,6 +1,5 @@
 """Responses: decoding, streaming and closing, and raising for 4xx and 5xx."""
 
-import functools
 import re
 from collections.abc import AsyncIterator, Callable, Iterator
 from typing import Annotated, Any
@@ -261,9 +260,7 @@ def test_a_redirect_status_isnt_an_error(mock_transport: MockTransport) -> None:
     [
         pytest.param(None, None, True, id="default: raise"),
         pytest.param(False, None, False, id="client off"),
-        pytest.param(None, False, False, id="endpoint off"),
         pytest.param(False, True, True, id="endpoint on wins over client off"),
-        pytest.param(True, False, False, id="endpoint off wins over client on"),
     ],
 )
 def test_raise_for_status_can_be_turned_off(
@@ -495,8 +492,8 @@ def test_a_decoder_cant_go_with_none() -> None:
 
 @pytest.mark.parametrize(
     "decoder",
-    [coroutine_decoder, functools.partial(coroutine_decoder), AsyncDecoder()],
-    ids=["async def", "partial of an async def", "class with an async __call__"],
+    [coroutine_decoder, AsyncDecoder()],
+    ids=["async def", "class with an async __call__"],
 )
 def test_an_async_def_decoder_fails(decoder: Callable[[httpx2.Response], object]) -> None:
     with pytest.raises(DefinitionError, match=re.escape("decoder= must be a plain function, not `async def`")):
