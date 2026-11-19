@@ -47,9 +47,10 @@ argument, so a rule that differs by argument lives in that argument's class:
   and ``File()`` parameters. A ``Form()`` parameter with
   ``Send(json_part=True)`` takes any value, sent as a JSON part of the form.
 - Two values sent to one argument under one key raise, except files; header
-  keys compare case-insensitively. A spread mapping's keys exist only at the
-  call, and so do those of a model with its own model serializer, so a clash
-  with one is the caller's to avoid.
+  keys compare case-insensitively. A header name must be ASCII. A spread
+  mapping's keys exist only at the call, and so do those of a model with its
+  own model serializer, so the builder checks those, and a clash with one is
+  the caller's to avoid.
 - ``Send(exclude_unset=True)`` leaves out a parameter the caller didn't pass,
   as well as a model's unset fields. The dump options must fit the type, since
   pydantic ignores them silently otherwise: ``exclude_none`` and
@@ -231,7 +232,7 @@ def plan_request(path_template: str, parameters: Sequence[ParameterInfo], *, is_
     # Then the parameters together.
     _check_one_body(parameters)
     _check_one_whole_body(parameters)
-    _check_key_clashes(planned)
+    _check_keys(planned)
     return RequestPlan(path=path, parameters=tuple(planned), body=body)
 
 
@@ -297,6 +298,14 @@ class HttpxArgumentSpec:
         return key
 
     @classmethod
+    def check_key(cls, key: str, source: str) -> None:
+        """Raise ``DefinitionError`` if the argument can't send under ``key``.
+
+        ``source`` says where the key comes from, for messages, such as
+        ``"parameter 'note'"``. Any key can be sent, by default.
+        """
+
+    @classmethod
     def takes_value(cls, annotation: Any) -> bool:
         """Return whether one value of this type can go there: a plain value.
 
@@ -358,6 +367,16 @@ class HeadersSpec(HttpxArgumentSpec):
     def clash_key(cls, key: str) -> str:
         # Header names are case-insensitive in HTTP: X-Trace is x-trace.
         return key.lower()
+
+    @classmethod
+    def check_key(cls, key: str, source: str) -> None:
+        # httpx2 sends header names as ASCII, and would raise UnicodeEncodeError
+        # at the call. A Python name can be any letter, so check them all.
+        if not key.isascii():
+            raise DefinitionError(
+                f"{source.capitalize()} is sent by Header() as {key!r}, which isn't ASCII, and header names must be. "
+                "Give it an ASCII alias."
+            )
 
 
 class DataSpec(HttpxArgumentSpec):
@@ -917,13 +936,15 @@ def _fits(annotation: Any, spec: type[HttpxArgumentSpec]) -> bool:
     return all(spec.takes_value(arm) or (spec.takes_lists and _is_list_of(arm, spec)) for arm in _arms(annotation))
 
 
-def _check_key_clashes(planned: Sequence[PlannedParameter | SpreadParameter]) -> None:
-    """Raise ``DefinitionError`` if two values go to one argument under one key.
+def _check_keys(planned: Sequence[PlannedParameter | SpreadParameter]) -> None:
+    """Raise ``DefinitionError`` for a key that can't be sent or that clashes.
 
-    httpx2 would keep only one of them, silently. Only keys known now count: a
-    mapping's keys exist only at the call, so a clash with one is the caller's
-    to avoid. An argument whose spec ``keys_can_repeat``, such as files, sends
-    both, so it's skipped.
+    Each key is checked by its argument's spec, as a header name must be ASCII.
+    Two values going to one argument under one key clash: httpx2 would keep
+    only one of them, silently. Only keys known now count: a mapping's keys
+    exist only at the call, so a clash with one is the caller's to avoid. An
+    argument whose spec ``keys_can_repeat``, such as files, sends both, so it
+    can't clash.
     """
     # Each (argument, clash key) seen so far, to where it came from and its key.
     sources: dict[tuple[HttpxArgument, str], tuple[str, str]] = {}
@@ -935,6 +956,8 @@ def _check_key_clashes(planned: Sequence[PlannedParameter | SpreadParameter]) ->
         else:
             continue
         spec = _SPECS[item.httpx_argument]
+        for key, source in keyed:
+            spec.check_key(key, source)
         if spec.keys_can_repeat:
             continue
         for key, source in keyed:
