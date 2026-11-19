@@ -28,6 +28,7 @@ from httpx2._types import (
 )
 
 
+# --- Request parts and Send ---------------------------------------------------
 class HttpxArgument(StrEnum):
     """A part of an HTTP request.
 
@@ -86,6 +87,7 @@ class Send:
     exclude_defaults: bool | None = None
 
 
+# --- Type aliases -------------------------------------------------------------
 type MethodType = Literal["GET", "PUT", "POST", "PATCH", "DELETE", "HEAD", "OPTIONS"]
 
 type Decoder = Callable[[Response], object]
@@ -97,6 +99,7 @@ type AsyncEventHook = Callable[[Request], Awaitable[object]] | Callable[[Respons
 """An async hook: like ``EventHook`` but must be an ``async def``."""
 
 
+# --- httpx2's signatures ------------------------------------------------------
 class _HttpxClientOptions(TypedDict, total=False):
     """The keyword arguments ``Client`` and ``AsyncClient`` share.
 

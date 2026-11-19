@@ -14,6 +14,7 @@ from clientx.exceptions import DefinitionError
 type EndpointOwner = ClientX | AsyncClientX | Resource | AsyncResource
 
 
+# --- Clients ------------------------------------------------------------------
 class _BaseClientX:
     __clientx_user_agent__: ClassVar[str] = f"ClientX/{__version__}"
     __clientx_raise_for_status__: bool = True
@@ -156,6 +157,7 @@ def _configure(
         client.__clientx_raise_for_status__ = raise_for_status
 
 
+# --- Resources ----------------------------------------------------------------
 class _BaseResource:
     """Shared base of ``Resource`` and ``AsyncResource``: prefix, tags, parent.
 
@@ -231,6 +233,7 @@ class AsyncResource(_BaseResource):
         set_up_resource(cls, base=AsyncResource, prefix=prefix, tags=tags)
 
 
+# --- Finding a call's client --------------------------------------------------
 def client_of[C: ClientX | AsyncClientX](owner: object, kind: type[C]) -> C:
     """Return the client an endpoint call on ``owner`` goes through.
 

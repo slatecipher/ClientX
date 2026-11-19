@@ -40,6 +40,7 @@ if TYPE_CHECKING:
     from clientx._types import Decoder
 
 
+# --- Choosing a decoder -------------------------------------------------------
 def is_stream(returns: ReturnInfo, *, is_async: bool) -> bool:
     """Return whether an endpoint's return annotation makes it stream.
 
@@ -105,6 +106,7 @@ def _type_name(annotation: Any) -> str:
     return annotation.__qualname__ if isinstance(annotation, type) else repr(annotation)
 
 
+# --- The default decoders -----------------------------------------------------
 def _response(response: Response) -> Response:
     return response
 
@@ -133,6 +135,7 @@ def _achunks(response: Response) -> AsyncIterator[bytes]:
     return response.aiter_bytes()
 
 
+# --- Errors for 4xx and 5xx ---------------------------------------------------
 def raise_status_error(response: Response) -> None:
     """Raise ``httpx2.HTTPStatusError`` for a 4xx or 5xx ``response``.
 
@@ -161,6 +164,7 @@ async def araise_status_error(response: Response) -> None:
     response.raise_for_status()
 
 
+# --- Decoding a response ------------------------------------------------------
 def decode(decoder: Decoder | None, response: Response, *, stream: bool) -> object:
     """Return a ``def`` endpoint's result: ``decoder``'s output, or ``None``.
 

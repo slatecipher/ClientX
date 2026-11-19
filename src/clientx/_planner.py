@@ -607,7 +607,7 @@ def _contains_class(annotation: Any, wanted: Callable[[type[Any]], bool], seen: 
     return any(_contains_class(arg, wanted, seen) for arg in get_args(base))
 
 
-# nested helpers and Send
+# --- Helpers and Send nested in a type ----------------------------------------
 def _check_nested(parameter: ParameterInfo) -> None:
     """Raise ``DefinitionError`` if a helper or ``Send`` is inside the type.
 
@@ -631,7 +631,6 @@ def _check_nested(parameter: ParameterInfo) -> None:
         )
 
 
-# nested helpers and Send
 def _contains(annotation: Any, wanted: Callable[[object], bool], seen: frozenset[TypeAliasType]) -> bool:
     """Return whether ``annotation``, or a type inside it, has ``wanted``.
 
@@ -651,12 +650,10 @@ def _contains(annotation: Any, wanted: Callable[[object], bool], seen: frozenset
     return any(_contains(arg, wanted, seen) for arg in get_args(base))
 
 
-# nested helpers and Send
 def _is_helper(meta: object) -> bool:
     return get_httpx_argument(meta) is not None
 
 
-# nested helpers and Send
 def _is_send(meta: object) -> bool:
     return isinstance(meta, Send)
 

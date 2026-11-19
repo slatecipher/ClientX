@@ -20,6 +20,8 @@ if TYPE_CHECKING:
     from clientx._client import AsyncClientX, AsyncResource, ClientX, Resource
     from clientx._endpoint import Endpoint
 
+
+# --- Setting up a class -------------------------------------------------------
 # The sync and the async base of each kind of class, by `__clientx_is_async__`,
 # for error messages.
 _CLIENT_BASES = ("ClientX", "AsyncClientX")
@@ -100,6 +102,7 @@ def check_mount(resource_name: str, *, is_async: bool, owner: type) -> None:
     raise DefinitionError(message)
 
 
+# --- Checks on a class body ---------------------------------------------------
 def _check_one_kind(cls: type, bases: tuple[str, str]) -> None:
     """Raise ``DefinitionError`` if ``cls`` has both a sync and an async base.
 
@@ -187,6 +190,7 @@ def _is_resource(value: object) -> bool:
     return hasattr(type(value), "__clientx_prefix__")
 
 
+# --- Claiming endpoints -------------------------------------------------------
 def _claim_endpoints(cls: type) -> list[Endpoint]:
     """Make ``cls`` the owner of the endpoints in its body, and return them.
 

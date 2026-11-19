@@ -29,11 +29,8 @@ NO_VALUE = inspect.Parameter.empty
 It's the same object as ``inspect.Signature.empty``.
 """
 
-# Enough for any real chain of aliases, and a stop for cyclic ones such as
-# `type A = B` with `type B = A`.
-_MAX_ALIAS_DEPTH = 100
 
-
+# --- What a signature holds ---------------------------------------------------
 @dataclass(slots=True)
 class ParameterInfo:
     """One parameter of an inspected callable.
@@ -189,6 +186,12 @@ class SignatureInfo:
         return BoundCall(bound.arguments, passed)
 
 
+# --- Annotations --------------------------------------------------------------
+# Enough for any real chain of aliases, and a stop for cyclic ones such as
+# `type A = B` with `type B = A`.
+_MAX_ALIAS_DEPTH = 100
+
+
 def unwrap_annotated(type_hint: Any) -> tuple[Any, tuple[Any, ...]]:
     """Split an ``Annotated`` type hint into its type and its metadata.
 
@@ -255,6 +258,7 @@ def _resolve_type_hints(func: Callable[..., Any]) -> dict[str, Any]:
     return get_type_hints(inspect.unwrap(func), include_extras=True)
 
 
+# --- Entry point --------------------------------------------------------------
 def inspect_signature(func: Callable[..., Any]) -> SignatureInfo:
     """Inspect a callable once and return what ClientX needs from its signature.
 

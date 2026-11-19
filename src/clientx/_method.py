@@ -14,6 +14,7 @@ from clientx._signature import inspect_signature
 from clientx._types import Decoder, MethodType, UseClientDefault
 
 
+# --- What type checkers see ---------------------------------------------------
 class EndpointDecorator(Protocol):
     """The decorator a verb returns without ``decoder=``.
 
@@ -68,6 +69,7 @@ class DecodedEndpointDecorator[D](Protocol):
     ) -> Callable[Concatenate[Owner, P], D]: ...
 
 
+# --- The verb decorators ------------------------------------------------------
 @dataclass(frozen=True, slots=True)
 class Method:
     """An HTTP verb's endpoint decorator, such as ``method.get``."""
