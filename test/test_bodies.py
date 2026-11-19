@@ -100,6 +100,7 @@ def test_a_model_is_sent_by_its_own_type(mock_transport: MockTransport) -> None:
         ),
         pytest.param(Tags, Tags(["a", "b"]), ["a", "b"], id="RootModel"),
         pytest.param(dict[str, Any], {"keep": None, "n": 1}, {"keep": None, "n": 1}, id="dict with a None"),
+        pytest.param(Any, {"n": 1}, {"n": 1}, id="Any"),
     ],
 )
 def test_a_lone_list_mapping_or_root_model_is_the_whole_json_body(
@@ -530,12 +531,17 @@ def test_file_values_that_fit_are_sent(
 
 
 def test_a_list_of_files_repeats_the_field(mock_transport: MockTransport) -> None:
+    # A None in the list is left out, and another File() can share the field.
     class API(ClientX):
         @method.post("/upload")
-        def upload(self, docs: Annotated[list[tuple[str, bytes]], File()]) -> None: ...
+        def upload(
+            self,
+            docs: Annotated[list[tuple[str, bytes] | None], File()],
+            extra: Annotated[tuple[str, bytes], File(alias="docs")],
+        ) -> None: ...
 
     sent: list[httpx2.Request] = []
-    API(BASE_URL, transport=mock_transport(sent)).upload([("a.pdf", b"A"), ("b.pdf", b"B")])
+    API(BASE_URL, transport=mock_transport(sent)).upload([("a.pdf", b"A"), None], ("b.pdf", b"B"))
     body = only_request(sent).read().decode()
     assert body.count('name="docs"') == 2
     assert 'filename="a.pdf"' in body

@@ -11,12 +11,16 @@ included, and bakes it into the plan, so the builder never reads annotations,
 Where each parameter goes is decided once, and never guessed:
 
 1. A parameter that a path placeholder names fills it. It must be a plain value
-   that can't be ``None``, with no helper but ``Url()``, and no ``Send``.
+   that can't be ``None``, with no helper but ``Url()``, no alias, and no
+   ``Send``.
 2. Every other parameter has a ``clientx.arguments`` helper in its outermost
    ``Annotated``, and goes to that helper's ``build_request`` argument. A
    parameter without one is an error, and so is a helper or ``Send`` anywhere
    else in its type, a default inside a helper, or a helper or ``Send`` on a
    model's field.
+
+A pydantic serializer in a parameter's type is an error too: the builder sends
+a value by its own type, so it wouldn't run.
 
 What each argument takes is an ``HttpxArgumentSpec`` subclass, one per
 argument, so a rule that differs by argument lives in that argument's class:
@@ -26,21 +30,25 @@ argument, so a rule that differs by argument lives in that argument's class:
   a ``Literal`` of those, or a ``NewType`` of one. ``Any``, or no annotation,
   is the escape hatch.
 - The query string and the form take a plain value, or a collection of them,
-  which repeats the key; headers take a plain value. A model, dataclass or
-  mapping marked ``Query()``, ``Header()`` or ``Form()`` is spread into it, one
-  value per field, and each field follows the same rule.
+  which repeats the key, or either, as ``str | list[str]`` does; headers take
+  a plain value. A model, dataclass or mapping marked ``Query()``,
+  ``Header()`` or ``Form()`` is spread into it, one value per field, computed
+  fields included, and each field follows the same rule. A model with its own
+  model serializer is spread by what it dumps, like a mapping.
 - A file is ``bytes``, a binary file, or a ``(filename, content[,
-  content_type[, headers]])`` tuple, never ``str``. A collection of files
-  repeats the field.
+  content_type[, headers]])`` tuple, never ``str``. A list of files repeats the
+  field, and so can several ``File()`` parameters.
 - The raw body, one ``Body()`` parameter, is ``str``, ``bytes``, or a stream of
   bytes that matches the client, sync or async.
 - A JSON field takes any value. A lone ``Json()`` parameter that isn't a plain
-  value is the whole body, unless it has ``Send(embed=True)``.
+  value, ``Any`` included, is the whole body, unless it has
+  ``Send(embed=True)``.
 - A request has one kind of body: JSON, raw content, or a form of ``Form()``
   and ``File()`` parameters.
-- Two values sent to one argument under one key raise; header keys compare
-  case-insensitively. A spread mapping's keys exist only at the call, so a
-  clash with one is the caller's to avoid.
+- Two values sent to one argument under one key raise, except files; header
+  keys compare case-insensitively. A spread mapping's keys exist only at the
+  call, and so do those of a model with its own model serializer, so a clash
+  with one is the caller's to avoid.
 - ``Send``'s dump options must fit the type, since pydantic ignores them
   silently otherwise: ``exclude_unset`` needs a pydantic model, and
   ``exclude_none`` and ``exclude_defaults`` a model or pydantic dataclass.
@@ -75,7 +83,7 @@ from typing import (
 )
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, PlainSerializer, WrapSerializer
 from pydantic.dataclasses import is_pydantic_dataclass
 from pydantic_core import PydanticUndefined
 
@@ -129,7 +137,9 @@ class PlannedParameter:
         name: The parameter's name, and its key in the call's arguments.
         httpx_argument: The ``build_request`` argument it goes to.
         key: The name it's sent under, such as the query parameter's.
-        many: The value is a collection, sent as a repeated key.
+        many: The value can be a collection, which repeats the key. Whether
+            it is one is decided at the call, so ``str | list[str]`` takes
+            either, and a ``str`` is always one value, not one per character.
         sends_null: A ``None`` passed explicitly is sent as ``null``. The
             planner sets it from the spec, so the builder needn't read one.
         dump: How pydantic dumps the value, for a model inside it.
@@ -151,14 +161,17 @@ class SpreadParameter:
         name: The parameter's name, and its key in the call's arguments.
         httpx_argument: The ``build_request`` argument its fields go to.
         keys: Each field's attribute name, and the key it's sent under.
-            ``None`` for a mapping, whose own keys exist only at the call and
-            are sent as they are.
+            ``None`` for a mapping, or a model with its own model serializer:
+            what it dumps is sent, each key as it is, known only at the call.
+        many: A list in a field repeats the key, since the argument takes
+            lists. Without it, a list is sent as one text value.
         dump: How pydantic dumps the value before its fields are sent.
     """
 
     name: str
     httpx_argument: HttpxArgument
     keys: tuple[tuple[str, str], ...] | None = None
+    many: bool = False
     dump: DumpOptions = DumpOptions()
 
 
@@ -191,6 +204,7 @@ def plan_request(path_template: str, parameters: Sequence[ParameterInfo], *, is_
         _check_nested(parameter)
         _check_helper_default(parameter)
         _check_model_fields(parameter)
+        _check_serializers(parameter)
         placeholder = path_placeholders.get(parameter.name)
         if placeholder is not None:
             _check_path_parameter(parameter, placeholder, path_template)
@@ -240,6 +254,9 @@ class HttpxArgumentSpec:
             is always left out.
         streams: An iterable value is streamed, so it must match the client:
             sync for a sync client, async for an async one.
+        keys_can_repeat: Two values under one key are both sent, so keys
+            can't clash.
+        tuples_are_values: A tuple is one value, not a collection of them.
     """
 
     argument: ClassVar[HttpxArgument]
@@ -253,6 +270,8 @@ class HttpxArgumentSpec:
     lone_is_body: ClassVar[bool] = False
     sends_null: ClassVar[bool] = False
     streams: ClassVar[bool] = False
+    keys_can_repeat: ClassVar[bool] = False
+    tuples_are_values: ClassVar[bool] = False
 
     @classmethod
     def key(cls, name: str, alias: str | None) -> str:
@@ -334,8 +353,14 @@ class FilesSpec(HttpxArgumentSpec):
     helper = "File()"
     accepts = "the form's files, which take a file or a collection of them"
     body_kind = "a form"
-    # Several files under one field, as from <input type="file" multiple>.
+    # Several files under one field, as from <input type="file" multiple>. They
+    # go to httpx2 as a list of pairs, so two File() parameters can share a
+    # field too.
     takes_lists = True
+    keys_can_repeat = True
+    # A tuple is one file, (filename, content...), so a list of files is a
+    # list, not a tuple.
+    tuples_are_values = True
 
     @classmethod
     def takes_value(cls, annotation: Any) -> bool:
@@ -406,7 +431,7 @@ def _check_path_parameter(parameter: ParameterInfo, placeholder: PathPlaceholder
     """Raise ``DefinitionError`` if a parameter can't fill its placeholder.
 
     It must be a plain value that can't be ``None``, with no helper but
-    ``Url()``, and no ``Send``.
+    ``Url()``, no alias, and no ``Send``.
     """
     fills = f"Parameter {parameter.name!r} fills {placeholder} in the path {path_template!r}"
     argument = parameter.httpx_argument
@@ -414,6 +439,12 @@ def _check_path_parameter(parameter: ParameterInfo, placeholder: PathPlaceholder
         raise DefinitionError(
             f"{fills}, so it can't also be marked {_SPECS[argument].helper}. "
             "Remove its helper, or rename the parameter or the placeholder."
+        )
+    field_info = parameter.clientx_field_info
+    if field_info is not None and field_info.serialization_alias not in {None, parameter.name}:
+        raise DefinitionError(
+            f"{fills}, so its Url(alias=...) has no effect: a path parameter is matched to its placeholder by "
+            "name. Remove the alias, or rename the parameter."
         )
     if _allows_none(parameter.annotation):
         raise DefinitionError(
@@ -658,6 +689,26 @@ def _is_send(meta: object) -> bool:
     return isinstance(meta, Send)
 
 
+# --- Serializers in a parameter's type ----------------------------------------
+def _check_serializers(parameter: ParameterInfo) -> None:
+    """Raise ``DefinitionError`` for a pydantic serializer in the type.
+
+    ClientX sends a value by its own type, at the call, so a
+    ``PlainSerializer`` or ``WrapSerializer`` in the parameter's annotation
+    would be ignored silently. A model's own serializers do run.
+    """
+    if _contains(parameter.annotation, _is_serializer, frozenset()):
+        raise DefinitionError(
+            f"Parameter {parameter.name!r} has a pydantic serializer in its type, but ClientX sends a value by its "
+            "own type, so the serializer wouldn't run. Convert the value at the call, or make it a field of a "
+            "model, where its serializers apply."
+        )
+
+
+def _is_serializer(meta: object) -> bool:
+    return isinstance(meta, PlainSerializer | WrapSerializer)
+
+
 # --- Defaults inside a helper -------------------------------------------------
 def _check_helper_default(parameter: ParameterInfo) -> None:
     """Raise ``DefinitionError`` if the helper has a default.
@@ -706,10 +757,12 @@ def _check_model_fields(parameter: ParameterInfo) -> None:
 def _plan_keyed(parameter: ParameterInfo, argument: HttpxArgument) -> PlannedParameter | SpreadParameter:
     """Return where a parameter sent under a key goes, and its key.
 
-    A value the argument's spec takes is sent once; a collection of them
-    repeats the key, if the spec ``takes_lists``; a model, dataclass or mapping
-    is spread, one value per field or item, if the spec ``takes_text``.
-    Anything else raises ``DefinitionError``, saying what fits.
+    A value the argument's spec takes is sent once. If the spec
+    ``takes_lists``, a collection of them repeats the key, and a type that
+    takes either, such as ``str | list[str]``, is decided at the call. A
+    model, dataclass or mapping is spread, one value per field or item, if the
+    spec ``takes_text``. Anything else raises ``DefinitionError``, saying what
+    fits.
     """
     spec = _SPECS[argument]
     field_info = parameter.clientx_field_info
@@ -721,7 +774,7 @@ def _plan_keyed(parameter: ParameterInfo, argument: HttpxArgument) -> PlannedPar
     arms = _arms(parameter.annotation)
     if all(spec.takes_value(arm) for arm in arms):
         return PlannedParameter(parameter.name, argument, key, sends_null=sends_null, dump=dump)
-    if spec.takes_lists and all(_is_list_of(arm, spec.takes_value) for arm in arms):
+    if spec.takes_lists and all(spec.takes_value(arm) or _is_list_of(arm, spec) for arm in arms):
         return PlannedParameter(parameter.name, argument, key, many=True)
     if spec.takes_text and len(arms) == 1 and _has_fields(arms[0]):
         return _plan_spread(parameter, argument, arms[0])
@@ -733,11 +786,13 @@ def _plan_keyed(parameter: ParameterInfo, argument: HttpxArgument) -> PlannedPar
 def _plan_spread(parameter: ParameterInfo, argument: HttpxArgument, annotation: Any) -> SpreadParameter:
     """Plan a model, dataclass or mapping parameter spread into ``argument``.
 
-    Each field is sent under the key the argument's spec gives its alias or
-    attribute name, so a header field's ``_`` becomes ``-`` too. A mapping's
-    items are sent under their own keys, as they are. Each field, or the
-    mapping's value type, must be something the argument takes, as a parameter
-    must, so a nested model raises ``DefinitionError``.
+    Each field, computed fields included, is sent under the key the
+    argument's spec gives its alias or attribute name, so a header field's
+    ``_`` becomes ``-`` too. A mapping's items are sent under their own keys,
+    as they are, and so is what a model with its own model serializer dumps:
+    its keys exist only at the call. Each field, or the mapping's value type,
+    must be something the argument takes, as a parameter must, so a nested
+    model raises ``DefinitionError``.
     """
     spec = _SPECS[argument]
     cls = cast("type[Any]", _class_of(annotation))
@@ -750,7 +805,10 @@ def _plan_spread(parameter: ParameterInfo, argument: HttpxArgument, annotation: 
                 f"Parameter {parameter.name!r} is marked {spec.helper}, so each item of the mapping goes to "
                 f"{spec.accepts}. Its value type isn't one."
             )
-        return SpreadParameter(parameter.name, argument)
+        return SpreadParameter(parameter.name, argument, many=spec.takes_lists)
+    if _has_model_serializer(cls):
+        # It decides its own keys, so what it dumps is sent, as a mapping is.
+        return SpreadParameter(parameter.name, argument, many=spec.takes_lists, dump=_dump_options(parameter))
     keys: list[tuple[str, str]] = []
     for attribute, (field_type, alias) in _fields_of(cls).items():
         if not _fits(field_type, spec):
@@ -759,28 +817,38 @@ def _plan_spread(parameter: ParameterInfo, argument: HttpxArgument, annotation: 
                 f"{spec.accepts}. Field {attribute!r} isn't one."
             )
         keys.append((attribute, spec.key(attribute, alias)))
-    return SpreadParameter(parameter.name, argument, tuple(keys), dump=_dump_options(parameter))
+    return SpreadParameter(parameter.name, argument, tuple(keys), many=spec.takes_lists, dump=_dump_options(parameter))
 
 
 def _fields_of(cls: type[Any]) -> dict[str, tuple[Any, str | None]]:
-    """Return each field's type and serialization alias, by attribute name."""
+    """Return each field's type and serialization alias, by attribute name.
+
+    A model's computed fields count too: they're dumped like fields.
+    """
     if issubclass(cls, BaseModel):
-        return {name: (info.annotation, info.serialization_alias) for name, info in cls.model_fields.items()}
-    # A dataclass: its fields have no aliases.
+        model_fields = {name: (info.annotation, info.serialization_alias) for name, info in cls.model_fields.items()}
+        computed = {name: (info.return_type, info.alias) for name, info in cls.model_computed_fields.items()}
+        return model_fields | computed
+    if is_pydantic_dataclass(cls):
+        return {name: (info.annotation, info.serialization_alias) for name, info in cls.__pydantic_fields__.items()}
+    # A standard library dataclass: its fields have no aliases.
     hints = get_type_hints(cls)
     return {field.name: (hints.get(field.name, Any), None) for field in fields(cls)}
+
+
+def _has_model_serializer(cls: type[Any]) -> bool:
+    """Return whether a model or pydantic dataclass has a model serializer."""
+    decorators = getattr(cls, "__pydantic_decorators__", None)
+    return decorators is not None and bool(decorators.model_serializers)
 
 
 def _fits(annotation: Any, spec: type[HttpxArgumentSpec]) -> bool:
     """Return whether a value of this type can go to the spec's argument.
 
-    That's a value the spec takes, or a collection of them if it
-    ``takes_lists``.
+    That's a value the spec takes, or, if it ``takes_lists``, a collection of
+    them, or a type that takes either.
     """
-    arms = _arms(annotation)
-    if all(spec.takes_value(arm) for arm in arms):
-        return True
-    return spec.takes_lists and all(_is_list_of(arm, spec.takes_value) for arm in arms)
+    return all(spec.takes_value(arm) or (spec.takes_lists and _is_list_of(arm, spec)) for arm in _arms(annotation))
 
 
 def _check_key_clashes(planned: Sequence[PlannedParameter | SpreadParameter]) -> None:
@@ -788,7 +856,8 @@ def _check_key_clashes(planned: Sequence[PlannedParameter | SpreadParameter]) ->
 
     httpx2 would keep only one of them, silently. Only keys known now count: a
     mapping's keys exist only at the call, so a clash with one is the caller's
-    to avoid.
+    to avoid. An argument whose spec ``keys_can_repeat``, such as files, sends
+    both, so it's skipped.
     """
     # Each (argument, clash key) seen so far, to where it came from and its key.
     sources: dict[tuple[HttpxArgument, str], tuple[str, str]] = {}
@@ -800,6 +869,8 @@ def _check_key_clashes(planned: Sequence[PlannedParameter | SpreadParameter]) ->
         else:
             continue
         spec = _SPECS[item.httpx_argument]
+        if spec.keys_can_repeat:
+            continue
         for key, source in keyed:
             where = (item.httpx_argument, spec.clash_key(key))
             if where not in sources:
@@ -818,15 +889,17 @@ def _find_lone_body(parameters: Sequence[ParameterInfo]) -> ParameterInfo | None
     """Return the parameter that's the whole body by the lone rule, or ``None``.
 
     That's the only parameter going to an argument whose spec has
-    ``lone_is_body`` (JSON), unless it's a plain value or has
-    ``Send(embed=True)``: those are sent under their name, as FastAPI does. So
-    adding a second ``Json()`` parameter moves the first under its name.
+    ``lone_is_body`` (JSON), unless it has ``Send(embed=True)``, or it's a
+    plain value, which is sent under its name. ``Any`` isn't plain here: it's
+    the whole body, like a model. Adding a second ``Json()`` parameter moves
+    the first under its name, as FastAPI does.
     """
     candidates = [p for p in parameters if p.httpx_argument is not None and _SPECS[p.httpx_argument].lone_is_body]
     if len(candidates) != 1:
         return None
     (parameter,) = candidates
-    if parameter.send.embed or _all_plain(parameter.annotation):
+    arms = _arms(parameter.annotation)
+    if parameter.send.embed or (_all_plain(parameter.annotation) and Any not in arms):
         return None
     return parameter
 
@@ -963,12 +1036,14 @@ def _all_plain(annotation: Any) -> bool:
 def _allows_none(annotation: Any, depth: int = 0) -> bool:
     """Return whether ``None`` is one of the types a value can have.
 
-    ``_arms`` drops ``None``, so this is how to ask about it: ``int | None``
-    and ``Optional[int]`` allow it.
+    ``_arms`` drops ``None``, so this is how to ask about it: ``int | None``,
+    ``Optional[int]`` and ``Literal["a", None]`` allow it.
     """
     base, _ = unwrap_annotated(annotation)
     if base is NoneType or base is None:
         return True
+    if get_origin(base) is Literal:
+        return None in get_args(base)
     if get_origin(base) not in {Union, UnionType} or depth > _MAX_UNION_DEPTH:
         return False
     return any(_allows_none(member, depth + 1) for member in get_args(base))
@@ -994,22 +1069,24 @@ def _has_fields(annotation: Any) -> bool:
     return cls is not None and (issubclass(cls, BaseModel | Mapping) or is_dataclass(cls))
 
 
-def _is_list_of(annotation: Any, takes_value: Callable[[Any], bool]) -> bool:
-    """Return whether the type is a collection of values ``takes_value`` takes.
+def _is_list_of(annotation: Any, spec: type[HttpxArgumentSpec]) -> bool:
+    """Return whether the type is a collection of values the spec takes.
 
     Any collection but a mapping counts: ``list``, ``tuple``, ``set`` and
-    ``frozenset``. A set's order can change from run to run, and the request
-    with it. ``str``, ``bytes`` and
-    ``bytearray`` are collections too, but of characters and numbers, not of
-    values, so they don't count.
+    ``frozenset``, but not a tuple where the spec says ``tuples_are_values``.
+    A set's order can change from run to run, and the request with it.
+    ``str``, ``bytes`` and ``bytearray`` are collections too, but of
+    characters and numbers, not of values, so they don't count.
     """
     cls = _class_of(annotation)
     if cls is None or issubclass(cls, str | bytes | bytearray | Mapping) or not issubclass(cls, Collection):
         return False
+    if spec.tuples_are_values and issubclass(cls, tuple):
+        return False
     # tuple[str, ...] lists str and then Ellipsis. A bare list has no item
     # types, so its items count as Any.
     item_types = [item for item in get_args(annotation) if item is not Ellipsis]
-    return all(takes_value(arm) for item in item_types for arm in _arms(item))
+    return all(spec.takes_value(arm) for item in item_types for arm in _arms(item))
 
 
 def _is_file(annotation: Any) -> bool:

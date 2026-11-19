@@ -9,7 +9,8 @@ from typing import Annotated, Any
 
 import httpx2
 import pytest
-from pydantic import BaseModel, Field, field_serializer
+from pydantic import BaseModel, Field, computed_field, field_serializer, model_serializer
+from pydantic.dataclasses import dataclass as pydantic_dataclass
 
 from clientx import ClientX, DefinitionError, File, Form, Header, Json, Query, Send, method
 
@@ -265,3 +266,58 @@ def test_exclude_none_doesnt_apply_to_a_spread_model() -> None:
         class API(ClientX):
             @method.get("/items")
             def find(self, search: Annotated[Search, Query(), Send(exclude_none=True)]) -> None: ...
+
+
+# What a model dumps
+
+
+class Sort(BaseModel):
+    field: str = "date"
+
+    @model_serializer
+    def _as_parameter(self) -> dict[str, str]:
+        return {"sort": f"-{self.field}"}
+
+
+class Range(BaseModel):
+    start: int = 1
+
+    @computed_field
+    @property
+    def end(self) -> int:
+        return self.start + 9
+
+
+@pydantic_dataclass
+class Owner:
+    user_id: int = Field(default=7, alias="userId")
+
+
+@pytest.mark.parametrize(
+    ("annotation", "value", "query"),
+    [
+        pytest.param(Sort, Sort(), "sort=-date", id="a model serializer"),
+        pytest.param(Range, Range(), "start=1&end=10", id="a computed field"),
+        pytest.param(Owner, Owner(), "userId=7", id="a pydantic dataclass's alias"),
+    ],
+)
+def test_a_spread_model_sends_what_it_dumps(
+    annotation: Any, value: object, query: str, mock_transport: MockTransport
+) -> None:
+    class API(ClientX):
+        @method.get("/items")
+        def find(self, p: Annotated[annotation, Query()]) -> None: ...  # pyright: ignore[reportInvalidTypeForm]
+
+    sent: list[httpx2.Request] = []
+    API(BASE_URL, transport=mock_transport(sent)).find(value)
+    assert only_request(sent).url.query.decode() == query
+
+
+def test_a_list_in_a_spread_header_is_one_value(mock_transport: MockTransport) -> None:
+    class API(ClientX):
+        @method.get("/items")
+        def find(self, extra: Annotated[dict[str, Any], Header()]) -> None: ...
+
+    sent: list[httpx2.Request] = []
+    API(BASE_URL, transport=mock_transport(sent)).find({"x-tags": ["a", "b"]})
+    assert only_request(sent).headers["x-tags"] == '["a", "b"]'

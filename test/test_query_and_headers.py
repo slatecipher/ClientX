@@ -4,14 +4,14 @@ import datetime
 import enum
 import json
 import re
-from collections.abc import Callable, Collection
+from collections.abc import Callable, Collection, Sequence
 from typing import Annotated, Any, Literal, NewType, Optional
 
 import httpx2
 import pytest
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, PlainSerializer
 
-from clientx import ClientX, DefinitionError, Form, Header, Json, Query, method
+from clientx import ArgumentError, ClientX, DefinitionError, Form, Header, Json, Query, method
 
 type MockTransport = Callable[..., httpx2.MockTransport]
 
@@ -383,3 +383,47 @@ def test_one_key_in_two_parts_isnt_a_clash(mock_transport: MockTransport) -> Non
     request = only_request(sent)
     assert request.url.query.decode() == "status=open"
     assert request.headers["status"] == "x"
+
+
+# One value or a list of them, and values that can't become text
+
+
+@pytest.mark.parametrize(
+    ("annotation", "value", "query"),
+    [
+        pytest.param(str | list[str], "a", "tag=a", id="one value"),
+        pytest.param(str | list[str], ["a", "b"], "tag=a&tag=b", id="a list of them"),
+        pytest.param(Sequence[str], "python", "tag=python", id="a str for a Sequence[str] is one value"),
+    ],
+)
+def test_a_value_or_a_list_of_them_is_decided_at_the_call(
+    annotation: Any, value: object, query: str, mock_transport: MockTransport
+) -> None:
+    class API(ClientX):
+        @method.get("/items")
+        def search(self, tag: Annotated[annotation, Query()]) -> None: ...  # pyright: ignore[reportInvalidTypeForm]
+
+    sent: list[httpx2.Request] = []
+    API(BASE_URL, transport=mock_transport(sent)).search(value)
+    assert only_request(sent).url.query.decode() == query
+
+
+def test_a_serializer_in_a_parameters_type_fails() -> None:
+    epoch = Annotated[datetime.datetime, PlainSerializer(lambda d: int(d.timestamp()), return_type=int)]
+    with pytest.raises(DefinitionError, match=re.escape("has a pydantic serializer in its type")):
+
+        class API(ClientX):
+            @method.get("/items")
+            def search(self, since: Annotated[epoch, Query()]) -> None: ...  # pyright: ignore[reportInvalidTypeForm]
+
+
+def test_a_value_that_cant_become_text_raises_before_sending(mock_transport: MockTransport) -> None:
+    class API(ClientX):
+        @method.get("/items")
+        def search(self, token: Annotated[bytes, Query()]) -> None: ...
+
+    sent: list[httpx2.Request] = []
+    with pytest.raises(ArgumentError, match=re.escape("Can't send 'token'")) as caught:
+        API(BASE_URL, transport=mock_transport(sent)).search(b"\xff")
+    assert caught.value.parameter == "token"
+    assert sent == []

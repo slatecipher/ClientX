@@ -5,20 +5,23 @@
 names the caller passed. The builder only follows the plan: it never reads
 annotations, ``Send`` or the specs, and the only error it raises is
 ``ArgumentError``, before anything is sent, for a path value that would call a
-different path or a JSON value pydantic can't serialize.
+different path, or a value that can't become text or JSON.
 
 - Path: each placeholder is filled with percent-encoded text, one segment, or
   several for ``{name:path}``. ``.`` and ``..`` are encoded too. A ``None`` or
   empty value, or a ``{name:path}`` value with an empty segment, raises.
 - Text: a value becomes text by one rule, for the path, query, headers and
   form: pydantic's JSON form, so an ``Enum`` is its value, a ``datetime`` ISO
-  8601 text, and a number or ``bool`` JSON text (``true``); ``str`` for
-  anything else, the ``Any`` escape hatch.
+  8601 text, a number or ``bool`` JSON text (``true``), and a list or dict
+  JSON text. ``str`` is used only for an object pydantic doesn't know.
 - Query, headers, form: ``None`` is left out, and so is an empty collection
-  and a ``None`` item in one. A collection repeats the key. A spread model or
-  dataclass is dumped with its ``DumpOptions``, then each field is sent under
-  its planned key; a spread mapping's items under their own keys.
-- Files: each file is passed as it is, and a collection repeats the field.
+  and a ``None`` item in one. Where the plan says ``many``, a collection
+  repeats the key, decided by the value: a ``str`` is one value. A spread
+  model or dataclass is dumped with its ``DumpOptions``, then each field is
+  sent under its planned key; what a spread mapping, or a model with its own
+  model serializer, dumps is sent under its own keys.
+- Files: each file is passed as it is, and a list of them repeats the field.
+  A ``None`` in the list is left out.
 - JSON fields: each is dumped with its ``DumpOptions``, by alias, into one JSON
   object. ``None`` is left out, unless it was passed explicitly and the plan
   says ``sends_null``: then it's ``null``. With no fields left, there's no
@@ -30,7 +33,8 @@ different path or a JSON value pydantic can't serialize.
 from __future__ import annotations
 
 import json
-from collections.abc import Collection, Iterable, Mapping
+from collections.abc import Collection, Generator, Iterable, Mapping
+from contextlib import contextmanager
 from typing import Any, cast
 from urllib.parse import quote
 
@@ -56,7 +60,7 @@ def build_request(
 
     Raises:
         ArgumentError: If a path value would change which path is called, or
-            pydantic can't serialize a JSON value.
+            a value can't become text or JSON.
     """
     path = _build_path(plan.path, arguments)
     # Each argument's keyed values: params, headers, data and json. Files are a
@@ -65,15 +69,18 @@ def build_request(
     files: list[tuple[str, object]] = []
     for item in plan.parameters:
         value = arguments[item.name]
-        if isinstance(item, SpreadParameter):
-            if value is not None:
-                # A clash with a mapping's key: the later one wins, as in
-                # dict.update. The planner caught every clash it could see.
-                keyed.setdefault(item.httpx_argument, {}).update(_spread(item, value))
-        elif item.httpx_argument is HttpxArgument.FILES:
-            files.extend((item.key, file) for file in _files(item, value))
-        elif (sent := _keyed_value(item, value, passed)) is not _LEFT_OUT:
-            keyed.setdefault(item.httpx_argument, {})[item.key] = sent
+        with _converting(item.name):
+            if isinstance(item, SpreadParameter):
+                if value is not None:
+                    # A key known only at the call that equals another replaces
+                    # it, as in dict.update; httpx2 sends both header names
+                    # that differ only in case. The planner caught every clash
+                    # it could see.
+                    keyed.setdefault(item.httpx_argument, {}).update(_spread(item, value))
+            elif item.httpx_argument is HttpxArgument.FILES:
+                files.extend((item.key, file) for file in _files(item, value))
+            elif (sent := _keyed_value(item, value, passed)) is not _LEFT_OUT:
+                keyed.setdefault(item.httpx_argument, {})[item.key] = sent
 
     # Each argument's name is build_request's: "params", "headers", "data"...
     request_arguments: dict[str, object] = {argument.value: values for argument, values in keyed.items() if values}
@@ -103,6 +110,19 @@ def _keyed_value(item: PlannedParameter, value: object, passed: Collection[str])
     return _LEFT_OUT if text is None else text
 
 
+@contextmanager
+def _converting(name: str) -> Generator[None]:
+    """Raise ``ArgumentError`` if a parameter's value can't become text.
+
+    Such as ``bytes`` that aren't UTF-8, or an object pydantic can't
+    serialize, so the error names the parameter, and nothing is sent.
+    """
+    try:
+        yield
+    except (UnicodeDecodeError, PydanticSerializationError) as error:
+        raise ArgumentError(f"Can't send {name!r}: {error}. No request was sent.", parameter=name) from error
+
+
 # --- The path -----------------------------------------------------------------
 # A "." or ".." segment would move up the path, so it's encoded too.
 _DOT_SEGMENTS = {".": "%2E", "..": "%2E%2E"}
@@ -114,7 +134,14 @@ def _build_path(path: tuple[str | PathPlaceholder, ...], arguments: Mapping[str,
     The planner checked that every placeholder names a parameter, so
     ``arguments`` has a value for each.
     """
-    return "".join(part if isinstance(part, str) else _encode_path_value(part, arguments[part.name]) for part in path)
+    parts: list[str] = []
+    for part in path:
+        if isinstance(part, str):
+            parts.append(part)
+            continue
+        with _converting(part.name):
+            parts.append(_encode_path_value(part, arguments[part.name]))
+    return "".join(parts)
 
 
 def _encode_path_value(placeholder: PathPlaceholder, value: object) -> str:
@@ -155,14 +182,27 @@ def _text_value(value: object, *, many: bool) -> str | list[str] | None:
     """Return a query, header or form value as text, or ``None`` to omit it.
 
     ``None`` is left out, and so is an empty collection: "no values" behaves
-    like "no value". A ``None`` item in a collection is left out too.
+    like "no value". A ``None`` item in a collection is left out too. Where
+    ``many`` allows a collection, the value decides: a ``str`` passed for a
+    ``Sequence[str]`` is one value, not one per character.
     """
     if value is None:
         return None
-    if not many:
+    if not (many and _is_several(value)):
         return _to_text(value)
     texts = [_to_text(item) for item in cast("Iterable[object]", value) if item is not None]
     return texts or None
+
+
+def _is_several(value: object, *, tuples_too: bool = True) -> bool:
+    """Return whether the value is a collection of values, rather than one.
+
+    ``str`` and ``bytes`` are collections, but each is one value. A file's
+    tuple is one file, so files pass ``tuples_too=False``.
+    """
+    if not isinstance(value, Collection) or isinstance(value, str | bytes | bytearray | Mapping):
+        return False
+    return tuples_too or not isinstance(value, tuple)
 
 
 def _spread(item: SpreadParameter, value: object) -> dict[str, object]:
@@ -170,19 +210,33 @@ def _spread(item: SpreadParameter, value: object) -> dict[str, object]:
 
     A model or dataclass is dumped with the plan's ``DumpOptions`` first, so a
     field ``exclude_unset`` leaves out isn't sent; then each field the plan
-    lists is sent under its planned key. A mapping's items are sent under their
-    own keys. A field that's ``None`` or an empty collection is left out.
+    lists is sent under its planned key. What a mapping, or a model with its
+    own model serializer, dumps is sent under its own keys. A field that's
+    ``None`` or an empty collection is left out.
+
+    Raises:
+        ArgumentError: If a model's own serializer dumps it to something other
+            than a mapping, which can't be spread.
     """
     if item.keys is None:
-        items = cast("dict[object, object]", to_jsonable_python(dict(cast("Mapping[object, object]", value))))
-        pairs = [(str(key), field) for key, field in items.items()]
+        source = dict(cast("Mapping[object, object]", value)) if isinstance(value, Mapping) else value
+        dumped = _dump(source, item.dump, by_alias=True)
+        if not isinstance(dumped, dict):
+            raise ArgumentError(
+                f"Can't spread {item.name!r}: it dumps to {type(dumped).__name__}, not a mapping of keys to "
+                "values. No request was sent.",
+                parameter=item.name,
+            )
+        pairs = [(str(key), field) for key, field in cast("dict[object, object]", dumped).items()]
     else:
         dumped = cast("dict[str, object]", _dump(value, item.dump, by_alias=False))
         pairs = [(key, dumped[attribute]) for attribute, key in item.keys if attribute in dumped]
     fields: dict[str, object] = {}
     for key, field in pairs:
-        # Dumped to JSON-ready data, so any collection is a list by now.
-        text = _text_value(field, many=isinstance(field, list))
+        # Dumped to JSON-ready data, so any collection is a list by now. It
+        # repeats the key where the argument takes lists; in a header, it's one
+        # value, JSON text.
+        text = _text_value(field, many=item.many and isinstance(field, list))
         if text is not None:
             fields[key] = text
     return fields
@@ -191,12 +245,15 @@ def _spread(item: SpreadParameter, value: object) -> dict[str, object]:
 def _files(item: PlannedParameter, value: object) -> list[object]:
     """Return the files to send under the parameter's key, as they are.
 
-    One file, or each file of a collection, which repeats the field. ``None``
-    and an empty collection send none.
+    One file, or each file of a collection, which repeats the field. ``None``,
+    an empty collection and a ``None`` in one send none. A tuple is one file,
+    ``(filename, content...)``, and ``bytes`` are one file's content.
     """
     if value is None:
         return []
-    return list(cast("Iterable[object]", value)) if item.many else [value]
+    several = item.many and _is_several(value, tuples_too=False)
+    files = list(cast("Iterable[object]", value)) if several else [value]
+    return [file for file in files if file is not None]
 
 
 # --- The body -----------------------------------------------------------------
@@ -217,9 +274,10 @@ def _body(body: PlannedParameter, value: object) -> dict[str, object]:
 def _to_text(value: object) -> str:
     """Return ``value`` as the text that's sent for it.
 
-    An ``Enum`` becomes its value, a ``datetime`` ISO 8601 text, a ``UUID`` or
-    ``Decimal`` its string, and a number or ``bool`` JSON text (``2``,
-    ``true``). Any other object uses ``str``: the ``Any`` escape hatch.
+    It's pydantic's JSON form: an ``Enum`` becomes its value, a ``datetime``
+    ISO 8601 text, a ``UUID`` or ``Decimal`` its string, a number or ``bool``
+    JSON text (``2``, ``true``), and a list or dict JSON text. Only an object
+    pydantic doesn't know uses ``str``: the ``Any`` escape hatch.
     """
     jsonable = to_jsonable_python(value, fallback=str)
     return jsonable if isinstance(jsonable, str) else json.dumps(jsonable)
@@ -232,10 +290,12 @@ _BY_VALUE = TypeAdapter[Any](Any)
 
 
 def _dump(value: object, dump: DumpOptions, *, by_alias: bool) -> object:
-    """Return a spread model's fields as JSON-ready data, with dump options.
+    """Return a spread value's fields as JSON-ready data, with dump options.
 
-    The plan maps each attribute to its key. A field pydantic doesn't know uses
-    ``str``: the ``Any`` escape hatch, as for any text value.
+    A model is dumped by attribute name, which the plan maps to keys; a
+    mapping, or a model with its own model serializer, by alias. A field
+    pydantic doesn't know uses ``str``: the ``Any`` escape hatch, as for any
+    text value.
     """
     return _BY_VALUE.dump_python(
         value,

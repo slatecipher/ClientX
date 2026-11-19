@@ -3,7 +3,7 @@
 import enum
 import re
 from collections.abc import Callable
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 import httpx2
 import pytest
@@ -239,12 +239,21 @@ class Price:
         return "9.90"
 
 
-def test_a_path_parameter_that_can_be_none_fails() -> None:
+@pytest.mark.parametrize("annotation", [str | None, Literal["a", None]], ids=["optional", "Literal with None"])
+def test_a_path_parameter_that_can_be_none_fails(annotation: Any) -> None:
     with pytest.raises(DefinitionError, match=re.escape("so it can't be None: a None value would always fail")):
 
         class API(ClientX):
             @method.get("/users/{user_id}")
-            def user(self, user_id: str | None) -> None: ...
+            def user(self, user_id: annotation) -> None: ...  # pyright: ignore[reportInvalidTypeForm]
+
+
+def test_an_alias_on_a_path_parameter_fails() -> None:
+    with pytest.raises(DefinitionError, match=re.escape("so its Url(alias=...) has no effect")):
+
+        class API(ClientX):
+            @method.get("/users/{user_id}")
+            def user(self, user_id: Annotated[int, Url(alias="userId")]) -> None: ...
 
 
 @pytest.mark.parametrize("annotation", [list[int], Price], ids=["list", "your own class"])
