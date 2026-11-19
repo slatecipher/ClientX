@@ -119,6 +119,7 @@ Using clients:
 - [Async clients](https://github.com/slatecipher/ClientX/blob/mainline/docs/async.md): AsyncClientX and AsyncResource for async def endpoints, concurrent requests, async streaming, testing
 - [Testing](https://github.com/slatecipher/ClientX/blob/mainline/docs/testing.md): MockTransport, checking requests, streaming responses
 - [Errors](https://github.com/slatecipher/ClientX/blob/mainline/docs/errors.md): every error ClientX raises, and when
+- [API reference](https://github.com/slatecipher/ClientX/blob/mainline/docs/reference.md): every public name, its signature, arguments and defaults, and what's internal
 - [CHANGELOG](https://github.com/slatecipher/ClientX/blob/mainline/CHANGELOG.md): changes in each release; the API may change between minor versions before 1.0
 
 ## Optional
