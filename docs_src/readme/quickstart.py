@@ -1,11 +1,15 @@
 from typing import Annotated
 
-from clientx import ClientX, Query, Resource, method
+from clientx import ClientX, Header, Json, Query, Resource, method
 from pydantic import BaseModel
 
 
 class User(BaseModel):
     id: int
+    name: str
+
+
+class NewUser(BaseModel):
     name: str
 
 
@@ -20,6 +24,15 @@ class Users(Resource, prefix="/users"):
         """List users, or only those with this name."""
         ...
 
+    @method.post()
+    def create(
+        self,
+        user: Annotated[NewUser, Json()],
+        request_id: Annotated[str | None, Header()] = None,
+    ) -> User:
+        """Create a user."""
+        ...
+
 
 class ExampleAPI(ClientX, user_agent="example-app/1.0"):
     users = Users()
@@ -28,3 +41,4 @@ class ExampleAPI(ClientX, user_agent="example-app/1.0"):
 with ExampleAPI("https://api.example.com") as api:
     user = api.users.retrieve(42)  # GET /users/42 -> User
     matches = api.users.search(name="Ada")  # GET /users?name=Ada -> list[User]
+    new = api.users.create(NewUser(name="Ada"), request_id="r-1")  # POST /users, JSON body, request-id header -> User
