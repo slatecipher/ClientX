@@ -612,3 +612,22 @@ async def test_an_async_client_streams_an_async_iterable(mock_transport: MockTra
     sent: list[httpx2.Request] = []
     await API(BASE_URL, transport=mock_transport(sent)).upload(chunks())
     assert only_request(sent).content == b"ab"
+
+
+def test_send_json_part_sends_a_form_field_as_a_json_part(mock_transport: MockTransport) -> None:
+    class API(ClientX):
+        @method.post("/messages")
+        def create(
+            self,
+            message: Annotated[NewUser, Form(alias="payload_json"), Send(json_part=True)],
+            doc: Annotated[bytes, File()],
+        ) -> None: ...
+
+    sent: list[httpx2.Request] = []
+    API(BASE_URL, transport=mock_transport(sent)).create(NewUser(name="A", emailAddress="a@x"), b"%PDF")
+    request = only_request(sent)
+    part = (
+        'name="payload_json"\r\nContent-Type: application/json\r\n\r\n{"name":"A","emailAddress":"a@x","joined":null}'
+    )
+    assert content_type(request) == "multipart/form-data"
+    assert part in request.read().decode()

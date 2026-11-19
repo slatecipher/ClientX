@@ -44,7 +44,8 @@ argument, so a rule that differs by argument lives in that argument's class:
   value, ``Any`` included, is the whole body, unless it has
   ``Send(embed=True)``.
 - A request has one kind of body: JSON, raw content, or a form of ``Form()``
-  and ``File()`` parameters.
+  and ``File()`` parameters. A ``Form()`` parameter with
+  ``Send(json_part=True)`` takes any value, sent as a JSON part of the form.
 - Two values sent to one argument under one key raise, except files; header
   keys compare case-insensitively. A spread mapping's keys exist only at the
   call, and so do those of a model with its own model serializer, so a clash
@@ -146,6 +147,8 @@ class PlannedParameter:
             planner sets it from the spec, so the builder needn't read one.
         only_if_passed: Left out when the caller didn't pass it, from
             ``Send(exclude_unset=True)``, so the server's default applies.
+        json_part: A form field sent as its own part of a multipart form, as
+            JSON, from ``Send(json_part=True)``.
         dump: How pydantic dumps the value, for a model inside it.
     """
 
@@ -155,6 +158,7 @@ class PlannedParameter:
     many: bool = False
     sends_null: bool = False
     only_if_passed: bool = False
+    json_part: bool = False
     dump: DumpOptions = DumpOptions()
 
 
@@ -352,8 +356,10 @@ class DataSpec(HttpxArgumentSpec):
     takes_text = True
     takes_lists = True
     body_kind = "a form"
-    # For a spread model. Not exclude_none: a form leaves out None.
-    send_options = frozenset({"exclude_unset", "exclude_defaults"})
+    # exclude_unset and exclude_defaults for a spread model, or a JSON part.
+    # Not exclude_none: a form leaves out None. json_part sends a value as a
+    # JSON part of a multipart form, as some APIs take next to files.
+    send_options = frozenset({"exclude_unset", "exclude_defaults", "json_part"})
 
 
 class FilesSpec(HttpxArgumentSpec):
@@ -792,6 +798,9 @@ def _plan_keyed(parameter: ParameterInfo, argument: HttpxArgument) -> PlannedPar
     # Send(exclude_none=True) leaves out None, so it isn't sent as null.
     sends_null = spec.sends_null and not dump.exclude_none
     only_if_passed = dump.exclude_unset
+    if parameter.send.json_part:
+        # Any value pydantic can serialize: it's sent as JSON, not as text.
+        return PlannedParameter(parameter.name, argument, key, only_if_passed=only_if_passed, json_part=True, dump=dump)
     arms = _arms(parameter.annotation)
     if all(spec.takes_value(arm) for arm in arms):
         return PlannedParameter(

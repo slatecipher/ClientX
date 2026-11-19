@@ -170,6 +170,31 @@ A file is `bytes`, a binary file (`open(path, "rb")`, `io.BytesIO`, `IO[bytes]`)
 
 Without a file, the form is sent URL-encoded, so with an optional `File()` parameter the encoding depends on whether a file is passed.
 
+Some APIs take a JSON document as one part of a multipart form, next to the files. Add [`Send(json_part=True)`](#send) to a `Form()` parameter: its value can be anything Pydantic can serialize, and it's sent as a part of its own, as JSON with the `application/json` content type, which makes the form multipart even without a file:
+
+```python
+from typing import Annotated
+
+from clientx import ClientX, File, Form, Response, Send, method
+from pydantic import BaseModel
+
+
+class Message(BaseModel):
+    content: str
+
+
+class MessagesAPI(ClientX):
+    @method.post("/channels/{channel_id}/messages")
+    def send_message(
+        self,
+        channel_id: int,
+        message: Annotated[Message, Form(alias="payload_json"), Send(json_part=True)],
+        attachments: Annotated[list[tuple[str, bytes]] | None, File()] = None,
+    ) -> Response: ...
+```
+
+`send_message(7, Message(content="Hi"), [("a.png", data)])` sends a multipart form with a `payload_json` part holding `{"content":"Hi"}`, and the file under `attachments`.
+
 ## Spreading a model, dataclass or mapping
 
 A model, dataclass or mapping marked `Query()`, `Header()` or `Form()` is spread into that part: each field is sent as a separate value, under its alias or name (with underscores turned into hyphens for a header), and each item of a mapping under its own key.
@@ -210,6 +235,7 @@ The helper says where a parameter goes; `Send` says how it's sent there. Put it 
 | `exclude_unset=True` | Leaves out what the caller didn't set, so the server's defaults apply: the parameter, when the caller doesn't pass it, so `page: Annotated[int, Query(), Send(exclude_unset=True)] = 1` sends no `page` unless it's passed; and a model's fields that weren't set when it was made, for a PATCH with only the fields to change. `Json()`, `Query()`, `Header()` and `Form()`. |
 | `exclude_none=True` | Leaves out the fields of a model or Pydantic dataclass that are `None`, instead of sending `null`. `Json()` only: the other parts leave out `None` already. On a JSON field, a `None` passed explicitly is then left out too. |
 | `exclude_defaults=True` | Leaves out the fields of a model or Pydantic dataclass that equal their defaults. `Json()`, and a spread model. |
+| `json_part=True` | Sends a `Form()` parameter's value as its own part of a multipart form, as JSON with the `application/json` content type, as some APIs take next to files (see [Forms and files](#forms-and-files)). `Form()` only. |
 
 Many APIs take a body such as `{"ids": [...]}`. Without `embed`, a lone `ids: Annotated[list[str], Json()]` would be the whole body, `[...]`:
 

@@ -80,12 +80,18 @@ class Send:
         exclude_defaults: Leave out the fields of a pydantic model or pydantic
             dataclass that equal their defaults. For JSON, and for a model
             spread into the query string, headers or form.
+        json_part: Send a ``Form()`` parameter's value as its own part of a
+            multipart form, as JSON with the ``application/json`` content
+            type, as some APIs take a JSON document next to files. The value
+            can be anything pydantic can serialize, and the form becomes
+            multipart.
     """
 
     embed: bool | None = None
     exclude_unset: bool | None = None
     exclude_none: bool | None = None
     exclude_defaults: bool | None = None
+    json_part: bool | None = None
 
 
 # --- Type aliases -------------------------------------------------------------
