@@ -50,7 +50,10 @@ def set_up_client(
     _check_resource_classes(cls)
     _check_endpoint_kinds(cls, _CLIENT_BASES)
     if base_url is not None:
-        cls.__clientx_base_url__ = _class_base_url(cls, base_url)
+        try:
+            cls.__clientx_base_url__ = parse_base_url(base_url)
+        except ValueError as error:
+            raise DefinitionError(f"'{cls.__qualname__}' can't have this class argument: {error}") from error
     if user_agent is not None:
         cls.__clientx_user_agent__ = user_agent
     for endpoint in _claim_endpoints(cls):
@@ -110,22 +113,20 @@ def check_mount(resource_name: str, *, is_async: bool, owner: type) -> None:
     raise DefinitionError(message)
 
 
-def _class_base_url(cls: type, base_url: URL | str) -> URL:
-    """Return a class's ``base_url=`` as a URL, or raise ``DefinitionError``.
+def parse_base_url(base_url: URL | str) -> URL:
+    """Return a base URL as a URL, or raise ``ValueError`` if it isn't absolute.
 
-    It must be absolute, with a scheme and a host: httpx2 would take
-    ``"api.example.com"`` as a relative path, and fail only on the first
-    request, far from the class.
+    It needs a scheme and a host: httpx2 would take ``"api.example.com"`` as a
+    relative path, and fail only on the first request. A client's ``__init__``
+    checks the one it's given; ``set_up_client`` checks a class's, and raises
+    ``DefinitionError`` instead.
     """
     try:
         url = URL(base_url)
     except InvalidURL as error:
-        raise DefinitionError(f"'{cls.__qualname__}' has base_url={base_url!r}, which isn't a URL: {error}.") from error
+        raise ValueError(f"base_url={base_url!r} isn't a URL: {error}.") from error
     if not url.is_absolute_url:
-        raise DefinitionError(
-            f"'{cls.__qualname__}' has base_url={base_url!r}, which needs a scheme and a host, as in "
-            '"https://api.example.com".'
-        )
+        raise ValueError(f'base_url={base_url!r} needs a scheme and a host, as in "https://api.example.com".')
     return url
 
 

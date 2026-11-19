@@ -6,7 +6,7 @@ from typing import Any, ClassVar, Self, Unpack, cast
 
 from httpx2 import URL, AsyncClient, Client, Headers
 
-from clientx._class_setup import check_mount, set_up_client, set_up_resource
+from clientx._class_setup import check_mount, parse_base_url, set_up_client, set_up_resource
 from clientx._types import AsyncHttpxClientOptions, HeaderTypes, HttpxClientOptions
 from clientx._version import __version__
 from clientx.exceptions import DefinitionError
@@ -84,6 +84,8 @@ class ClientX(_BaseClientX, Client):
 
         Raises:
             TypeError: If there's no base URL, here or on the class.
+            ValueError: If ``base_url`` isn't an absolute URL, with a scheme and
+                a host.
         """
         super().__init__(base_url=_base_url(type(self), base_url), **kwargs)
         _configure(
@@ -156,14 +158,15 @@ class AsyncClientX(_BaseClientX, AsyncClient):
         set_up_client(cls, base=AsyncClientX, base_url=base_url, user_agent=user_agent)
 
 
-def _base_url(cls: type[ClientX | AsyncClientX], base_url: URL | str | None) -> URL | str:
+def _base_url(cls: type[ClientX | AsyncClientX], base_url: URL | str | None) -> URL:
     """Return the base URL given, or else the class's.
 
     Raises:
         TypeError: If there's neither, as for a missing argument.
+        ValueError: If the one given isn't an absolute URL.
     """
     if base_url is not None:
-        return base_url
+        return parse_base_url(base_url)
     if cls.__clientx_base_url__ is not None:
         return cls.__clientx_base_url__
     name, base = cls.__qualname__, ("AsyncClientX" if cls.__clientx_is_async__ else "ClientX")

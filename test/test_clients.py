@@ -71,15 +71,18 @@ def test_a_client_without_a_base_url_fails(base: type) -> None:
 
 
 @pytest.mark.parametrize(
-    ("base_url", "message"),
+    ("base_url", "problem"),
     [
-        pytest.param("api.example.com", "which needs a scheme and a host", id="no scheme"),
-        pytest.param("http://[::1", "which isn't a URL", id="not a URL"),
+        pytest.param("api.example.com", "needs a scheme and a host", id="no scheme"),
+        pytest.param("http://[::1", "isn't a URL", id="not a URL"),
     ],
 )
-def test_a_class_base_url_must_be_an_absolute_url(base_url: str, message: str) -> None:
-    with pytest.raises(DefinitionError, match=re.escape(f"'API' has base_url={base_url!r}, {message}")):
+def test_a_base_url_must_be_an_absolute_url(base_url: str, problem: str) -> None:
+    message = f"base_url={base_url!r} {problem}"
+    with pytest.raises(DefinitionError, match=re.escape(f"'API' can't have this class argument: {message}")):
         type("API", (ClientX,), {}, base_url=base_url)
+    with pytest.raises(ValueError, match=re.escape(message)):
+        ClientX(base_url)
 
 
 def test_the_user_agent_comes_from_the_argument_then_headers_then_the_class(mock_transport: MockTransport) -> None:

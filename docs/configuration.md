@@ -41,7 +41,7 @@ staging = ExampleAPI("https://staging.example.com")
 A subclass keeps its parent's class arguments unless it sets its own, and a `base_url` or `user_agent` given when creating a client wins over the class's.
 
 - A client needs a base URL from one or the other. Without either, creating it raises `TypeError`, as a missing argument does. Type checkers can't see whether a class sets one, so they don't catch this.
-- A class's `base_url` must be absolute, with a scheme and a host, such as `https://api.example.com`. `api.example.com` alone raises `DefinitionError` when the class is defined, since httpx2 would take it as a relative path and fail only on the first request.
+- A base URL must be absolute, with a scheme and a host, such as `https://api.example.com`, since httpx2 would take `api.example.com` alone as a relative path and fail only on the first request. A class's raises `DefinitionError` when the class is defined, and one passed when creating a client raises `ValueError`.
 
 `base_url` and `user_agent` are the only class arguments. Pass every other option when creating the client: Python rejects any other keyword in the class statement, a misspelling included, with `TypeError: ExampleAPI.__init_subclass__() takes no keyword arguments`.
 
