@@ -64,7 +64,7 @@ class FilesAPI(ClientX):
 - **Every other parameter sends one value.** Positional-only and keyword-only parameters work as in any method, but `*args` and `**kwargs` can't be endpoint parameters: each value needs a parameter of its own, which decides where it goes in the request.
 - **The return annotation is required.** It decides what the endpoint returns.
 - **A docstring is optional, but worth writing.** It documents the endpoint in editors' hovers and `help()`, and for a model that calls it as a tool, where its `Args:` describe the arguments (see [Writing descriptions for a model](tools.md#writing-descriptions-for-a-model)).
-- **Type checkers see the method's own signature**, so `api.get_user` takes `user_id: int` and returns a `User`. With `decoder=`, they also check that the decoder returns what the annotation says.
+- **Type checkers see the method's own signature**, so `api.get_user` takes `user_id: int` and returns a `User`. With `decoder=`, they also check that the decoder's declared return type matches the annotation, and the decoder validates the value itself, such as by building a model (see [Your own decoder](responses.md#your-own-decoder)).
 
 A mistake in an endpoint, such as a missing return annotation or a placeholder that names no parameter, raises `DefinitionError` when the class is defined, so it fails when its module is imported, not on its first call (see [Errors](errors.md)).
 

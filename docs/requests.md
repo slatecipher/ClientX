@@ -62,7 +62,7 @@ A parameter's default goes after `=`, as for any parameter: `page: Annotated[int
 
 Each `{placeholder}` in the path, including one in a [resource's prefix](resources.md#prefixes), is filled from the parameter with the same name. A placeholder that names no parameter raises `DefinitionError`, and so does a placeholder's parameter that isn't a plain value, can be `None` (`str | None`), or has a helper other than `Url()`. `Url()` is optional: it only marks the parameter, for example to describe it, and raises `DefinitionError` if the path has no placeholder for it. A path parameter is matched to its placeholder by name, so `Url(alias=...)` raises `DefinitionError` too.
 
-A value becomes text, as a query value does (see [Query parameters and headers](#query-parameters-and-headers)), and is then percent-encoded, so a value such as `"a/b"` or `"../admin"` stays one path segment and can't add a query string. Don't encode values yourself: a `%` would be encoded again. For a value that spans segments, such as a file path, use `{name:path}`, which keeps the slashes and still encodes each segment:
+A value becomes text, as a query value does (see [Values as text](#values-as-text)), and is then percent-encoded, so a value such as `"a/b"` or `"../admin"` stays one path segment and can't add a query string. Don't encode values yourself: a `%` would be encoded again. For a value that spans segments, such as a file path, use `{name:path}`, which keeps the slashes and still encodes each segment:
 
 <!-- docs_src/requests/path_parameters.py -->
 ```python
@@ -108,12 +108,43 @@ class ItemsAPI(ClientX):
 
 `list_items("book", Sort.OLDEST, tags=["new", "used"], request_id="r-1")` sends `GET /items?type=book&sort=oldest&tags=new&tags=used` with the header `request-id: r-1`.
 
-- **Names.** A value is sent under its helper's `alias`, or else under the parameter's name. A header's name has its underscores turned into hyphens, so `request_id` is sent as `request-id`; an alias is used exactly as given. A header name must be ASCII: one that isn't raises `DefinitionError` when the class is defined, or `ArgumentError` for a key of a spread mapping, known only at the call.
-- **Lists.** A list repeats the query parameter (`tags=new&tags=used`), and so does a list of form fields. A parameter typed `str | list[str]` takes either, decided by the value at the call, and a `str` passed for a `Sequence[str]` is one value, not one per character. A tuple or set repeats the key too, but a set's order can change from run to run, and the URL with it: use a list for a fixed order. A header takes a plain value only, so join several yourself (`", ".join(tags)`), as you would for another list style, such as `tags=new,used`.
-- **Text.** An `Enum` is sent as its value, a `date`, `time` or `datetime` as ISO 8601 text, a `UUID` or `Decimal` as its string, `bytes` as UTF-8 text, and a number or `bool` as JSON text (`2`, `1.5`, `true`). A value of any other type can only come through `Any`: a list or dict is sent as compact JSON text, as in a JSON body, and an object Pydantic doesn't know as `str(value)`. A value that can't become text, such as `bytes` that aren't UTF-8, raises `ArgumentError` before anything is sent, and so does a header value that isn't ASCII, as header values must be: encode other text as the API expects.
-- **`None` and defaults.** A value of `None` is left out, and so is an empty list and a `None` in one, so an optional parameter defaults to `None`. A default that isn't `None` is sent, like any other value, unless [`Send(exclude_unset=True)`](#send) leaves the parameter out when the caller doesn't pass it, so the server applies its own default.
-- **One key, one value.** Two values sent under one key, such as two parameters with the same alias, or a parameter and a field of a spread model, raise `DefinitionError` when the class is defined, since one would be lost. Header names are compared ignoring case. A spread mapping's keys are known only at the call, so avoiding a clash with them is up to you.
+### Rules for both
+
+- **Names.** A value is sent under its helper's `alias`, or else under the parameter's name.
+- **`None`.** A value of `None` is left out, and so is an empty list and a `None` in one, so an optional parameter defaults to `None`.
+- **Defaults.** A default that isn't `None` is sent, like any other value, unless [`Send(exclude_unset=True)`](#send) leaves the parameter out when the caller doesn't pass it, so the server applies its own default.
+- **One key, one value.** Two values sent under one key, such as two parameters with the same alias, or a parameter and a field of a spread model, raise `DefinitionError` when the class is defined, since one would be lost. A spread mapping's keys are known only at the call, so avoiding a clash with them is up to you.
 - **The client's own.** Values set with the client's `params=` and `headers=` are sent too. An endpoint's value under the same name replaces the client's.
+
+### Values as text
+
+Each value is sent as text:
+
+| Value | Sent as |
+|---|---|
+| `str` | As is |
+| `Enum` | Its value |
+| `date`, `time`, `datetime` | ISO 8601 text |
+| `UUID`, `Decimal` | Its string |
+| `bytes` | UTF-8 text |
+| A number or `bool` | JSON text: `2`, `1.5`, `true` |
+| A list or dict, through `Any` | Compact JSON text, as in a JSON body |
+| Any other object, through `Any` | `str(value)` |
+
+A `Literal` or `NewType` of these types is sent as the value it holds. Any other type can only come through `Any`. A value that can't become text, such as `bytes` that aren't UTF-8, raises `ArgumentError` before anything is sent.
+
+### Query parameters
+
+- **A list repeats the key:** `tags=new&tags=used`, and so does a list of form fields. A tuple or set repeats it too, but a set's order can change from run to run, and the URL with it: use a list for a fixed order.
+- **A `str` or a list.** A parameter typed `str | list[str]` takes either, decided by the value at the call. A `str` passed for a `Sequence[str]` is one value, not one per character.
+- **Other list styles,** such as `tags=new,used`: join the values yourself, as in `",".join(tags)`.
+
+### Headers
+
+- **Names.** Underscores become hyphens, so `request_id` is sent as `request-id`. An alias is used exactly as given.
+- **Case.** Header names are compared ignoring case, so `Request-ID` and `request-id` are one key, and clash.
+- **One value each.** A header takes a plain value, not a list: join several yourself, as in `", ".join(tags)`.
+- **ASCII only.** A header name that isn't ASCII raises `DefinitionError` when the class is defined, or `ArgumentError` for a key of a spread mapping, known only at the call. A header value that isn't ASCII raises `ArgumentError` before anything is sent: encode other text as the API expects.
 
 ## Bodies
 
@@ -126,7 +157,7 @@ A parameter marked `Json()` goes to the JSON body:
 - **One parameter that isn't a plain value, or is typed `Any`, is the whole body.** A `post: Annotated[NewPost, Json()]` parameter sends the model's JSON, and an `items: Annotated[list[Item], Json()]` parameter sends the list. To send it under its name instead, add [`Send(embed=True)`](#send): `ids: Annotated[list[str], Json(), Send(embed=True)]` sends `{"ids": [...]}`. Adding a second `Json()` parameter moves the first under its name, as in FastAPI, so `Send(embed=True)` also keeps the body's shape fixed if you might add one later.
 - **Otherwise, each JSON parameter is a field of a JSON object**, under its alias or name: `title: Annotated[str, Json()]` and `tags: Annotated[list[str], Json()]` send `{"title":"Hello","tags":["a","b"]}`.
 - **Values are sent as Pydantic sends them in JSON mode.** A model uses its own serializers and is sent by alias, so `user_id: int = Field(alias="userId")` is sent as `"userId"`. Dates, UUIDs and enums become JSON values. A model's field that's `None` is sent as `null`, unless [`Send`](#send) says otherwise. A value Pydantic can't serialize raises `ArgumentError` before anything is sent, and so does a value holding NaN or infinity, which JSON can't hold.
-- **`None` and defaults.** A JSON field left at its `None` default is left out, and one passed explicitly as `None` is sent as `null`, as a PATCH that clears a field needs: `update(nickname=None)` sends `{"nickname":null}`. A default other than `None` is sent, as in the query string, unless [`Send(exclude_unset=True)`](#send) leaves the field out when the caller doesn't pass it. A body parameter that's `None` sends no body.
+- **`None` and defaults.** A JSON field left at its `None` default is left out, and one passed explicitly as `None` is sent as `null`, as a PATCH that clears a field needs. With a `nickname: Annotated[str | None, Json()] = None` parameter, `update(1)` sends no body, and `update(1, nickname=None)` sends `{"nickname":null}`. A default other than `None` is sent, as in the query string, unless [`Send(exclude_unset=True)`](#send) leaves the field out when the caller doesn't pass it. A body parameter that's `None` sends no body.
 
 ### Raw content
 

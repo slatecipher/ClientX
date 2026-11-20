@@ -1,6 +1,6 @@
 # Testing
 
-Test a client without the network by passing an `httpx2.MockTransport` when you create it. The transport calls your handler with each `httpx2.Request` the client sends, and returns the `httpx2.Response` the handler builds, so a test can check what was sent and choose what comes back:
+Test a client without the network by passing an [`httpx2.MockTransport`](https://pydantic.dev/docs/httpx2/advanced/transports/#mock-transports) when you create it. The transport calls your handler with each `httpx2.Request` the client sends, and returns the `httpx2.Response` the handler builds, so a test can check what was sent and choose what comes back:
 
 <!-- docs_src/testing/mock_transport.py -->
 ```python
