@@ -109,7 +109,7 @@ ClientX is inspired by FastAPI, which reads type hints to define server endpoint
 
 ## Project status
 
-ClientX is a personal project that I maintain in my spare time. Issues and pull requests are welcome, but replies may take a while, and there is no guaranteed response time.
+ClientX is a passion project that comes from my experience integrating APIs. Every small prototype against a new API means writing the same boilerplate again, and third-party clients are hit or miss. ClientX lets me focus on outcomes rather than plumbing, and I hope it does the same for you. I maintain it in my spare time, so replies may take a while, but issues and pull requests are always welcome.
 
 ClientX is pre-1.0, so the API may change between minor versions. Changes are listed in the [changelog](https://github.com/slatecipher/ClientX/blob/mainline/CHANGELOG.md).
 
