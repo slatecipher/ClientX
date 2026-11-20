@@ -1,5 +1,8 @@
 # Responses
 
+> [!IMPORTANT]
+> By default, every endpoint raises `httpx2.HTTPStatusError` for a 4xx or 5xx response, before anything is decoded. See [Errors for 4xx and 5xx responses](#errors-for-4xx-and-5xx-responses) for what the error holds, and how to turn the check off for a client or an endpoint.
+
 An endpoint's return annotation decides what it returns:
 
 | Annotation | Returns |
@@ -14,11 +17,9 @@ An endpoint's return annotation decides what it returns:
 
 `clientx.Response` is `httpx2.Response`: `clientx` re-exports it from httpx2, along with `Auth`, `Request` and `Timeout`, so a client module doesn't need to import httpx2 for them.
 
-A 4xx or 5xx response raises `httpx2.HTTPStatusError` before anything is decoded (see [Errors for 4xx and 5xx responses](#errors-for-4xx-and-5xx-responses)).
-
 ## Typed results
 
-For any other type, Pydantic validates the JSON body against the full annotation, so a model, a `list[User]`, a `dict[str, int]`, a dataclass, a `TypedDict` or a union all work, and so do constraints in `Annotated`:
+For any annotation not in the table above (`None`, `Response`, `str`, `bytes`, or a stream), Pydantic validates the JSON body against the full annotation, so a model, a `list[User]`, a `dict[str, int]`, a dataclass, a `TypedDict` or a union all work, and so do constraints in `Annotated`:
 
 <!-- docs_src/responses/typed_results.py -->
 ```python
@@ -128,8 +129,9 @@ class ItemsAPI(ClientX):
 ```
 
 - The body is already read when the decoder runs, so it can use `response.json()`, `response.text`, the headers and the status code.
-- Type checkers check that the decoder returns what the endpoint's annotation says, and report a mismatch at the decorator.
-- A decoder is a plain function, or any callable object, even for an `async def` endpoint, since the body is read before it runs. An `async def` decoder raises `DefinitionError`, and so does a decoder on an endpoint annotated `-> None`.
+- The decoder does the validating, and ClientX returns its result as is. Building a model, as in `User.model_validate(response.json())`, or using a `TypeAdapter`, as `items_in_envelope` does, validates the data as Pydantic always does. A decoder that returns `response.json()` unchanged returns an unvalidated `dict`.
+- Type checkers check that the decoder's declared return type matches the annotation, and report a mismatch at the decorator.
+- A decoder is a plain function, or any callable object, that takes the `Response`. It's plain even for an `async def` endpoint, since the body is read before it runs: an `async def` decoder raises `DefinitionError`. So does a decoder on an endpoint annotated `-> None`.
 - An exception the decoder raises reaches the caller unchanged.
 
 A generator decoder streams. On an endpoint annotated `-> Iterator[...]`, it gets the response unread and yields the items as it reads them:
@@ -163,7 +165,7 @@ The response, and the generator, are closed when iteration ends, as for any stre
 
 ## Errors for 4xx and 5xx responses
 
-A 4xx or 5xx response raises `httpx2.HTTPStatusError`, from every endpoint, before anything is decoded. The error has the request and the response, and the body is already read, so `error.response.json()` works:
+By default, a 4xx or 5xx response raises `httpx2.HTTPStatusError` from every endpoint, before anything is decoded. A plain httpx2 client leaves that to you, with `response.raise_for_status()`. The error has the request and the response, and the body is already read, so `error.response.json()` works:
 
 <!-- docs_src/responses/status_errors.py -->
 ```python
