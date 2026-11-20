@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-11-20
+
 First public release.
 
 ### Added
@@ -27,3 +29,6 @@ First public release.
 - Documentation: a guide in `docs/`, one page per topic, whose code samples are tested, and an API reference page that lists every public name.
 - `llms.txt`: a compact guide to ClientX's patterns and pitfalls for AI coding assistants.
 - Support for Python 3.12, 3.13 and 3.14, with inline type information (`py.typed`).
+
+[Unreleased]: https://github.com/slatecipher/ClientX/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/slatecipher/ClientX/releases/tag/v0.1.0
