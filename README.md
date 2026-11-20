@@ -138,8 +138,10 @@ Using an AI coding assistant? Point it at [llms.txt](https://github.com/slatecip
 
 See [CONTRIBUTING.md](https://github.com/slatecipher/ClientX/blob/mainline/CONTRIBUTING.md) for setup, checks, and conventions.
 
+## Acknowledgments
+
+ClientX is inspired by FastAPI and built on Pydantic and httpx2, and I'm grateful to the developers behind all three. It's an independent project, though, and isn't affiliated with or endorsed by any of them.
+
 ## License
 
 ClientX is released under the [MIT License](https://github.com/slatecipher/ClientX/blob/mainline/LICENSE).
-
-ClientX is an independent project. It isn't affiliated with or endorsed by the FastAPI, Pydantic, or httpx2 projects.
