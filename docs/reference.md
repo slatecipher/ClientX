@@ -1,6 +1,6 @@
 # API Reference
 
-Everything public in ClientX is on this page. Import it from `clientx`, and use the verb decorators through `clientx.method` (`from clientx import method`, then `@method.get(...)`). The submodules `clientx.arguments` and `clientx.exceptions` hold names that `clientx` already exports, so either import works.
+Everything public in ClientX is on this page. Import it from `clientx`, use the verb decorators through `clientx.method` (`from clientx import method`, then `@method.get(...)`), and import the AI tools from `clientx.tools`. The submodule `clientx.arguments` holds names that `clientx` already exports, so either import works, and so does `clientx.exceptions`, along with `ToolError`, which is also in `clientx.tools`.
 
 Anything else is internal and can change in any release: modules whose names start with an underscore, such as `clientx._planner`, and any name not listed here. ClientX is pre-1.0, so the public API can change between minor versions too. The [changelog](../CHANGELOG.md) lists each change.
 
@@ -13,6 +13,7 @@ Anything else is internal and can change in any release: modules whose names sta
 | [`Send`](#send) | Options that change how a parameter is sent. |
 | [`ClientXError`, `DefinitionError`, `ArgumentError`](#errors) | The errors ClientX raises. |
 | [`Auth`, `Request`, `Response`, `Timeout`](#from-httpx2) | httpx2's own classes, re-exported. |
+| [`list_tools`, `Tool`, `ToolError`](#clientxtools) | From `clientx.tools`: a client's endpoints as tools a model can call. |
 | [`__version__`](#__version__) | The installed version. |
 
 ## `ClientX`
@@ -121,7 +122,7 @@ The module of verb decorators: `get`, `post`, `put`, `patch`, `delete`, `head` a
 | `decoder` | none | A function that turns the `httpx2.Response` into the endpoint's return value, in place of the decoding its annotation implies. A generator decoder streams. |
 | `stream` | `False` | Return the open, unread response, for the caller to read and close. Only with `-> Response` and no `decoder`. |
 | `deprecated` | none | The message of a `DeprecationWarning` that each call emits. |
-| `tags` | none | Labels that group endpoints, each kept once. Nothing in ClientX uses them yet. |
+| `tags` | none | Labels that group endpoints, each kept once. AI tools carry them, as `Tool.tags`. |
 | `timeout` | the client's | The request timeout, in seconds or as an `httpx2.Timeout`. `None` turns it off. |
 | `raise_for_status` | the client's | Whether a 4xx or 5xx response raises `httpx2.HTTPStatusError`. |
 
@@ -182,15 +183,42 @@ Each option works with some helpers only, and one where it can't apply raises `D
 
 | Error | Bases | Raised for |
 |---|---|---|
-| `ClientXError` | `Exception` | The base of the other two, so `except ClientXError` catches either. |
+| `ClientXError` | `Exception` | The base of the others, so `except ClientXError` catches any of them. |
 | `DefinitionError` | `ClientXError`, `TypeError` | A client, resource or endpoint written in a way ClientX can't use. Almost always raised when the class is defined, so the mistake fails when its module is imported. |
 | `ArgumentError` | `ClientXError`, `ValueError` | An argument value that can't be sent, raised before anything is sent. Its `parameter` attribute names the endpoint parameter. |
+| `ToolError` | `ClientXError` | A tool call that failed, from [`clientx.tools`](#clientxtools). Its message is written for a model, and its `tool` attribute names the tool. |
 
 ```py
 ArgumentError(message: str, *, parameter: str)
+ToolError(message: str, *, tool: str)
 ```
 
 HTTP errors come from httpx2: `httpx2.HTTPStatusError` for a 4xx or 5xx response, and `httpx2.RequestError` for a failed request. See [Errors](errors.md).
+
+## `clientx.tools`
+
+```py
+from clientx.tools import Tool, ToolError, list_tools
+
+list_tools(client: ClientX | AsyncClientX) -> list[Tool]
+
+tool.call(arguments: Mapping[str, Any] | None = None) -> Any  # on a ClientX
+await tool.acall(arguments: Mapping[str, Any] | None = None) -> Any  # on an AsyncClientX
+```
+
+`list_tools` returns a `Tool` for each endpoint on the client and its mounted resources that a model can use: endpoints that stream, return the raw `Response`, or take an argument with no JSON form are left out. Nothing in it depends on an AI library.
+
+| `Tool` attribute | Type | What it is |
+|---|---|---|
+| `name` | `str` | The attribute path from the client, joined with `_`: `users_create`. |
+| `description` | `str` | The docstring up to its first section, or else the method and path. |
+| `input_schema` | `dict` | The JSON Schema of the arguments, named as in the method, each described by its helper's `description=` or its docstring `Args:` entry. |
+| `output_schema` | `dict` or `None` | The JSON Schema of the result, or `None` for `-> None`. |
+| `read_only`, `destructive`, `idempotent` | `bool` | Hints from the HTTP method. |
+| `tags` | `tuple[str, ...]` | The endpoint's tags, its resource's first. |
+| `is_async` | `bool` | Call it with `acall()` rather than `call()`. |
+
+`call()` validates a model's arguments leniently, passes only those it gave, and returns JSON-ready data. A failed call raises `ToolError`, with a message for the model that never holds the host or query string, and the original error as its `__cause__`. See [AI tools](tools.md).
 
 ## From httpx2
 

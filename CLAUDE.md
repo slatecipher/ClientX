@@ -36,6 +36,7 @@ Where the rules are written down:
 
 - `_planner.py`'s module docstring: where each parameter goes (a path placeholder, or its helper's `build_request` argument), the plain-value allow-list, what each argument takes, spreading, one kind of body, key clashes, `Send`'s options, and the path template syntax. Each argument's rules live in one `HttpxArgumentSpec` subclass there; the planner asks the spec rather than testing for particular arguments.
 - `_builder.py`'s module docstring: how one call's arguments become the request by the plan: path encoding, text, `None` left out (or `null` in JSON for a `None` passed explicitly), files, and the body. The builder never reads annotations, `Send` or the specs.
+- `_tools.py`'s module docstring: how endpoints become tools for a model (`clientx.tools`): names, which endpoints are left out, descriptions, compact schemas, calls and `ToolError`'s messages. Tools are built from each `Endpoint` the registry knows; nothing there depends on an AI library.
 - `_decoding.py`'s module docstring: how the return annotation decides decoding (`-> None`, `Response`, `str`, `bytes`, `Iterator[str]` or `Iterator[bytes]`, anything else through a `TypeAdapter`).
 - `_signature.py`: one `ParameterInfo` per parameter, with `Annotated` kept and PEP 695 `type` aliases expanded. A parameter's helper is the last `clientx.arguments` mark in its outermost `Annotated`. The helpers wrap `pydantic.Field` and append their `HttpxArgument` to its metadata (`_arguments.py`).
 - `_types.py`: shared types: `HttpxArgument`, `Send`, the type aliases, and TypedDicts that mirror httpx2's signatures (`HttpxClientOptions`, `AsyncHttpxClientOptions`, `BuildRequestKwargs`); a test in `test_clients.py` fails when httpx2's parameters change. It's the only module that imports httpx2's private modules.
@@ -49,7 +50,7 @@ Rules that span modules:
 
 ## Tests
 
-- Tests go through the public API, one file per feature (`test_paths.py`, `test_query_and_headers.py`, `test_bodies.py`, `test_spreading.py`, `test_responses.py`, `test_clients.py`, `test_endpoints.py`); internals are tested directly only where that's simpler (`test_signature.py`).
+- Tests go through the public API, one file per feature (`test_paths.py`, `test_query_and_headers.py`, `test_bodies.py`, `test_spreading.py`, `test_responses.py`, `test_clients.py`, `test_endpoints.py`, `test_tools.py`); internals are tested directly only where that's simpler (`test_signature.py`).
 - pytest runs in strict mode and `importlib` import mode, so test modules can't import each other: shared helpers are fixtures in `conftest.py`. Send requests through `mock_transport(sent=None, handler=None, *, status=200, **response)`, which records each request in `sent` and serves async clients too. Async tests use anyio (`@pytest.mark.anyio`). A streamed response body must be an iterator: a `bytes` body is read at once.
 - `test/test_typing.py` is the static typing contract, checked by pyright and mypy in `make typecheck`, on its own, so it keeps its own transport instead of the fixtures. It uses `assert_type`, and each line that must be rejected has one comment per checker: `# type: ignore[code]  # pyright: ignore[rule]`. Pyright ignores `# type: ignore` (`enableTypeIgnoreComments = false`), so elsewhere in `test/` suppress it with `# pyright: ignore[rule]`.
 

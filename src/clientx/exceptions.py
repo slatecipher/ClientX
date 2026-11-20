@@ -40,4 +40,22 @@ class ArgumentError(ClientXError, ValueError):
         self.parameter = parameter
 
 
-__all__ = ["ArgumentError", "ClientXError", "DefinitionError"]
+class ToolError(ClientXError):
+    """Raised when a tool call fails, with a message written for a model.
+
+    ``clientx.tools`` raises it for arguments that don't fit, a request that
+    couldn't be sent or failed, and a response that doesn't fit the endpoint's
+    annotation. The message says what went wrong without the host or query
+    string, which can hold credentials, and the original error is its
+    ``__cause__``, for logs.
+
+    Attributes:
+        tool: The name of the tool that failed, such as ``"users_create"``.
+    """
+
+    def __init__(self, message: str, *, tool: str) -> None:
+        super().__init__(message)
+        self.tool = tool
+
+
+__all__ = ["ArgumentError", "ClientXError", "DefinitionError", "ToolError"]

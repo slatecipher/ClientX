@@ -9,5 +9,6 @@ One page per topic. Start with the [README](../README.md) for an overview, insta
 - [Client configuration](configuration.md): creating and closing a client, the base URL and `User-Agent` class defaults, authentication, logging and event hooks.
 - [Async clients](async.md): `AsyncClientX` and `AsyncResource` for `async def` endpoints, concurrent requests, async streaming, and testing.
 - [Testing](testing.md): testing a client without the network.
+- [AI tools](tools.md): a client's endpoints as tools a model can call.
 - [Errors](errors.md): the errors ClientX raises, and when.
 - [API reference](reference.md): every public name, with its signature and arguments.

@@ -1,0 +1,303 @@
+# AI Tools
+
+A ClientX client already describes each of its endpoints: its name, its docstring, and the types of its arguments and result. `clientx.tools` turns that into tools a model can call. `list_tools(client)` returns one `Tool` per endpoint, and `tool.call(arguments)` calls it with the arguments the model chose, through the client, with its base URL, auth and settings:
+
+<!-- docs_src/tools/list_tools.py -->
+```python
+from typing import Annotated
+
+from clientx import ClientX, Json, Query, Resource, method
+from clientx.tools import ToolError, list_tools
+from pydantic import BaseModel
+
+
+class User(BaseModel):
+    id: int
+    name: str
+
+
+class NewUser(BaseModel):
+    name: str
+
+
+class Users(Resource, prefix="/users"):
+    @method.get()
+    def search(self, name: Annotated[str | None, Query(description="Only users with this name.")] = None) -> list[User]:
+        """List users."""
+        ...
+
+    @method.post()
+    def create(self, user: Annotated[NewUser, Json()]) -> User:
+        """Create a user.
+
+        Args:
+            user: The user to create. Its name must be unique.
+        """
+        ...
+
+
+class ExampleAPI(ClientX, base_url="https://api.example.com"):
+    users = Users()
+
+
+api = ExampleAPI()
+tools = {tool.name: tool for tool in list_tools(api)}  # users_search, users_create
+create = tools["users_create"]
+print(create.description)  # Create a user.
+print(create.input_schema)  # {"properties": {"user": {"description": "The user to create. ...", ...}}, ...}
+
+try:
+    user = create.call({"user": {"name": "Ada"}})  # {"id": 1, "name": "Ada"}
+except ToolError as error:
+    print(error)  # users_create: the API answered 409 Conflict to POST /users: {"detail":"name taken"}
+```
+
+`clientx.tools` doesn't depend on any AI library. Register the tools with the framework your model runs in, such as an MCP server: each tool has what a framework asks for (see [Using a framework](#using-a-framework)).
+
+## Which endpoints become tools
+
+Every endpoint on the client, and on the resources mounted on it, is a tool, except one a model can't use well. `list_tools` leaves these out:
+
+| The endpoint | Why it's left out | To make it a tool |
+|---|---|---|
+| Streams: `-> Iterator[...]`, `-> AsyncIterator[...]` or `stream=True` | A stream can be endless, and wouldn't fit in a model's context. | Add an endpoint that returns the data whole, or a page of it. |
+| Returns the raw `Response` | A response object isn't data a model can read. | Annotate what the API returns, such as a model or `dict[str, Any]`. |
+| Takes an argument with no JSON form, such as a binary file (`BinaryIO`) | A model sends its arguments as JSON. | Keep it for your code: a model can't send a file. |
+
+An endpoint's second name in its class is the same endpoint, so it's listed once.
+
+## What a tool has
+
+| Attribute | What it is |
+|---|---|
+| `name` | The endpoint's attribute path from the client, joined with `_`: `api.users.create` is `users_create`. |
+| `description` | The endpoint's docstring, up to its first section, such as `Args:`. Without a docstring, the method and path: `GET /users/{user_id}`. |
+| `input_schema` | The JSON Schema of the arguments: an object with one property per parameter, named as in the method. |
+| `output_schema` | The JSON Schema of the result, from the return annotation, or `None` for `-> None`. |
+| `read_only`, `destructive`, `idempotent` | Hints from the HTTP method: `GET`, `HEAD` and `OPTIONS` only read; `PUT`, `PATCH` and `DELETE` can change or delete what's there; and `GET`, `HEAD`, `OPTIONS`, `PUT` and `DELETE` have the same effect when called twice. |
+| `tags` | The endpoint's tags, its resource's first (see [Tags](resources.md#tags)), to choose which tools to register by. |
+| `is_async` | The endpoint is `async def`, so the tool is called with `await tool.acall(arguments)` instead of `call()`. |
+
+## Descriptions
+
+A model chooses a tool and fills in its arguments from what the tool says, so the descriptions matter:
+
+- **The tool's description** is the endpoint's docstring, up to its first section. Put what the endpoint does, and when to use it, in the summary and the paragraphs after it.
+- **An argument's description** is its helper's `description=`, such as `Query(description="...")`, or else its entry in the docstring's `Args:` section. A [Google-style](../CONTRIBUTING.md#docstrings) `Args:` section then serves a model, editors' hovers and `help()` at once.
+- **The schemas are compact.** Pydantic's `title` on every property is left out, and a model or `type` alias is written in place rather than behind a `$ref`, unless it refers to itself. Constraints, such as `Query(ge=1)`, and defaults are kept.
+
+### Writing descriptions for a model
+
+A model has only the descriptions and the schema to go on, never the code, so write the docstring for a reader who can't see anything else:
+
+- **Start with what the endpoint does,** in one line.
+- **In the paragraph after it, say when to use it,** rather than a similar endpoint, and what to expect: side effects, limits, paging, and errors such as a 404 for an unknown ID. Everything before the first section is the tool's description, so `Returns:`, `Raises:` and the other sections don't reach the model: keep nothing it needs there.
+- **In `Args:`, give each argument's format, unit and allowed values,** such as an ISO date, seconds, or a maximum.
+- **Let the types say what they can.** A `Literal` gives the model the allowed values as a list, and a constraint such as `Query(le=100)` gives it a limit.
+- **Markdown is fine,** such as `single backticks` and short lists. Avoid reStructuredText's ` ``double backticks`` ` and `::` blocks, which reach the model as they are.
+
+Before, the model has to guess what `since` takes, which values `status` has, and how this tool differs from others:
+
+```py
+@method.get("/orders")
+def list_orders(
+    self,
+    since: Annotated[str | None, Query()] = None,
+    status: Annotated[str | None, Query()] = None,
+) -> list[Order]:
+    """Get orders."""
+    ...
+```
+
+After, the description and the schema answer all three:
+
+```py
+@method.get("/orders")
+def list_orders(
+    self,
+    since: Annotated[str | None, Query()] = None,
+    status: Annotated[Literal["open", "shipped", "cancelled"] | None, Query()] = None,
+) -> list[Order]:
+    """List the account's orders, newest first, 50 at most.
+
+    Use `retrieve_order` for one order whose ID you know. Without `since`,
+    only the last 30 days are listed.
+
+    Args:
+        since: Only orders placed on or after this day, as an ISO date such
+            as `2026-01-31`.
+        status: Only orders in this state.
+    """
+    ...
+```
+
+## Calling a tool
+
+`tool.call(arguments)` takes the arguments as a model sends them, a mapping from parameter names to JSON values, and returns the result as JSON-ready data, with a model dumped as Pydantic dumps it in JSON mode:
+
+- Arguments are named as in the method, not by a helper's `alias=`, which is the name sent to the API.
+- They're validated as Pydantic validates a call, leniently: `"7"` fits an `int`.
+- Only the arguments the model gave are passed, so the rest keep their defaults, as in a Python call: a `Send(exclude_unset=True)` parameter the model left out isn't sent, and a JSON field left at `None` isn't sent as `null`.
+
+On an `AsyncClientX`, call tools with `await tool.acall(arguments)`. `call()` on an async tool, or `acall()` on a sync one, raises `TypeError`.
+
+## Errors
+
+A call that fails raises `ToolError`, whose message is written for the model, so it can fix its arguments or report the problem. Its `tool` attribute names the tool, and the original error is its `__cause__`, for your logs:
+
+| What went wrong | The message |
+|---|---|
+| The arguments don't fit | Each argument and its problem, without Pydantic's links: `The arguments don't fit users_search: limit: Input should be less than or equal to 100 (got 500). Nothing was sent.` |
+| An argument can't be sent | The [`ArgumentError`](errors.md#argumenterror)'s message, such as an empty path value. |
+| A 4xx or 5xx response | The status, the method and path template, and the API's own answer, up to 2,000 characters: `users_create: the API answered 409 Conflict to POST /users: {"detail":"name taken"}` |
+| The request failed | The method, the path template and the kind of failure, such as `ConnectTimeout`. |
+| The response doesn't fit the return annotation | Each mismatch, without the response's values. |
+
+A message never holds the host or the query string, which can carry credentials from the client's `params=`. Any other exception, such as a decoder's own, or the `RuntimeError` of a closed client, isn't a tool call's failure, and reaches you unchanged.
+
+## Using a framework
+
+Each framework registers tools its own way, but asks for the same things:
+
+- the tool's `name` and `description`;
+- its arguments' JSON Schema, `input_schema`, and for structured results, `output_schema`;
+- a handler that calls `tool.call(arguments)`, or `await tool.acall(arguments)`, and turns a `ToolError` into an error result with its message;
+- for MCP, the hints `read_only`, `destructive` and `idempotent`, as its `readOnlyHint`, `destructiveHint` and `idempotentHint`.
+
+`input_schema` is plain JSON Schema, which each of them takes as it is: only the definition around it differs. A tool's definition for each:
+
+```py
+# Anthropic's Messages API
+{"name": tool.name, "description": tool.description, "input_schema": tool.input_schema}
+
+# OpenAI's Responses API
+{"type": "function", "name": tool.name, "description": tool.description, "parameters": tool.input_schema}
+
+# OpenAI's Chat Completions API
+{"type": "function", "function": {"name": tool.name, "description": tool.description, "parameters": tool.input_schema}}
+
+# An MCP tool
+{
+    "name": tool.name,
+    "description": tool.description,
+    "inputSchema": tool.input_schema,
+    "annotations": {"readOnlyHint": tool.read_only, "destructiveHint": tool.destructive, "idempotentHint": tool.idempotent},
+}
+```
+
+MCP's `outputSchema` must describe an object, so a tool whose result isn't one, such as a list, needs it wrapped, as `{"result": ...}`, if you give it one.
+
+Strict modes, which constrain the model's arguments to the schema exactly, have rules of their own: OpenAI's needs every property listed in `required`, with optional ones made nullable, and Anthropic's needs `additionalProperties: false` and a `required` list. ClientX doesn't change its schemas for either, so adjust a schema before you turn a strict mode on.
+
+## Choosing tools
+
+A model can call any tool you register, so register only what it should use. To choose in the class itself, tag the endpoints a model should use, or a whole resource, and keep the tools with that tag:
+
+<!-- docs_src/tools/choosing_tools.py -->
+```python
+from typing import Annotated, Any
+
+from clientx import ClientX, Json, Resource, method
+from clientx.tools import list_tools
+
+
+class Products(Resource, prefix="/products", tags=["ai"]):
+    @method.post("/search")
+    def search(self, query: Annotated[str, Json()]) -> list[dict[str, Any]]:
+        """Search the catalog by name or description."""
+        ...
+
+
+class Orders(Resource, prefix="/orders"):
+    @method.get("/{order_id}", tags=["ai"])
+    def retrieve(self, order_id: int) -> dict[str, Any]:
+        """Fetch an order, with its status."""
+        ...
+
+    @method.delete("/{order_id}")
+    def cancel(self, order_id: int) -> None:
+        """Cancel an order."""
+        ...
+
+
+class ShopAPI(ClientX, base_url="https://api.shop.example.com"):
+    products = Products()
+    orders = Orders()
+
+
+api = ShopAPI()
+tools = [tool for tool in list_tools(api) if "ai" in tool.tags]  # products_search, orders_retrieve
+```
+
+`products_search` is a tool because its resource is tagged, and `orders_retrieve` because it's tagged itself. `orders_cancel` isn't tagged, so it's left out, and so is an endpoint added later to `Orders`, until you tag it.
+
+The `read_only` hint is another way to start, but it comes from the HTTP method, so it can be wrong for an endpoint such as `POST /search`, which only reads.
+
+## Serving many users
+
+A tool calls the API through its client, with the client's `auth=`, so one client sends one user's credentials. A server that calls an API for many users, such as a public MCP server, can still use one client: give it an `httpx2.Auth` that sends the credentials of the user whose tool call is running.
+
+Here's a hypothetical flow. You host a public MCP server for a shop's API, and run your ClientX client behind it:
+
+1. **A user connects** their AI app, such as Claude, to your MCP server.
+2. **They sign in through your server's OAuth flow.** Their app gets a token issued for your server, which validates it on each request, so it knows who's calling.
+3. **They authorize your server with the shop's API.** Your server is an OAuth client of that API, so it gets that user's upstream token, and stores it.
+4. **On each tool call, your server looks up that user's upstream token,** and runs the tool. The shared client sends that user's token.
+
+Never send the shop's API the token the user's app sent you. It was issued for your server, and the MCP specification forbids [passing it through](https://modelcontextprotocol.io/specification/latest/basic/security_best_practices#token-passthrough): your server's token and the upstream token stay separate.
+
+<!-- docs_src/tools/many_users.py -->
+```python
+import contextvars
+from collections.abc import Generator
+from typing import Any
+
+import httpx2
+from clientx import AsyncClientX, method
+from clientx.tools import list_tools
+from pydantic import BaseModel
+
+
+class Order(BaseModel):
+    id: int
+    status: str
+
+
+class ShopAPI(AsyncClientX, base_url="https://api.shop.example.com"):
+    @method.get("/orders/{order_id}")
+    async def retrieve_order(self, order_id: int) -> Order:
+        """Fetch one of the user's orders, with its status."""
+        ...
+
+
+# The upstream token of the user whose tool call is running.
+upstream_token: contextvars.ContextVar[str] = contextvars.ContextVar("upstream_token")
+
+
+class CurrentUserAuth(httpx2.Auth):
+    """Send the upstream token of the user whose tool call is running."""
+
+    def auth_flow(self, request: httpx2.Request) -> Generator[httpx2.Request, httpx2.Response, None]:
+        request.headers["Authorization"] = f"Bearer {upstream_token.get()}"
+        yield request
+
+
+# Each user's upstream token, stored when they connected: use a real store.
+upstream_tokens: dict[str, str] = {}
+
+api = ShopAPI(auth=CurrentUserAuth())  # one client and one connection pool, for every user
+tools = {tool.name: tool for tool in list_tools(api)}  # described once, at startup
+
+
+async def handle_tool_call(user_id: str, name: str, arguments: dict[str, Any]) -> Any:
+    """Run a tool for a user your server has already authenticated."""
+    upstream_token.set(upstream_tokens[user_id])
+    return await tools[name].acall(arguments)
+```
+
+- **Concurrent calls don't mix users.** Each request runs in its own async task, and a `ContextVar` set in a task belongs to that task. Two users calling at once each send their own token, through the same client and its connection pool.
+- **Use an `AsyncClientX`, and `acall()`.** A sync client's calls often run in worker threads, and some ways of starting a thread don't carry the `ContextVar` over, so the token would be missing.
+- **Refresh a token in `auth_flow`.** An `httpx2.Auth` can read the response and send the request again: on a 401, refresh the user's token and retry (see httpx2's [Authentication](https://pydantic.dev/docs/httpx2/advanced/authentication/) documentation). If the refresh fails, the `ToolError`, such as `the API answered 401 Unauthorized`, tells the model to ask the user to connect again.
+- **The model never sees a token.** It's only in the request's headers, and a `ToolError` message holds neither headers nor the query string.
+
+Users who differ in more than credentials, such as a base URL per tenant, need separate clients, and each client's `list_tools()` describes its tools again.

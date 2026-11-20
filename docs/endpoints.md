@@ -41,7 +41,7 @@ Each decorator takes the path, then these keyword options:
 | `decoder` | none | A function that turns the `httpx2.Response` into the return value, instead of the decoding the return annotation implies. See [Your own decoder](responses.md#your-own-decoder). |
 | `stream` | `False` | `True` returns the open, unread response: annotate the endpoint `-> Response`, with no `decoder`. See [The open response](responses.md#the-open-response). |
 | `deprecated` | `None` | A message: each call emits a `DeprecationWarning` with it. See [Deprecating endpoints](#deprecating-endpoints). |
-| `tags` | none | Labels that group endpoints, each kept once. A resource's tags go in front (see [Tags](resources.md#tags)). Nothing in ClientX uses them yet. |
+| `tags` | none | Labels that group endpoints, each kept once. A resource's tags go in front (see [Tags](resources.md#tags)). AI tools carry them, to choose which to register (see [Choosing tools](tools.md#choosing-tools)). |
 | `timeout` | the client's | Seconds, or an `httpx2.Timeout`, for this endpoint's requests. `None` turns the timeout off. |
 | `raise_for_status` | the client's | Whether a 4xx or 5xx response raises `httpx2.HTTPStatusError`. Clients raise by default. See [Errors for 4xx and 5xx responses](responses.md#errors-for-4xx-and-5xx-responses). |
 
@@ -63,6 +63,7 @@ class FilesAPI(ClientX):
 - **The first parameter receives the client or resource.** Name it `self`, as usual. It must be positional.
 - **Every other parameter sends one value.** Positional-only and keyword-only parameters work as in any method, but `*args` and `**kwargs` can't be endpoint parameters: each value needs a parameter of its own, which decides where it goes in the request.
 - **The return annotation is required.** It decides what the endpoint returns.
+- **A docstring is optional, but worth writing.** It documents the endpoint in editors' hovers and `help()`, and for a model that calls it as a tool, where its `Args:` describe the arguments (see [Writing descriptions for a model](tools.md#writing-descriptions-for-a-model)).
 - **Type checkers see the method's own signature**, so `api.get_user` takes `user_id: int` and returns a `User`. With `decoder=`, they also check that the decoder returns what the annotation says.
 
 A mistake in an endpoint, such as a missing return annotation or a placeholder that names no parameter, raises `DefinitionError` when the class is defined, so it fails when its module is imported, not on its first call (see [Errors](errors.md)).
