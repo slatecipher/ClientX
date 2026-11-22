@@ -14,6 +14,7 @@ Almost every `DefinitionError` is raised when the class is defined, so a mistake
 
 When an endpoint is decorated:
 
+- An annotation names a type that isn't defined yet (see [Annotations](#annotations)).
 - It has no positional first parameter (usually `self`), or it has a `*args` or `**kwargs` parameter.
 - It has no return annotation, or one ClientX can't decode: a type Pydantic can't validate, `Iterator` on an `async def` endpoint or `AsyncIterator` on a `def` one, or a stream of items other than `str` or `bytes` without a `decoder=`.
 - It has `stream=True` without `-> Response`, or with a `decoder=`.
@@ -71,4 +72,4 @@ A `ToolError` is raised by a tool's `call()` or `acall()`, from [`clientx.tools`
 
 ## Annotations
 
-ClientX evaluates an endpoint's annotations when the method is decorated, so endpoints work in modules with `from __future__ import annotations`. Like Pydantic, it evaluates them against the module's globals: a type defined inside a function can't be named in a string annotation, and a type defined further down the module isn't defined yet, which raises `NameError`. Define the models an endpoint uses before its class.
+ClientX evaluates an endpoint's annotations when the method is decorated, so endpoints work in modules with `from __future__ import annotations`. Like Pydantic, it evaluates them against the module's globals: a type defined inside a function can't be named in a string annotation, and a type defined further down the module isn't defined yet, which raises `DefinitionError` naming the endpoint, with Python's `NameError` as its `__cause__`. Define the models an endpoint uses before its class.
