@@ -16,6 +16,7 @@ api = ExampleAPI("https://api.example.com", user_agent="my-app/1.0", timeout=5.0
 - `base_url`: the API's base URL, which every endpoint's path is relative to. It's required unless the class sets one (see [Class defaults](#class-defaults)), and it wins over the class's.
 - `user_agent`: the `User-Agent` to send. Without it, the first of these is sent: a `User-Agent` in `headers=`, the class's `user_agent=` (see [Class defaults](#class-defaults)), or `ClientX/<version>`.
 - `raise_for_status`: whether a 4xx or 5xx response raises `httpx2.HTTPStatusError`. It's on by default; see [Errors for 4xx and 5xx responses](responses.md#errors-for-4xx-and-5xx-responses).
+- `validate_arguments`: whether each call's arguments are checked against their annotations before anything is sent. It's off by default; see [Validating arguments](#validating-arguments).
 - Any other `httpx2.Client` option, such as `timeout`, `headers`, `params`, `auth` (see [Authentication](#authentication)), `transport`, `proxy` or `follow_redirects`.
 
 A `ClientX` is an `httpx2.Client`, so those options, and everything else httpx2 documents for a client, work as they do there. That includes changing `headers`, `params`, `auth` or `timeout` on a client after it's created: the change applies to every endpoint. Each client has its own connections, settings and credentials, so clients for production and staging, or one per account, can be used side by side.
@@ -46,6 +47,36 @@ A subclass keeps its parent's class arguments unless it sets its own, and a `bas
 - A base URL must be absolute, with a scheme and a host, such as `https://api.example.com`, since httpx2 would take `api.example.com` alone as a relative path and fail only on the first request. A class's raises `DefinitionError` when the class is defined, and one passed when creating a client raises `ValueError`.
 
 `base_url` and `user_agent` are the only class arguments. Pass every other option when creating the client: Python rejects any other keyword in the class statement, a misspelling included, with `TypeError: ExampleAPI.__init_subclass__() takes no keyword arguments`.
+
+## Validating arguments
+
+ClientX sends arguments as they're passed: type checkers catch a wrong type in code they check, and a helper's constraints, such as `Query(ge=1)`, aren't checked. To check each call's arguments against their annotations before anything is sent, create the client with `validate_arguments=True`:
+
+<!-- docs_src/configuration/validating_arguments.py -->
+```python
+from typing import Annotated
+
+from clientx import ArgumentError, ClientX, Query, method
+
+
+class ExampleAPI(ClientX, base_url="https://api.example.com"):
+    @method.get("/users")
+    def list_users(self, page: Annotated[int, Query(ge=1)] = 1) -> None: ...
+
+
+with ExampleAPI(validate_arguments=True) as api:
+    try:
+        api.list_users(page=0)
+    except ArgumentError as error:
+        print(error.parameter)  # page: no request was sent
+```
+
+- Arguments are checked strictly, as a type checker would: `"7"` doesn't fit an `int`. A helper's constraints are checked too.
+- Only the arguments a call passes are checked, not the defaults.
+- The request is built from the arguments as they were passed: checking never changes what's sent. A model instance isn't validated again.
+- A parameter whose type Pydantic can't validate isn't checked: a binary file (`IO[bytes]`, `BinaryIO`, or a file tuple holding one), `Iterator[bytes]` or an async stream, or your own class that Pydantic doesn't know. A stream's items are never checked. Pydantic's [Standard Library Types](https://pydantic.dev/docs/validation/latest/api/pydantic/standard_library_types/) lists what it validates, and how strictly.
+- An argument that doesn't fit raises [`ArgumentError`](errors.md#argumenterror). Its `parameter` names the first one that doesn't fit, its message lists every problem, and Pydantic's `ValidationError` is its `__cause__`.
+- It's for the whole client, and off unless you turn it on: in tests, for example, or for callers whose code isn't type-checked.
 
 ## Authentication
 

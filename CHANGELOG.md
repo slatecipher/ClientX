@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- Argument validation, off by default: a client created with `validate_arguments=True` checks each call's arguments against their annotations before anything is sent, strictly, as a type checker would, and with a helper's constraints, such as `Query(ge=1)`. An argument that doesn't fit raises `ArgumentError`, with Pydantic's `ValidationError` as its cause. Only the arguments a call passes are checked, the request is built from them unchanged, and a type Pydantic can't validate, such as a binary file, isn't checked.
+
 ## [0.1.0] - 2026-11-20
 
 First public release.

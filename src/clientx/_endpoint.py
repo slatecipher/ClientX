@@ -17,12 +17,14 @@ from types import NoneType
 from typing import Any, get_origin
 
 from httpx2 import USE_CLIENT_DEFAULT, Response, Timeout
+from pydantic import TypeAdapter
 
 from clientx._builder import build_request
 from clientx._decoding import default_decoder, is_stream
 from clientx._planner import RequestPlan, plan_request
 from clientx._signature import NO_VALUE, BoundCall, ParameterInfo, ParameterKind, SignatureInfo
 from clientx._types import BuildRequestKwargs, Decoder, MethodType, UseClientDefault
+from clientx._validation import build_arguments_validator, check_arguments
 from clientx.exceptions import DefinitionError
 
 
@@ -64,6 +66,9 @@ class Endpoint:
             ``stream_response``, or because the return annotation is an
             ``Iterator`` (``AsyncIterator`` for ``async def``).
             ``__post_init__`` sets it.
+        arguments_validator: Validates a call's arguments for a client
+            created with ``validate_arguments=True``; ``None`` until the first
+            checked call builds it.
     """
 
     method: MethodType
@@ -78,6 +83,7 @@ class Endpoint:
     owner: type | None = field(default=None)
     request: RequestPlan | None = field(default=None, init=False)
     stream: bool = field(init=False)
+    arguments_validator: TypeAdapter[dict[str, Any]] | None = field(default=None, init=False, repr=False)
 
     def __post_init__(self) -> None:
         """Check the signature and work out how to decode the response, once.
@@ -238,6 +244,17 @@ class Endpoint:
             self.request = plan_request(self.raw_path, self.parameters(), is_async=self.signature.is_async)
         except DefinitionError as error:
             raise DefinitionError(f"Endpoint '{self.signature.qualname}': {error}") from error
+
+    def check_arguments(self, bound: BoundCall) -> None:
+        """Raise ``ArgumentError`` if an argument the caller passed doesn't fit.
+
+        Only for a client created with ``validate_arguments=True``; the rules
+        are in ``_validation.py``.
+        """
+        if self.arguments_validator is None:
+            self.arguments_validator = build_arguments_validator(self.parameters())
+        passed = {name: value for name, value in bound.arguments.items() if name in bound.passed}
+        check_arguments(self.arguments_validator, passed, self.signature.qualname)
 
     def request_arguments(self, bound: BoundCall) -> tuple[str, BuildRequestKwargs]:
         """Return a call's URL path and its other ``build_request`` arguments.

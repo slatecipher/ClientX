@@ -28,6 +28,7 @@ ExampleAPI(
     *,
     user_agent: str | None = None,
     raise_for_status: bool | None = None,
+    validate_arguments: bool = False,
     **options,  # any httpx2.Client option
 )
 ```
@@ -50,6 +51,7 @@ Arguments when creating a client:
 | `base_url` | `str` or `httpx2.URL` | the class's | The URL every endpoint's path is relative to. With none here or on the class, creating the client raises `TypeError`, and one that isn't absolute raises `ValueError`. |
 | `user_agent` | `str` | a `User-Agent` in `headers=`, else the class's | The `User-Agent` to send. |
 | `raise_for_status` | `bool` | `True` | Whether a 4xx or 5xx response raises `httpx2.HTTPStatusError`. An endpoint's own `raise_for_status=` wins. |
+| `validate_arguments` | `bool` | `False` | Whether each call's arguments are checked against their annotations, strictly and with a helper's constraints, before anything is sent; one that doesn't fit raises `ArgumentError`. See [Validating arguments](configuration.md#validating-arguments). |
 | `**options` | | | Any [`httpx2.Client` option](https://pydantic.dev/docs/httpx2/api/#httpx2.Client), such as `auth`, `headers`, `params`, `cookies`, `timeout`, `verify`, `proxy`, `transport`, `mounts`, `event_hooks` or `follow_redirects`. |
 
 An endpoint or mounted resource on a client can't use a name the client already has, which includes every name of `httpx2.Client`, such as `get` or `send` (see [Endpoint names](endpoints.md#endpoint-names)). The client's own httpx2 methods still send one-off requests. See [Client configuration](configuration.md).
@@ -66,6 +68,7 @@ ExampleAPI(
     *,
     user_agent: str | None = None,
     raise_for_status: bool | None = None,
+    validate_arguments: bool = False,
     **options,  # any httpx2.AsyncClient option
 )
 ```
@@ -185,7 +188,7 @@ Each option works with some helpers only, and one where it can't apply raises `D
 |---|---|---|
 | `ClientXError` | `Exception` | The base of the others, so `except ClientXError` catches any of them. |
 | `DefinitionError` | `ClientXError`, `TypeError` | A client, resource or endpoint written in a way ClientX can't use. Almost always raised when the class is defined, so the mistake fails when its module is imported. |
-| `ArgumentError` | `ClientXError`, `ValueError` | An argument value that can't be sent, raised before anything is sent. Its `parameter` attribute names the endpoint parameter. |
+| `ArgumentError` | `ClientXError`, `ValueError` | An argument value that can't be sent, or that doesn't fit its annotation on a client with `validate_arguments=True`, raised before anything is sent. Its `parameter` attribute names the endpoint parameter. |
 | `ToolError` | `ClientXError` | A tool call that failed, from [`clientx.tools`](#clientxtools). Its message is written for a model, and its `tool` attribute names the tool. |
 
 ```py
