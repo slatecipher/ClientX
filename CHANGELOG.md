@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-11-22
+
 ### Fixed
 
 - An annotation that names a type that isn't defined yet, such as a model defined below the client class, raises `DefinitionError` naming the endpoint, with Python's `NameError` as its `__cause__`, instead of a bare `NameError` that didn't say which endpoint it was in.
@@ -40,6 +42,7 @@ First public release.
 - `llms.txt`: a compact guide to ClientX's patterns and pitfalls for AI coding assistants.
 - Support for Python 3.12, 3.13 and 3.14, with inline type information (`py.typed`).
 
-[Unreleased]: https://github.com/slatecipher/ClientX/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/slatecipher/ClientX/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/slatecipher/ClientX/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/slatecipher/ClientX/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/slatecipher/ClientX/releases/tag/v0.1.0
