@@ -127,3 +127,11 @@ def test_an_endpoints_parameters_are_checked_when_it_is_decorated(source: str, m
     exec(source, namespace)  # noqa: S102 - each signature is written out as source, the clearest way to list them
     with pytest.raises(DefinitionError, match=re.escape(message)):
         method.get("/items")(namespace["call"])  # pyright: ignore[reportCallIssue, reportArgumentType]
+
+
+def test_an_annotation_that_names_an_undefined_type_names_the_endpoint() -> None:
+    with pytest.raises(DefinitionError, match=r"Endpoint '.*API\.items': name 'Filters' is not defined"):
+
+        class API(ClientX):
+            @method.get("/items")
+            def items(self, filters: Annotated["Filters", Query()]) -> None: ...  # noqa: F821  # pyright: ignore[reportUndefinedVariable]

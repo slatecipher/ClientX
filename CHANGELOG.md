@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- An annotation that names a type that isn't defined yet, such as a model defined below the client class, raises `DefinitionError` naming the endpoint, with Python's `NameError` as its `__cause__`, instead of a bare `NameError` that didn't say which endpoint it was in.
+
 ## [0.2.0] - 2026-11-21
 
 ### Added

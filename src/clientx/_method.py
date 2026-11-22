@@ -10,8 +10,9 @@ from clientx._client import AsyncClientX, AsyncResource, ClientX, EndpointOwner,
 from clientx._decoding import adecode, araise_status_error, decode, raise_status_error
 from clientx._endpoint import Endpoint
 from clientx._registry import register_endpoint_function
-from clientx._signature import BoundCall, inspect_signature
+from clientx._signature import BoundCall, SignatureInfo, inspect_signature
 from clientx._types import Decoder, MethodType, UseClientDefault
+from clientx.exceptions import DefinitionError
 
 
 # --- What type checkers see ---------------------------------------------------
@@ -139,7 +140,7 @@ class Method:
             endpoint = Endpoint(
                 method=self.method,
                 raw_path=path,
-                signature=inspect_signature(func),
+                signature=_inspect_endpoint_signature(func),
                 tags=list(tags or ()),
                 timeout=timeout,
                 raise_for_status=raise_for_status,
@@ -189,6 +190,22 @@ class Method:
             return endpoint_function
 
         return decorator
+
+
+def _inspect_endpoint_signature(func: Callable[..., Any]) -> SignatureInfo:
+    """Inspect an endpoint, raising ``DefinitionError`` for an undefined name.
+
+    Its annotations are evaluated now, when it's decorated, so a type defined
+    further down the module isn't defined yet. Python's ``NameError`` doesn't
+    say which endpoint it's in.
+    """
+    try:
+        return inspect_signature(func)
+    except NameError as error:
+        raise DefinitionError(
+            f"Endpoint '{func.__qualname__}': {error}. ClientX evaluates annotations when the method is decorated: "
+            "define the types it names before its class."
+        ) from error
 
 
 def _check_arguments(endpoint: Endpoint, client: ClientX | AsyncClientX, bound: BoundCall) -> None:
