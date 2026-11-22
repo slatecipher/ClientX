@@ -32,7 +32,7 @@ def test_get_user_sends_the_request_and_decodes_the_user() -> None:
     assert request.method == "GET"
     assert request.url.path == "/users/42"
     assert request.url.params["fields"] == "name"
-    assert request.headers["User-Agent"] == "users-client/1.0"
+    assert request.headers["User-Agent"].startswith("users-client/1.0")
 
 
 def test_an_unknown_user_raises() -> None:

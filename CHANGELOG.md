@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- The `User-Agent` lists every product that's set, most significant first, instead of only the first: the app's, from `user_agent=` or a `User-Agent` in `headers=` when the client is created, then the class's `user_agent=` class argument, then `ClientX/<version>`. A package built on ClientX keeps its own product in the header when its users add theirs, so the API can still tell which package and version sent a request. A client with a `user_agent=` class argument now sends `ClientX/<version>` after it too. **Breaking:** a test or server that expects the exact `User-Agent` a client sent before sees a longer one. To send one exact `User-Agent`, set `client.headers["User-Agent"]` after creating the client.
+
 ## [0.2.1] - 2026-11-22
 
 ### Fixed

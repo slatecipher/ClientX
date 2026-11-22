@@ -40,7 +40,7 @@ Class arguments, in the class statement:
 | Argument | Type | Default | Effect |
 |---|---|---|---|
 | `base_url` | `str` or `httpx2.URL` | none | The base URL a client uses when it's created without one. It must be absolute, with a scheme and a host, or the class raises `DefinitionError`. |
-| `user_agent` | `str` | `ClientX/<version>` | The `User-Agent` a client sends when it's created without one. |
+| `user_agent` | `str` | none | The client class's product, such as `example-client/0.1`, sent in the `User-Agent` after the app's and before `ClientX/<version>`. See [User-Agent](configuration.md#user-agent). |
 
 A subclass keeps its parent's class arguments unless it sets its own. Any other keyword in the class statement raises `TypeError`.
 
@@ -49,7 +49,7 @@ Arguments when creating a client:
 | Argument | Type | Default | Effect |
 |---|---|---|---|
 | `base_url` | `str` or `httpx2.URL` | the class's | The URL every endpoint's path is relative to. With none here or on the class, creating the client raises `TypeError`, and one that isn't absolute raises `ValueError`. |
-| `user_agent` | `str` | a `User-Agent` in `headers=`, else the class's | The `User-Agent` to send. |
+| `user_agent` | `str` | a `User-Agent` in `headers=` | The app's product, such as `my-app/1.0`, sent first in the `User-Agent`, before the class's and `ClientX/<version>`. For one exact value, set `client.headers["User-Agent"]` after creating the client. |
 | `raise_for_status` | `bool` | `True` | Whether a 4xx or 5xx response raises `httpx2.HTTPStatusError`. An endpoint's own `raise_for_status=` wins. |
 | `validate_arguments` | `bool` | `False` | Whether each call's arguments are checked against their annotations, strictly and with a helper's constraints, before anything is sent; one that doesn't fit raises `ArgumentError`. See [Validating arguments](configuration.md#validating-arguments). |
 | `**options` | | | Any [`httpx2.Client` option](https://pydantic.dev/docs/httpx2/api/#httpx2.Client), such as `auth`, `headers`, `params`, `cookies`, `timeout`, `verify`, `proxy`, `transport`, `mounts`, `event_hooks` or `follow_redirects`. |
