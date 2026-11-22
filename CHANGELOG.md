@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-21
+
 ### Added
 
 - Argument validation, off by default: a client created with `validate_arguments=True` checks each call's arguments against their annotations before anything is sent, strictly, as a type checker would, and with a helper's constraints, such as `Query(ge=1)`. An argument that doesn't fit raises `ArgumentError`, with Pydantic's `ValidationError` as its cause. Only the arguments a call passes are checked, the request is built from them unchanged, and a type Pydantic can't validate, such as a binary file, isn't checked.
@@ -34,5 +36,6 @@ First public release.
 - `llms.txt`: a compact guide to ClientX's patterns and pitfalls for AI coding assistants.
 - Support for Python 3.12, 3.13 and 3.14, with inline type information (`py.typed`).
 
-[Unreleased]: https://github.com/slatecipher/ClientX/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/slatecipher/ClientX/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/slatecipher/ClientX/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/slatecipher/ClientX/releases/tag/v0.1.0
