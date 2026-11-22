@@ -54,7 +54,7 @@ A parameter's name has no meaning of its own: one named `json` or `headers` foll
 
 A plain value is a `str`, `int`, `float`, `bool`, `Enum`, `date`, `datetime`, `time`, `UUID`, `Decimal` or `bytes`, a `Literal` of those, or a `NewType` of one: each has one text form. Any other type, such as a class of your own, raises `DefinitionError` when the class is defined; annotate the parameter as `str` and convert the value at the call. `Any`, or no annotation, is the escape hatch: its value is sent in Pydantic's JSON form, so a list or dict becomes one compact JSON text value, and as `str(value)` only if Pydantic doesn't know its type. To repeat a key, annotate the parameter as a list.
 
-The helpers are built on `pydantic.Field` and take its arguments. ClientX reads `alias=`, the name the value is sent under: `Annotated[int, Query(alias="userId")]`. A `description=` or a constraint such as `ge=1` documents the parameter, for example in a model's JSON Schema, but ClientX doesn't check arguments against them before sending.
+The helpers are built on `pydantic.Field` and take its arguments. ClientX reads `alias=`, the name the value is sent under: `Annotated[int, Query(alias="userId")]`. A `description=` or a constraint such as `ge=1` documents the parameter, for example in a model's JSON Schema. ClientX checks arguments against them before sending only on a client created with `validate_arguments=True` (see [Validating arguments](configuration.md#validating-arguments)).
 
 A parameter's default goes after `=`, as for any parameter: `page: Annotated[int, Query()] = 1`. A default inside the helper, such as `Query(default=1)` or `Query(1)`, raises `DefinitionError`, since ClientX doesn't read it there.
 

@@ -34,17 +34,18 @@ from __future__ import annotations
 
 import inspect
 import re
-from collections.abc import Callable, Generator, Mapping, Sequence
+from collections.abc import Callable, Generator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from types import NoneType
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
 import httpx2
-from pydantic import ConfigDict, PydanticSchemaGenerationError, TypeAdapter, ValidationError
+from pydantic import PydanticSchemaGenerationError, TypeAdapter, ValidationError
 from pydantic.errors import PydanticInvalidForJsonSchema
 
 from clientx._registry import endpoint_for
+from clientx._validation import arguments_adapter, describe_errors
 from clientx.exceptions import ArgumentError, ToolError
 
 if TYPE_CHECKING:
@@ -186,7 +187,7 @@ class _Call:
             validated = self.adapter.validate_python(given)
         except ValidationError as error:
             raise ToolError(
-                f"The arguments don't fit {name}: {_problems(error, values=True)}. Nothing was sent.", tool=name
+                f"The arguments don't fit {name}: {describe_errors(error, values=True)}. Nothing was sent.", tool=name
             ) from error
         last = max((index for index, parameter in enumerate(self.positional) if parameter.name in given), default=-1)
         args = [validated.get(parameter.name, parameter.default) for parameter in self.positional[: last + 1]]
@@ -218,7 +219,7 @@ class _Call:
         except ValidationError as error:
             raise ToolError(
                 f"{name}: the API's answer to {self.request} doesn't fit the endpoint's return annotation: "
-                f"{_problems(error, values=False)}.",
+                f"{describe_errors(error, values=False)}.",
                 tool=name,
             ) from error
 
@@ -243,7 +244,7 @@ def _tool(name: str, endpoint: Endpoint, function: Callable[..., Any]) -> Tool |
         return None
     parameters = endpoint.signature.parameters[1:]
     try:
-        adapter = _arguments_adapter(parameters)
+        adapter = arguments_adapter(parameters)
         input_schema = _compact(adapter.json_schema(by_alias=False))
         returns_nothing = returns.base_type is None or returns.base_type is NoneType
         output = None if returns_nothing else TypeAdapter[Any](returns.annotation)
@@ -271,34 +272,6 @@ def _tool(name: str, endpoint: Endpoint, function: Callable[..., Any]) -> Tool |
     )
 
 
-# Validates arguments by parameter name: a helper's alias is the name sent to
-# the API, not the one a caller uses.
-_BY_NAME = ConfigDict(validate_by_name=True, validate_by_alias=False)
-
-
-def _arguments_adapter(parameters: Sequence[ParameterInfo]) -> TypeAdapter[dict[str, Any]]:
-    """Return a validator of a model's arguments for these parameters.
-
-    It validates a call to a stand-in with the endpoint's parameters, all
-    keyword-only so a mapping fills them, and returns the arguments: the
-    endpoint is called separately, so a response that doesn't fit isn't taken
-    for arguments that don't.
-    """
-
-    def arguments(**values: Any) -> dict[str, Any]:
-        return values
-
-    arguments.__signature__ = inspect.Signature(  # pyright: ignore[reportFunctionMemberAccess]
-        [
-            inspect.Parameter(p.name, inspect.Parameter.KEYWORD_ONLY, default=p.default, annotation=p.annotation)
-            for p in parameters
-        ]
-    )
-    arguments.__annotations__ = {p.name: p.annotation for p in parameters}
-    # Pydantic validates a call to a function, which its types don't allow.
-    return TypeAdapter[dict[str, Any]](cast("Any", arguments), config=_BY_NAME)
-
-
 # --- Error messages -----------------------------------------------------------
 # How much of an error response's body a message shows.
 _BODY_LIMIT = 2000
@@ -308,26 +281,6 @@ def _truncated(text: str) -> str:
     if len(text) <= _BODY_LIMIT:
         return text
     return f"{text[:_BODY_LIMIT]}... ({len(text) - _BODY_LIMIT} more characters)"
-
-
-def _problems(error: ValidationError, *, values: bool) -> str:
-    """Return each of Pydantic's errors as ``where: what``, without its URL.
-
-    With ``values``, a value that's there but doesn't fit is shown too, short:
-    it's the model's own argument. A response's values aren't.
-    """
-    problems: list[str] = []
-    for problem in error.errors(include_url=False, include_context=False):
-        where = ".".join(str(part) for part in problem["loc"]) or "the arguments"
-        # A missing argument is reported as keyword-only, as the stand-in's are.
-        if problem["type"].startswith("missing"):
-            problems.append(f"{where}: is required")
-            continue
-        text = f"{where}: {problem['msg']}"
-        if values:
-            text += f" (got {problem['input']!r:.80})"
-        problems.append(text)
-    return "; ".join(problems)
 
 
 # --- Descriptions -------------------------------------------------------------

@@ -5,7 +5,7 @@ ClientX raises errors of its own, all derived from `ClientXError`, so `except Cl
 | Error | Base | Raised for |
 |---|---|---|
 | `DefinitionError` | `TypeError` | a client, resource or endpoint written in a way ClientX can't use |
-| `ArgumentError` | `ValueError` | an argument value that can't be sent |
+| `ArgumentError` | `ValueError` | an argument value that can't be sent, or that doesn't fit its annotation on a client with `validate_arguments=True` |
 | `ToolError` | | a tool call that failed, from [`clientx.tools`](tools.md) |
 
 ## `DefinitionError`
@@ -39,7 +39,7 @@ At call time:
 
 ## `ArgumentError`
 
-An `ArgumentError` is raised before the request is sent, when an argument's value can't be sent as it is. Its `parameter` attribute names the parameter. A path value raises it when it would call a different path: `None`, an empty value, or a `{name:path}` value with a leading, trailing or doubled slash (see [Path parameters](requests.md#path-parameters)). A JSON value raises it when Pydantic can't serialize it, such as an object of an unknown class passed through `Any`, or when it holds NaN or infinity, which JSON can't. A text value raises it when it can't become text, such as `bytes` that aren't UTF-8, and a header's name or value when it isn't ASCII.
+An `ArgumentError` is raised before the request is sent, when an argument's value can't be sent as it is. Its `parameter` attribute names the parameter. A path value raises it when it would call a different path: `None`, an empty value, or a `{name:path}` value with a leading, trailing or doubled slash (see [Path parameters](requests.md#path-parameters)). A JSON value raises it when Pydantic can't serialize it, such as an object of an unknown class passed through `Any`, or when it holds NaN or infinity, which JSON can't. A text value raises it when it can't become text, such as `bytes` that aren't UTF-8, and a header's name or value when it isn't ASCII. On a client created with `validate_arguments=True`, an argument that doesn't fit its annotation raises it too, with Pydantic's `ValidationError` as its `__cause__` (see [Validating arguments](configuration.md#validating-arguments)).
 
 <!-- docs_src/errors/argument_error.py -->
 ```python

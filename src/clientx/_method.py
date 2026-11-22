@@ -10,7 +10,7 @@ from clientx._client import AsyncClientX, AsyncResource, ClientX, EndpointOwner,
 from clientx._decoding import adecode, araise_status_error, decode, raise_status_error
 from clientx._endpoint import Endpoint
 from clientx._registry import register_endpoint_function
-from clientx._signature import inspect_signature
+from clientx._signature import BoundCall, inspect_signature
 from clientx._types import Decoder, MethodType, UseClientDefault
 
 
@@ -156,6 +156,7 @@ class Method:
                     warnings.warn(endpoint.deprecated, DeprecationWarning, stacklevel=2)
                 client = client_of(_self, ClientX)
                 bound = endpoint.bind(_self, *args, **kwargs)
+                _check_arguments(endpoint, client, bound)
                 url, request_arguments = endpoint.request_arguments(bound)
                 request = client.build_request(endpoint.method, url, **request_arguments)
                 response = client.send(request, stream=endpoint.stream)
@@ -171,6 +172,7 @@ class Method:
                     warnings.warn(endpoint.deprecated, DeprecationWarning, stacklevel=2)
                 client = client_of(_self, AsyncClientX)
                 bound = endpoint.bind(_self, *args, **kwargs)
+                _check_arguments(endpoint, client, bound)
                 url, request_arguments = endpoint.request_arguments(bound)
                 request = client.build_request(endpoint.method, url, **request_arguments)
                 response = await client.send(request, stream=endpoint.stream)
@@ -187,6 +189,16 @@ class Method:
             return endpoint_function
 
         return decorator
+
+
+def _check_arguments(endpoint: Endpoint, client: ClientX | AsyncClientX, bound: BoundCall) -> None:
+    """Check a call's arguments if the client has ``validate_arguments=True``.
+
+    Raises:
+        ArgumentError: If an argument the caller passed doesn't fit.
+    """
+    if client.__clientx_validate_arguments__:
+        endpoint.check_arguments(bound)
 
 
 def _raises_for_status(endpoint: Endpoint, client: ClientX | AsyncClientX) -> bool:
