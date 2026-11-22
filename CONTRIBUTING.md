@@ -114,9 +114,18 @@ Dependabot's update pull requests get the `dependencies` label automatically.
 
 `.github/workflows/release.yml` publishes to PyPI with Trusted Publishing, so no API tokens are stored.
 
-1. Open a release pull request that sets `version` in `pyproject.toml`, runs `uv lock`, and renames `## [Unreleased]` in `CHANGELOG.md` to `## [X.Y.Z] - YYYY-MM-DD`. Merge it.
+1. Open a release pull request that sets `version` in `pyproject.toml` (see [Versions](#versions)), runs `uv lock`, and renames `## [Unreleased]` in `CHANGELOG.md` to `## [X.Y.Z] - YYYY-MM-DD`. Merge it.
 2. Optional dry run: run the Release workflow manually with `gh workflow run release.yml`. It builds the package and publishes to TestPyPI only.
 3. Publish a GitHub release tagged `vX.Y.Z` on `mainline`, for example `gh release create vX.Y.Z --target mainline --title vX.Y.Z --notes "..."`. The workflow checks that the tag matches the project version, builds and smoke-tests the package, then publishes to TestPyPI and PyPI.
+
+### Versions
+
+ClientX follows [Semantic Versioning](https://semver.org/). Before 1.0:
+
+- A release with only fixes is a patch, such as 0.2.0 to 0.2.1.
+- A release with a new feature or a breaking change is a minor version, such as 0.2.1 to 0.3.0. Label breaking changes `breaking change` and call them out in the changelog.
+- Choose the version when releasing, from everything under `## [Unreleased]`, not in each pull request.
+- Documentation changes don't need a release: the guide in `docs/` is read on GitHub. PyPI shows the README from the last release, so a README change reaches PyPI with the next one. Release a patch for it only if the PyPI page is wrong in a way that can't wait.
 
 ## License
 

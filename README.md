@@ -25,6 +25,14 @@ For client authors, ClientX reduces boilerplate by turning typed endpoint defini
 
 The result is less scaffolding and more focus on outcomes: authors, human or AI, spend less time on plumbing, and the developers and AI agents calling your API spend less time guessing how to use it correctly. The same endpoints become tools an AI model can call, described by your docstrings and type hints, with errors it can act on.
 
+## Install
+
+```bash
+pip install clientx
+```
+
+Using an AI coding assistant? Point it at [llms.txt](https://github.com/slatecipher/ClientX/blob/mainline/llms.txt), a compact guide to ClientX's patterns and pitfalls.
+
 ## Quickstart
 
 <!-- docs_src/readme/quickstart.py -->
@@ -107,20 +115,6 @@ ClientX is inspired by FastAPI, which reads type hints to define server endpoint
 - Async clients (`AsyncClientX`, `AsyncResource`) with the same decorators, for `async def` endpoints.
 - AI tools from the same endpoints (`clientx.tools`): descriptions from docstrings, JSON Schemas, and errors a model can act on.
 
-## Project status
-
-ClientX is a passion project that comes from my experience integrating APIs. Every small prototype against a new API means writing the same boilerplate again, and third-party clients are hit or miss. ClientX lets me focus on outcomes rather than plumbing, and I hope it does the same for you. I maintain it in my spare time, so replies may take a while, but issues and pull requests are always welcome.
-
-ClientX is pre-1.0, so the API may change between minor versions. Changes are listed in the [changelog](https://github.com/slatecipher/ClientX/blob/mainline/CHANGELOG.md).
-
-## Install
-
-```bash
-pip install clientx
-```
-
-Using an AI coding assistant? Point it at [llms.txt](https://github.com/slatecipher/ClientX/blob/mainline/llms.txt), a compact guide to ClientX's patterns and pitfalls.
-
 ## Guide
 
 - [Defining endpoints](https://github.com/slatecipher/ClientX/blob/mainline/docs/endpoints.md): the verb decorators and their options, the rules for an endpoint method, deprecating endpoints, and endpoint names.
@@ -137,6 +131,12 @@ Using an AI coding assistant? Point it at [llms.txt](https://github.com/slatecip
 ## Development
 
 See [CONTRIBUTING.md](https://github.com/slatecipher/ClientX/blob/mainline/CONTRIBUTING.md) for setup, checks, and conventions.
+
+## Project status
+
+ClientX is a passion project that comes from my experience integrating APIs. Every small prototype against a new API means writing the same boilerplate again, and third-party clients are hit or miss. ClientX lets me focus on outcomes rather than plumbing, and I hope it does the same for you. I maintain it in my spare time, so replies may take a while, but issues and pull requests are always welcome.
+
+ClientX is pre-1.0, so the API may change between minor versions. Changes are listed in the [changelog](https://github.com/slatecipher/ClientX/blob/mainline/CHANGELOG.md).
 
 ## Acknowledgments
 
