@@ -85,35 +85,46 @@ def test_a_base_url_must_be_an_absolute_url(base_url: str, problem: str) -> None
         ClientX(base_url)
 
 
-def test_the_user_agent_comes_from_the_argument_then_headers_then_the_class(mock_transport: MockTransport) -> None:
-    class API(ClientX, user_agent="ExampleAPI/1.0"):
-        @method.get("/health")
-        def health(self) -> None: ...
+def test_the_user_agent_lists_the_callers_product_then_the_classs_then_clientxs(
+    mock_transport: MockTransport,
+) -> None:
+    class API(ClientX, user_agent="ExampleAPI/1.0"): ...
 
     class Child(API): ...
+
+    class Plain(ClientX): ...
 
     def user_agent(api: ClientX) -> str:
         return api.headers["User-Agent"]
 
+    clientx_product = f"ClientX/{clientx.__version__}"
     transport = mock_transport()
-    assert user_agent(API(BASE_URL, transport=transport, user_agent="Explicit/2")) == "Explicit/2"
-    assert user_agent(API(BASE_URL, transport=transport, headers={"User-Agent": "FromHeaders/3"})) == "FromHeaders/3"
-    assert user_agent(API(BASE_URL, transport=transport)) == "ExampleAPI/1.0"
-    assert user_agent(Child(BASE_URL, transport=transport)) == "ExampleAPI/1.0"
+    assert user_agent(API(BASE_URL, transport=transport, user_agent="my-app/2")) == (
+        f"my-app/2 ExampleAPI/1.0 {clientx_product}"
+    )
+    assert user_agent(API(BASE_URL, transport=transport, headers={"User-Agent": "my-app/3"})) == (
+        f"my-app/3 ExampleAPI/1.0 {clientx_product}"
+    )
+    assert user_agent(API(BASE_URL, transport=transport)) == f"ExampleAPI/1.0 {clientx_product}"
+    assert user_agent(Child(BASE_URL, transport=transport)) == f"ExampleAPI/1.0 {clientx_product}"
+    assert user_agent(Plain(BASE_URL, transport=transport, user_agent="my-app/2")) == f"my-app/2 {clientx_product}"
+    assert user_agent(Plain(BASE_URL, transport=transport)) == clientx_product
 
-    class Plain(ClientX): ...
 
-    assert user_agent(Plain(BASE_URL, transport=transport)) == f"ClientX/{clientx.__version__}"
-
-
-def test_the_user_agent_is_sent(mock_transport: MockTransport) -> None:
+def test_the_user_agent_is_sent_and_can_be_set_exactly(mock_transport: MockTransport) -> None:
     class API(ClientX, user_agent="ExampleAPI/1.0"):
         @method.get("/health")
         def health(self) -> None: ...
 
     sent: list[httpx2.Request] = []
-    API(BASE_URL, transport=mock_transport(sent)).health()
-    assert only_request(sent).headers["User-Agent"] == "ExampleAPI/1.0"
+    api = API(BASE_URL, transport=mock_transport(sent), user_agent="my-app/2")
+    api.health()
+    api.headers["User-Agent"] = "exact/1"
+    api.health()
+    assert [request.headers["User-Agent"] for request in sent] == [
+        f"my-app/2 ExampleAPI/1.0 ClientX/{clientx.__version__}",
+        "exact/1",
+    ]
 
 
 def test_a_clients_repr_shows_its_base_url_and_user_agent(mock_transport: MockTransport) -> None:
@@ -124,7 +135,8 @@ def test_a_clients_repr_shows_its_base_url_and_user_agent(mock_transport: MockTr
     transport = mock_transport()
     assert repr(ExampleAPI("https://user:s3cret@api.example.com/v1", transport=transport)) == (
         "test_a_clients_repr_shows_its_base_url_and_user_agent.<locals>.ExampleAPI("
-        "base_url='https://user:[redacted]@api.example.com/v1/', user_agent='ExampleAPI/1.0')"
+        "base_url='https://user:[redacted]@api.example.com/v1/', "
+        f"user_agent='ExampleAPI/1.0 ClientX/{clientx.__version__}')"
     )
     assert "base_url='https://user@api.example.com'" in repr(ExampleAPI("https://user@api.example.com"))
     assert f"user_agent='ClientX/{clientx.__version__}'" in repr(AsyncAPI(BASE_URL))

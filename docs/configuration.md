@@ -14,20 +14,20 @@ api = ExampleAPI("https://api.example.com", user_agent="my-app/1.0", timeout=5.0
 ```
 
 - `base_url`: the API's base URL, which every endpoint's path is relative to. It's required unless the class sets one (see [Class defaults](#class-defaults)), and it wins over the class's.
-- `user_agent`: the `User-Agent` to send. Without it, the first of these is sent: a `User-Agent` in `headers=`, the class's `user_agent=` (see [Class defaults](#class-defaults)), or `ClientX/<version>`.
+- `user_agent`: your app's product, such as `my-app/1.0`, sent first in the `User-Agent`, before the class's and ClientX's (see [User-Agent](#user-agent)). A `User-Agent` in `headers=` goes first the same way.
 - `raise_for_status`: whether a 4xx or 5xx response raises `httpx2.HTTPStatusError`. It's on by default; see [Errors for 4xx and 5xx responses](responses.md#errors-for-4xx-and-5xx-responses).
 - `validate_arguments`: whether each call's arguments are checked against their annotations before anything is sent. It's off by default; see [Validating arguments](#validating-arguments).
 - Any other `httpx2.Client` option, such as `timeout`, `headers`, `params`, `auth` (see [Authentication](#authentication)), `transport`, `proxy` or `follow_redirects`.
 
 A `ClientX` is an `httpx2.Client`, so those options, and everything else httpx2 documents for a client, work as they do there. That includes changing `headers`, `params`, `auth` or `timeout` on a client after it's created: the change applies to every endpoint. Each client has its own connections, settings and credentials, so clients for production and staging, or one per account, can be used side by side.
 
-A client's `repr` shows its class, its base URL and its `User-Agent`, with any password in the base URL replaced by `[redacted]`: `ExampleAPI(base_url='https://api.example.com', user_agent='my-app/1.0')`.
+A client's `repr` shows its class, its base URL and its `User-Agent`, with any password in the base URL replaced by `[redacted]`: `ExampleAPI(base_url='https://api.example.com', user_agent='my-app/1.0 ClientX/<version>')`.
 
 For `async def` endpoints, `AsyncClientX` takes the same arguments and class arguments (see [Async clients](async.md)).
 
 ## Class defaults
 
-A client class can set the base URL and the `User-Agent` its clients use, as class arguments:
+A client class can set the base URL its clients use, and its own product in their `User-Agent`, as class arguments:
 
 <!-- docs_src/configuration/class_defaults.py -->
 ```python
@@ -41,12 +41,36 @@ api = ExampleAPI()  # https://api.example.com, User-Agent: example-api/1.0
 staging = ExampleAPI("https://staging.example.com")
 ```
 
-A subclass keeps its parent's class arguments unless it sets its own, and a `base_url` or `user_agent` given when creating a client wins over the class's.
+A subclass keeps its parent's class arguments unless it sets its own. A `base_url` given when creating a client wins over the class's, and a `user_agent` goes in front of it (see [User-Agent](#user-agent)).
 
 - A client needs a base URL from one or the other. Without either, creating it raises `TypeError`, as a missing argument does. Type checkers can't see whether a class sets one, so they don't catch this.
 - A base URL must be absolute, with a scheme and a host, such as `https://api.example.com`, since httpx2 would take `api.example.com` alone as a relative path and fail only on the first request. A class's raises `DefinitionError` when the class is defined, and one passed when creating a client raises `ValueError`.
 
 `base_url` and `user_agent` are the only class arguments. Pass every other option when creating the client: Python rejects any other keyword in the class statement, a misspelling included, with `TypeError: ExampleAPI.__init_subclass__() takes no keyword arguments`.
+
+## User-Agent
+
+A client's `User-Agent` lists up to three products, most significant first, as [RFC 9110](https://www.rfc-editor.org/rfc/rfc9110#section-10.1.5) describes:
+
+1. The app's, from `user_agent=` or a `User-Agent` in `headers=` when the client is created, such as `my-app/1.0 (me@example.com)`.
+2. The client class's, from its `user_agent=` class argument, such as `example-client/0.1`.
+3. ClientX's own, `ClientX/<version>`.
+
+A product that isn't set is left out. If you publish a client package, set its name and version as the class's `user_agent=`: the API can then tell which package and version sent a request, whatever your users pass. To send one exact `User-Agent` instead, set it on the client after creating it, as for any `httpx2.Client` header:
+
+<!-- docs_src/configuration/user_agent.py -->
+```python
+from clientx import ClientX
+
+
+class ExampleAPI(ClientX, base_url="https://api.example.com", user_agent="example-client/0.1"): ...
+
+
+api = ExampleAPI(user_agent="my-app/1.0 (me@example.com)")
+print(api.headers["User-Agent"])  # my-app/1.0 (me@example.com) example-client/0.1 ClientX/<version>
+
+api.headers["User-Agent"] = "my-app/1.0"  # sent as it is
+```
 
 ## Validating arguments
 

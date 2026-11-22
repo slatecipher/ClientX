@@ -18,7 +18,7 @@ type EndpointOwner = ClientX | AsyncClientX | Resource | AsyncResource
 class _BaseClientX:
     # The class arguments: what a client uses when its caller doesn't say.
     __clientx_base_url__: ClassVar[URL | None] = None
-    __clientx_user_agent__: ClassVar[str] = f"ClientX/{__version__}"
+    __clientx_user_agent__: ClassVar[str | None] = None
     __clientx_raise_for_status__: bool = True
     __clientx_validate_arguments__: bool = False
 
@@ -74,10 +74,12 @@ class ClientX(_BaseClientX, Client):
         Args:
             base_url: Base URL used for all relative request paths. When
                 ``None``, the class's ``base_url=`` class argument.
-            user_agent: The ``User-Agent`` header to send. When ``None``, a
-                ``User-Agent`` given in ``headers=`` is kept, or else the
-                class's default: its ``user_agent=`` class argument, or
-                ``ClientX/<version>``.
+            user_agent: The caller's product, such as ``my-app/1.0``, sent
+                first in the ``User-Agent``, before the class's ``user_agent=``
+                class argument and ``ClientX/<version>``. When ``None``, a
+                ``User-Agent`` given in ``headers=`` goes first instead. To
+                send one exact value, set ``client.headers["User-Agent"]``
+                after creating the client.
             raise_for_status: Raise ``httpx2.HTTPStatusError`` when an endpoint
                 gets a 4xx or 5xx response, before any decoder runs. On when
                 ``None``. An endpoint's own ``raise_for_status=`` overrides it.
@@ -109,10 +111,11 @@ class ClientX(_BaseClientX, Client):
 
         An endpoint or mounted resource can't use a name ``ClientX`` already
         uses, which includes all of ``httpx2.Client``'s, such as ``get`` or
-        ``send``. Those names are free on a ``Resource``. The ``base_url=`` and
-        ``user_agent=`` class arguments are used unless the caller gives its
-        own. A subclass without one keeps its parent's, and a direct subclass
-        has no base URL and sends ``ClientX/<version>``.
+        ``send``. Those names are free on a ``Resource``. The ``base_url=``
+        class argument is used unless the caller gives one. The ``user_agent=``
+        class argument goes in the ``User-Agent`` after the caller's product
+        and before ``ClientX/<version>``. A subclass without one keeps its
+        parent's, and a direct subclass has neither.
 
         Raises:
             DefinitionError: If ``base_url`` isn't an absolute URL, with a
@@ -193,11 +196,15 @@ def _configure(
     raise_for_status: bool | None,
     validate_arguments: bool,
 ) -> None:
-    # httpx2 always sets its own User-Agent, so read the caller's from
-    # `headers=`, not from `client.headers`.
-    client.headers["User-Agent"] = (
-        user_agent or Headers(headers).get("User-Agent") or type(client).__clientx_user_agent__
+    # Products go most significant first (RFC 9110, section 10.1.5): the
+    # caller's, the class's, then ClientX's. httpx2 always sets its own
+    # User-Agent, so read the caller's from `headers=`, not `client.headers`.
+    products = (
+        user_agent or Headers(headers).get("User-Agent"),
+        type(client).__clientx_user_agent__,
+        f"ClientX/{__version__}",
     )
+    client.headers["User-Agent"] = " ".join(product for product in products if product)
     if raise_for_status is not None:
         client.__clientx_raise_for_status__ = raise_for_status
     client.__clientx_validate_arguments__ = validate_arguments
