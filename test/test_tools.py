@@ -218,7 +218,7 @@ def test_a_deprecated_endpoint_is_a_tool_that_says_so() -> None:
 
     tools = tools_of(API(BASE_URL))
     assert tools["get_user_v1"].deprecated == "Use get_user() instead."
-    assert tools["get_user_v1"].description == "Fetch a user.\n\nDeprecated: Use get_user() instead."
+    assert tools["get_user_v1"].description == "Deprecated: Use get_user() instead.\n\nFetch a user."
     assert (tools["get_user"].deprecated, tools["get_user"].description) == (None, "Fetch a user.")
 
 

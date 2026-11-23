@@ -23,8 +23,8 @@ framework can build on it.
   it was made a tool on purpose.
 - Descriptions: the docstring, up to its first section (``Args:``,
   ``Returns:``...), or else the method and path. A deprecated endpoint is
-  still a tool: its description ends with ``Deprecated:`` and the message,
-  so a model prefers the replacement, and ``Tool.deprecated`` holds the
+  still a tool: its description starts with ``Deprecated:`` and the
+  message, so a model prefers the replacement, and ``Tool.deprecated`` holds the
   message, to leave it out by. An argument's description is
   its helper's ``description=``, or else its entry in the docstring's
   ``Args:``.
@@ -154,8 +154,8 @@ class Tool:
         tags: Its tags, its resource's first, to choose which tools to
             register by.
         deprecated: The endpoint's ``deprecated=`` message, or ``None``. The
-            description ends with it too, so a model given the tool prefers
-            the replacement.
+            description starts with it too, so a model given the tool, or a
+            client that shows only its first line, sees the replacement.
         is_async: It's ``async def``, so it's called with ``acall()``.
     """
 
@@ -309,7 +309,7 @@ def _tool(
     ``request`` is an endpoint's method and path template, its description when
     it has no docstring, or ``None`` for a tool method, which has a docstring.
     ``deprecated`` is an endpoint's deprecation message, which the description
-    ends with.
+    starts with.
     Pydantic's ``PydanticSchemaGenerationError`` or
     ``PydanticInvalidForJsonSchema`` propagates for a type with no JSON form.
     """
@@ -329,7 +329,7 @@ def _tool(
     positional = tuple(p for p in parameters if p.kind is inspect.Parameter.POSITIONAL_ONLY)
     description = _description(doc) or request or ""
     if deprecated is not None:
-        description = f"{description}\n\nDeprecated: {deprecated}"
+        description = f"Deprecated: {deprecated}\n\n{description}"
     return Tool(
         name=name,
         description=description,

@@ -112,7 +112,7 @@ class UsersAPI(ClientX):
 
 Each call to `get_user_v1` emits a `DeprecationWarning` with that message, pointing at the caller's line, before the request is sent. Python shows a `DeprecationWarning` only when it's triggered by code in `__main__`, or under a test runner such as pytest. To send warnings to your logs, call `logging.captureWarnings(True)`: they then appear on the `py.warnings` logger.
 
-A deprecated endpoint is still an [AI tool](tools.md): its `Tool.deprecated` holds the message, and its description ends with it, so a model prefers the replacement.
+A deprecated endpoint is still an [AI tool](tools.md): its `Tool.deprecated` holds the message, and its description starts with it, so a model prefers the replacement.
 
 ## Endpoint names
 
