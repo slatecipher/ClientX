@@ -224,6 +224,7 @@ await tool.acall(arguments: Mapping[str, Any] | None = None) -> Any  # on an Asy
 | `output_schema` | `dict` or `None` | The JSON Schema of the result, or `None` for `-> None`. |
 | `read_only`, `destructive`, `idempotent` | `bool` | Hints about what it does, each set on its own: an endpoint's from its `tool_options=`, or else its HTTP method; a tool method's from `@tool`, or else `False`. |
 | `tags` | `tuple[str, ...]` | The endpoint's tags, its resource's first. |
+| `deprecated` | `str` or `None` | The endpoint's `deprecated=` message, which its description ends with too. |
 | `is_async` | `bool` | Call it with `acall()` rather than `call()`. |
 
 `call()` validates a model's arguments leniently, passes only those it gave, and returns JSON-ready data. A failed call raises `ToolError`, with a message for the model that never holds the host or query string, and the original error as its `__cause__`. See [AI tools](tools.md).

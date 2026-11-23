@@ -204,6 +204,24 @@ def test_an_endpoint_cant_be_read_only_and_destructive(verb: Any, options: ToolO
             def act(self) -> None: ...
 
 
+def test_a_deprecated_endpoint_is_a_tool_that_says_so() -> None:
+    class API(ClientX):
+        @method.get("/v1/users/{user_id}", deprecated="Use get_user() instead.")
+        def get_user_v1(self, user_id: int) -> User:
+            """Fetch a user."""
+            ...
+
+        @method.get("/v2/users/{user_id}")
+        def get_user(self, user_id: int) -> User:
+            """Fetch a user."""
+            ...
+
+    tools = tools_of(API(BASE_URL))
+    assert tools["get_user_v1"].deprecated == "Use get_user() instead."
+    assert tools["get_user_v1"].description == "Fetch a user.\n\nDeprecated: Use get_user() instead."
+    assert (tools["get_user"].deprecated, tools["get_user"].description) == (None, "Fetch a user.")
+
+
 def test_a_tool_has_its_endpoints_tags() -> None:
     class Users(Resource, prefix="/users", tags=["users"]):
         @method.get("/{user_id}", tags=["read"])

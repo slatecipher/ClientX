@@ -22,7 +22,10 @@ framework can build on it.
   raises ``DefinitionError`` when it's listed, rather than being left out:
   it was made a tool on purpose.
 - Descriptions: the docstring, up to its first section (``Args:``,
-  ``Returns:``...), or else the method and path. An argument's description is
+  ``Returns:``...), or else the method and path. A deprecated endpoint is
+  still a tool: its description ends with ``Deprecated:`` and the message,
+  so a model prefers the replacement, and ``Tool.deprecated`` holds the
+  message, to leave it out by. An argument's description is
   its helper's ``description=``, or else its entry in the docstring's
   ``Args:``.
 - Schemas: arguments are named as in the method, not by their helpers'
@@ -85,6 +88,7 @@ def list_tools(client: ClientX | AsyncClientX) -> list[Tool]:
     - one with an argument that has no JSON form, such as a binary file.
 
     An endpoint's or tool method's second name in its class is listed once.
+    A deprecated endpoint is listed too: ``Tool.deprecated`` holds its message.
 
     Raises:
         DefinitionError: If a ``@tool`` method's arguments or result have no
@@ -149,6 +153,9 @@ class Tool:
             effect.
         tags: Its tags, its resource's first, to choose which tools to
             register by.
+        deprecated: The endpoint's ``deprecated=`` message, or ``None``. The
+            description ends with it too, so a model given the tool prefers
+            the replacement.
         is_async: It's ``async def``, so it's called with ``acall()``.
     """
 
@@ -160,6 +167,7 @@ class Tool:
     destructive: bool
     idempotent: bool
     tags: tuple[str, ...]
+    deprecated: str | None
     is_async: bool
     _call: _Call = field(repr=False, compare=False)
 
@@ -267,7 +275,8 @@ def _endpoint_tool(name: str, endpoint: Endpoint, function: Callable[..., Any]) 
     if endpoint.stream or endpoint.signature.returns.base_type is httpx2.Response:
         return None
     try:
-        return _tool(name, endpoint, function, request=f"{endpoint.method} {endpoint.raw_path or '/'}")
+        request = f"{endpoint.method} {endpoint.raw_path or '/'}"
+        return _tool(name, endpoint, function, request=request, deprecated=endpoint.deprecated)
     except (PydanticSchemaGenerationError, PydanticInvalidForJsonSchema):
         return None
 
@@ -279,7 +288,7 @@ def _method_tool(name: str, tool_method: ToolMethod, function: Callable[..., Any
         DefinitionError: If an argument or the result has no JSON form.
     """
     try:
-        return _tool(name, tool_method, function, request=None)
+        return _tool(name, tool_method, function, request=None, deprecated=None)
     except (PydanticSchemaGenerationError, PydanticInvalidForJsonSchema) as error:
         raise DefinitionError(
             f"Tool '{tool_method.signature.qualname}' can't be described for a model: each of its arguments, and its "
@@ -287,11 +296,20 @@ def _method_tool(name: str, tool_method: ToolMethod, function: Callable[..., Any
         ) from error
 
 
-def _tool(name: str, definition: Endpoint | ToolMethod, function: Callable[..., Any], *, request: str | None) -> Tool:
+def _tool(
+    name: str,
+    definition: Endpoint | ToolMethod,
+    function: Callable[..., Any],
+    *,
+    request: str | None,
+    deprecated: str | None,
+) -> Tool:
     """Return the tool for an endpoint or tool method.
 
     ``request`` is an endpoint's method and path template, its description when
     it has no docstring, or ``None`` for a tool method, which has a docstring.
+    ``deprecated`` is an endpoint's deprecation message, which the description
+    ends with.
     Pydantic's ``PydanticSchemaGenerationError`` or
     ``PydanticInvalidForJsonSchema`` propagates for a type with no JSON form.
     """
@@ -309,15 +327,19 @@ def _tool(name: str, definition: Endpoint | ToolMethod, function: Callable[..., 
         if "description" not in schema and parameter_name in argument_docs:
             schema["description"] = argument_docs[parameter_name]
     positional = tuple(p for p in parameters if p.kind is inspect.Parameter.POSITIONAL_ONLY)
+    description = _description(doc) or request or ""
+    if deprecated is not None:
+        description = f"{description}\n\nDeprecated: {deprecated}"
     return Tool(
         name=name,
-        description=_description(doc) or request or "",
+        description=description,
         input_schema=input_schema,
         output_schema=output_schema,
         read_only=definition.read_only,
         destructive=definition.destructive,
         idempotent=definition.idempotent,
         tags=tuple(definition.tags),
+        deprecated=deprecated,
         is_async=signature.is_async,
         _call=_Call(function, adapter, output, positional, request),
     )

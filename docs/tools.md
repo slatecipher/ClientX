@@ -78,13 +78,14 @@ A method of your own becomes a tool too with `@tool`: see [Tools that aren't end
 | `output_schema` | The JSON Schema of the result, from the return annotation, or `None` for `-> None`. |
 | `read_only`, `destructive`, `idempotent` | Hints about what it does: it changes nothing; it can delete or overwrite what's there; calling it again has no further effect. Each is set on its own: an endpoint's comes from its `tool_options=`, or else its HTTP method, and a tool method's from `@tool`, or else it's `False`. See [Hints](#hints). |
 | `tags` | The endpoint's tags, its resource's first (see [Tags](resources.md#tags)), to choose which tools to register by. |
+| `deprecated` | The endpoint's `deprecated=` message, or `None`. A deprecated endpoint is still a tool, and its description ends with `Deprecated:` and the message, so a model prefers the replacement. |
 | `is_async` | The endpoint is `async def`, so the tool is called with `await tool.acall(arguments)` instead of `call()`. |
 
 ## Descriptions
 
 A model chooses a tool and fills in its arguments from what the tool says, so the descriptions matter:
 
-- **The tool's description** is the endpoint's docstring, up to its first section. Put what the endpoint does, and when to use it, in the summary and the paragraphs after it.
+- **The tool's description** is the endpoint's docstring, up to its first section. Put what the endpoint does, and when to use it, in the summary and the paragraphs after it. A [deprecated](endpoints.md#deprecating-endpoints) endpoint's description ends with `Deprecated:` and its message, such as `Deprecated: Use get_user() instead.`
 - **An argument's description** is its helper's `description=`, such as `Query(description="...")`, or else its entry in the docstring's `Args:` section. A [Google-style](../CONTRIBUTING.md#docstrings) `Args:` section then serves a model, editors' hovers and `help()` at once.
 - **The schemas are compact.** Pydantic's `title` on every property is left out, and a model or `type` alias is written in place rather than behind a `$ref`, unless it refers to itself. Constraints, such as `Query(ge=1)`, and defaults are kept.
 
@@ -293,6 +294,8 @@ tools = [tool for tool in list_tools(api) if "ai" in tool.tags]  # products_sear
 `products_search` is a tool because its resource is tagged, and `orders_retrieve` because it's tagged itself. `orders_cancel` isn't tagged, so it's left out, and so is an endpoint added later to `Orders`, until you tag it.
 
 The hints are another way to choose, as in `[t for t in list_tools(api) if t.read_only]`: see [Hints](#hints).
+
+A deprecated endpoint is still a tool, with its message in `Tool.deprecated`. Leave it out with `[t for t in list_tools(api) if not t.deprecated]`, or keep it: its description tells the model what to use instead.
 
 ## Hints
 
