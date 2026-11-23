@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-23
+
 ### Added
 
 - `clientx.fastmcp`, with the `fastmcp` extra (`pip install "clientx[fastmcp]"`): `fastmcp_tool(tool)` turns a ClientX tool into a [FastMCP](https://gofastmcp.com) tool, to register on your own `FastMCP` server, next to its own tools. The model sees the tool's schema as it is, the ClientX tool validates its arguments, a result that isn't an object is wrapped as FastMCP wraps its own, and the hints and tags carry over. A `ToolError`'s message reaches the model, and any other exception only its type, so a URL or credential in its message doesn't. A sync client's tool runs in a worker thread.
@@ -58,7 +60,8 @@ First public release.
 - `llms.txt`: a compact guide to ClientX's patterns and pitfalls for AI coding assistants.
 - Support for Python 3.12, 3.13 and 3.14, with inline type information (`py.typed`).
 
-[Unreleased]: https://github.com/slatecipher/ClientX/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/slatecipher/ClientX/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/slatecipher/ClientX/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/slatecipher/ClientX/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/slatecipher/ClientX/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/slatecipher/ClientX/compare/v0.1.0...v0.2.0
