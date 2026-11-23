@@ -14,6 +14,7 @@ Anything else is internal and can change in any release: modules whose names sta
 | [`ClientXError`, `DefinitionError`, `ArgumentError`](#errors) | The errors ClientX raises. |
 | [`Auth`, `Request`, `Response`, `Timeout`](#from-httpx2) | httpx2's own classes, re-exported. |
 | [`list_tools`, `Tool`, `ToolError`, `ToolOptions`, `tool`](#clientxtools) | From `clientx.tools`: a client's endpoints, and its `@tool` methods, as tools a model can call, and the hints an endpoint sets for its tool. |
+| [`fastmcp_tool`](#clientxfastmcp) | From `clientx.fastmcp`: a ClientX tool as a FastMCP tool, to serve over MCP. |
 | [`__version__`](#__version__) | The installed version. |
 
 ## `ClientX`
@@ -223,6 +224,7 @@ await tool.acall(arguments: Mapping[str, Any] | None = None) -> Any  # on an Asy
 | `output_schema` | `dict` or `None` | The JSON Schema of the result, or `None` for `-> None`. |
 | `read_only`, `destructive`, `idempotent` | `bool` | Hints about what it does, each set on its own: an endpoint's from its `tool_options=`, or else its HTTP method; a tool method's from `@tool`, or else `False`. |
 | `tags` | `tuple[str, ...]` | The endpoint's tags, its resource's first. |
+| `deprecated` | `str` or `None` | The endpoint's `deprecated=` message, which its description starts with too. |
 | `is_async` | `bool` | Call it with `acall()` rather than `call()`. |
 
 `call()` validates a model's arguments leniently, passes only those it gave, and returns JSON-ready data. A failed call raises `ToolError`, with a message for the model that never holds the host or query string, and the original error as its `__cause__`. See [AI tools](tools.md).
@@ -230,6 +232,16 @@ await tool.acall(arguments: Mapping[str, Any] | None = None) -> Any  # on an Asy
 `ToolOptions` sets an endpoint's hints, through its verb's `tool_options=`. Each hint is worked out on its own: one you set is used as it is, and one left as `None` comes from the HTTP method (`GET`, `HEAD` and `OPTIONS` are read-only and idempotent; `PUT` and `DELETE` destructive and idempotent; `PATCH` destructive; `POST` none of them). Setting one hint never changes another. An endpoint whose hints end up read-only and destructive, set or from its method, raises `DefinitionError`. See [Where each hint comes from](tools.md#where-each-hint-comes-from).
 
 `@tool` makes a method of a client or resource a tool, listed and called as an endpoint is. It needs a docstring, its description, and a return annotation. Its hints are `False` unless set, as there's no HTTP method to take them from, and a resource's tags go in front of its own. `@tool` on an endpoint raises `DefinitionError`. See [Tools that aren't endpoints](tools.md#tools-that-arent-endpoints).
+
+## `clientx.fastmcp`
+
+```py
+from clientx.fastmcp import fastmcp_tool
+
+fastmcp_tool(tool: Tool) -> fastmcp.tools.Tool
+```
+
+Returns a FastMCP tool that calls a ClientX tool, for a `FastMCP` server's `tools=`, or `add_tool()`. Its parameters are the tool's `input_schema`, as it is, and the tool validates the model's arguments. A result that isn't an object is wrapped as `{"result": ...}`, as FastMCP wraps its own. The hints become MCP's annotations, and the tags FastMCP's. A `ToolError`'s message reaches the model, and any other exception's only its type. A sync client's tool runs in a worker thread. It needs FastMCP: `pip install "clientx[fastmcp]"`. See [Serving tools with FastMCP](tools.md#serving-tools-with-fastmcp).
 
 ## From httpx2
 
