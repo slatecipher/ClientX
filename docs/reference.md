@@ -13,7 +13,7 @@ Anything else is internal and can change in any release: modules whose names sta
 | [`Send`](#send) | Options that change how a parameter is sent. |
 | [`ClientXError`, `DefinitionError`, `ArgumentError`](#errors) | The errors ClientX raises. |
 | [`Auth`, `Request`, `Response`, `Timeout`](#from-httpx2) | httpx2's own classes, re-exported. |
-| [`list_tools`, `Tool`, `ToolError`](#clientxtools) | From `clientx.tools`: a client's endpoints as tools a model can call. |
+| [`list_tools`, `Tool`, `ToolError`, `ToolOptions`, `tool`](#clientxtools) | From `clientx.tools`: a client's endpoints, and its `@tool` methods, as tools a model can call, and the hints an endpoint sets for its tool. |
 | [`__version__`](#__version__) | The installed version. |
 
 ## `ClientX`
@@ -112,6 +112,7 @@ method.get(
     stream: bool = False,
     deprecated: str | None = None,
     tags: list[str] | None = None,
+    tool_options: ToolOptions | None = None,
     timeout: float | Timeout | None = ...,  # the client's
     raise_for_status: bool | None = None,  # the client's
 )
@@ -126,6 +127,7 @@ The module of verb decorators: `get`, `post`, `put`, `patch`, `delete`, `head` a
 | `stream` | `False` | Return the open, unread response, for the caller to read and close. Only with `-> Response` and no `decoder`. |
 | `deprecated` | none | The message of a `DeprecationWarning` that each call emits. |
 | `tags` | none | Labels that group endpoints, each kept once. AI tools carry them, as `Tool.tags`. |
+| `tool_options` | none | A [`ToolOptions`](#clientxtools) with hints about what the endpoint does, for AI tools. Each hint set there is used as it is, and each left out comes from the HTTP method. |
 | `timeout` | the client's | The request timeout, in seconds or as an `httpx2.Timeout`. `None` turns it off. |
 | `raise_for_status` | the client's | Whether a 4xx or 5xx response raises `httpx2.HTTPStatusError`. |
 
@@ -201,15 +203,17 @@ HTTP errors come from httpx2: `httpx2.HTTPStatusError` for a 4xx or 5xx response
 ## `clientx.tools`
 
 ```py
-from clientx.tools import Tool, ToolError, list_tools
+from clientx.tools import Tool, ToolError, ToolOptions, list_tools
 
 list_tools(client: ClientX | AsyncClientX) -> list[Tool]
+ToolOptions(*, read_only: bool | None = None, destructive: bool | None = None, idempotent: bool | None = None)
+@tool(*, read_only: bool = False, destructive: bool = False, idempotent: bool = False, tags: list[str] | None = None)
 
 tool.call(arguments: Mapping[str, Any] | None = None) -> Any  # on a ClientX
 await tool.acall(arguments: Mapping[str, Any] | None = None) -> Any  # on an AsyncClientX
 ```
 
-`list_tools` returns a `Tool` for each endpoint on the client and its mounted resources that a model can use: endpoints that stream, return the raw `Response`, or take an argument with no JSON form are left out. Nothing in it depends on an AI library.
+`list_tools` returns a `Tool` for each endpoint on the client and its mounted resources that a model can use, and for each `@tool` method there: endpoints that stream, return the raw `Response`, or take an argument with no JSON form are left out. Nothing in it depends on an AI library.
 
 | `Tool` attribute | Type | What it is |
 |---|---|---|
@@ -217,11 +221,15 @@ await tool.acall(arguments: Mapping[str, Any] | None = None) -> Any  # on an Asy
 | `description` | `str` | The docstring up to its first section, or else the method and path. |
 | `input_schema` | `dict` | The JSON Schema of the arguments, named as in the method, each described by its helper's `description=` or its docstring `Args:` entry. |
 | `output_schema` | `dict` or `None` | The JSON Schema of the result, or `None` for `-> None`. |
-| `read_only`, `destructive`, `idempotent` | `bool` | Hints from the HTTP method. |
+| `read_only`, `destructive`, `idempotent` | `bool` | Hints about what it does, each set on its own: an endpoint's from its `tool_options=`, or else its HTTP method; a tool method's from `@tool`, or else `False`. |
 | `tags` | `tuple[str, ...]` | The endpoint's tags, its resource's first. |
 | `is_async` | `bool` | Call it with `acall()` rather than `call()`. |
 
 `call()` validates a model's arguments leniently, passes only those it gave, and returns JSON-ready data. A failed call raises `ToolError`, with a message for the model that never holds the host or query string, and the original error as its `__cause__`. See [AI tools](tools.md).
+
+`ToolOptions` sets an endpoint's hints, through its verb's `tool_options=`. Each hint is worked out on its own: one you set is used as it is, and one left as `None` comes from the HTTP method (`GET`, `HEAD` and `OPTIONS` are read-only and idempotent; `PUT` and `DELETE` destructive and idempotent; `PATCH` destructive; `POST` none of them). Setting one hint never changes another. An endpoint whose hints end up read-only and destructive, set or from its method, raises `DefinitionError`. See [Where each hint comes from](tools.md#where-each-hint-comes-from).
+
+`@tool` makes a method of a client or resource a tool, listed and called as an endpoint is. It needs a docstring, its description, and a return annotation. Its hints are `False` unless set, as there's no HTTP method to take them from, and a resource's tags go in front of its own. `@tool` on an endpoint raises `DefinitionError`. See [Tools that aren't endpoints](tools.md#tools-that-arent-endpoints).
 
 ## From httpx2
 

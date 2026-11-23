@@ -1,9 +1,9 @@
-"""Describe a client's endpoints as tools a model can call.
+"""Describe a client's endpoints, and its ``@tool`` methods, as tools.
 
 ``list_tools(client)`` returns one ``Tool`` per endpoint on the client and the
-resources mounted on it: a name, a description, a JSON Schema of its arguments
-and of its result, hints from its HTTP method, its tags, and ``call()`` or
-``acall()``.
+resources mounted on it, and per method ``@tool`` marks there: a name, a
+description, a JSON Schema of its arguments and of its result, hints about what
+it does, its tags, and ``call()`` or ``acall()``.
 Nothing here depends on an AI library, so an adapter for MCP or another
 framework can build on it.
 
@@ -13,6 +13,14 @@ framework can build on it.
 - Left out: an endpoint that streams (``-> Iterator[...]`` or
   ``stream=True``), returns the raw ``Response``, or has an argument with no
   JSON form, such as a binary file. A model can't use them well.
+- Tool methods: ``@tool`` makes a method of a client or resource a tool, such
+  as one that calls several endpoints and returns what a model needs at once.
+  It needs a docstring, which is its description. Its hints are ``False``
+  unless set, as there's no HTTP method to take them from. It's checked when
+  it's decorated, and its kind (``def`` or ``async def``) when its class is
+  defined, as an endpoint is. One whose arguments or result have no JSON form
+  raises ``DefinitionError`` when it's listed, rather than being left out:
+  it was made a tool on purpose.
 - Descriptions: the docstring, up to its first section (``Args:``,
   ``Returns:``...), or else the method and path. An argument's description is
   its helper's ``description=``, or else its entry in the docstring's
@@ -25,9 +33,15 @@ framework can build on it.
   leniently, so ``"7"`` fits an ``int``. Only the arguments the model gave are
   passed, so a default stays a default, as ``Send(exclude_unset=True)`` and a
   JSON field's ``None`` need. The result is JSON-ready data.
+- Hints: each is worked out on its own, as the endpoint's ``tool_options=``
+  setting, or else what its HTTP method implies (``ToolOptions`` lists them),
+  so setting one never changes another. An endpoint can't be read-only and
+  destructive.
 - Errors: a failed call raises ``ToolError``, with a message written for a
   model and the original error as its cause. HTTP errors name the method and
   path template, never the host or query string, which can hold credentials.
+  A tool method's requests aren't one endpoint's, so its HTTP errors name only
+  the HTTP method.
 """
 
 from __future__ import annotations
@@ -44,23 +58,25 @@ import httpx2
 from pydantic import PydanticSchemaGenerationError, TypeAdapter, ValidationError
 from pydantic.errors import PydanticInvalidForJsonSchema
 
-from clientx._registry import endpoint_for
+from clientx._registry import endpoint_for, register_tool_method, tool_method_for
+from clientx._signature import NO_VALUE, ParameterKind, inspect_definition
 from clientx._validation import arguments_adapter, describe_errors
-from clientx.exceptions import ArgumentError, ToolError
+from clientx.exceptions import ArgumentError, DefinitionError, ToolError
 
 if TYPE_CHECKING:
     from clientx._client import AsyncClientX, ClientX
     from clientx._endpoint import Endpoint
-    from clientx._signature import ParameterInfo
+    from clientx._signature import ParameterInfo, SignatureInfo
 
 
 # --- Entry point --------------------------------------------------------------
 def list_tools(client: ClientX | AsyncClientX) -> list[Tool]:
-    """Return a tool for each endpoint a model can call, resources' included.
+    """Return a tool for each endpoint a model can call, and each ``@tool``.
 
     Every endpoint on the client and the resources mounted on it is a tool,
-    named by its attribute path (``users_create``), except one a model can't
-    use well:
+    named by its attribute path (``users_create``), and so is every method
+    there that ``@tool`` marks. An endpoint is left out if a model can't use it
+    well:
 
     - one that streams, annotated ``-> Iterator[...]`` or with
       ``stream=True``;
@@ -68,7 +84,11 @@ def list_tools(client: ClientX | AsyncClientX) -> list[Tool]:
       instead, such as a model or ``dict[str, Any]``;
     - one with an argument that has no JSON form, such as a binary file.
 
-    An endpoint's second name in its class is listed once.
+    An endpoint's or tool method's second name in its class is listed once.
+
+    Raises:
+        DefinitionError: If a ``@tool`` method's arguments or result have no
+            JSON form.
     """
     tools: list[Tool] = []
     _collect(client, "", tools, set())
@@ -76,20 +96,24 @@ def list_tools(client: ClientX | AsyncClientX) -> list[Tool]:
 
 
 def _collect(owner: object, prefix: str, tools: list[Tool], seen: set[int]) -> None:
-    """Add a tool for each endpoint on ``owner``, then on its resources.
+    """Add the tools on ``owner``, then those on its resources.
 
-    ``seen`` holds each endpoint met so far, by ``id``, so an endpoint's second
-    name is left out.
+    ``seen`` holds each endpoint and tool method met so far, by ``id``, so a
+    second name is left out.
     """
     for name, value in _members(type(owner)).items():
-        endpoint = endpoint_for(value)
-        if endpoint is not None and id(endpoint) not in seen:
-            seen.add(id(endpoint))
-            tool = _tool(prefix + name, endpoint, getattr(owner, name))
-            if tool is not None:
-                tools.append(tool)
-        elif hasattr(type(value), "__clientx_prefix__"):  # A mounted resource.
-            _collect(getattr(owner, name), f"{prefix}{name}_", tools, seen)
+        definition = endpoint_for(value) or tool_method_for(value)
+        if definition is None:
+            if hasattr(type(value), "__clientx_prefix__"):  # A mounted resource.
+                _collect(getattr(owner, name), f"{prefix}{name}_", tools, seen)
+            continue
+        if id(definition) in seen:
+            continue
+        seen.add(id(definition))
+        if isinstance(definition, ToolMethod):
+            tools.append(_method_tool(prefix + name, definition, getattr(owner, name)))
+        elif (tool := _endpoint_tool(prefix + name, definition, getattr(owner, name))) is not None:
+            tools.append(tool)
 
 
 def _members(cls: type) -> dict[str, object]:
@@ -103,23 +127,29 @@ def _members(cls: type) -> dict[str, object]:
 # --- Tools --------------------------------------------------------------------
 @dataclass(frozen=True, kw_only=True)
 class Tool:
-    """An endpoint described for a model, and called with a model's arguments.
+    """An endpoint or ``@tool`` method described for a model, and called.
+
+    Each hint, ``read_only``, ``destructive`` or ``idempotent``, is worked out
+    on its own: an endpoint's is its ``tool_options=`` setting, or else what its
+    HTTP method implies, and a tool method's is its ``@tool`` setting, or else
+    ``False``. ClientX doesn't act on them: they're for choosing tools, and for
+    frameworks that show them to a model.
 
     Attributes:
         name: The attribute path from the client, joined with ``_``.
-        description: What the endpoint does, from its docstring.
+        description: What it does, from its docstring.
         input_schema: The JSON Schema of the arguments: an object with one
             property per parameter, named as in the method.
-        output_schema: The JSON Schema of the result, or ``None`` for an
-            endpoint annotated ``-> None``.
-        read_only: The endpoint only reads: ``GET``, ``HEAD`` or ``OPTIONS``.
-        destructive: It can change or delete what's there: ``PUT``,
-            ``PATCH`` or ``DELETE``.
-        idempotent: Calling it twice has the effect of calling it once:
-            ``GET``, ``HEAD``, ``OPTIONS``, ``PUT`` or ``DELETE``.
-        tags: The endpoint's tags, its resource's first, to choose which tools
-            to register by.
-        is_async: It's an ``async def`` endpoint, called with ``acall()``.
+        output_schema: The JSON Schema of the result, or ``None`` for
+            ``-> None``.
+        read_only: Calling it changes nothing.
+        destructive: It can delete or overwrite what's there. ``False`` means
+            it only adds.
+        idempotent: Calling it again with the same arguments has no further
+            effect.
+        tags: Its tags, its resource's first, to choose which tools to
+            register by.
+        is_async: It's ``async def``, so it's called with ``acall()``.
     """
 
     name: str
@@ -134,12 +164,12 @@ class Tool:
     _call: _Call = field(repr=False, compare=False)
 
     def call(self, arguments: Mapping[str, Any] | None = None) -> Any:
-        """Call the endpoint with a model's arguments; return JSON-ready data.
+        """Call it with a model's arguments; return JSON-ready data.
 
         Raises:
-            ToolError: If the arguments don't fit, the request can't be sent or
-                fails, or the response doesn't fit the endpoint's annotation.
-            TypeError: If the endpoint is ``async def``: use ``acall()``.
+            ToolError: If the arguments don't fit, a request can't be sent or
+                fails, or a response doesn't fit its endpoint's annotation.
+            TypeError: If it's ``async def``: use ``acall()``.
         """
         if self.is_async:
             raise TypeError(f"Tool {self.name!r} is an async def endpoint: call it with acall().")
@@ -149,11 +179,11 @@ class Tool:
         return self._call.dump(result)
 
     async def acall(self, arguments: Mapping[str, Any] | None = None) -> Any:
-        """Call the ``async def`` endpoint with a model's arguments.
+        """Call the ``async def`` endpoint or method with a model's arguments.
 
         Raises:
             ToolError: As for ``call()``.
-            TypeError: If the endpoint is a plain ``def``: use ``call()``.
+            TypeError: If it's a plain ``def``: use ``call()``.
         """
         if not self.is_async:
             raise TypeError(f"Tool {self.name!r} is a def endpoint: call it with call().")
@@ -165,13 +195,13 @@ class Tool:
 
 @dataclass(frozen=True)
 class _Call:
-    """What a tool needs to call its endpoint and report on it."""
+    """What a tool needs to call its endpoint or method and report on it."""
 
     function: Callable[..., Any]
     adapter: TypeAdapter[dict[str, Any]]
     output: TypeAdapter[Any] | None
     positional: tuple[ParameterInfo, ...]
-    request: str  # The method and path template, for messages: "POST /users".
+    request: str | None  # An endpoint's method and path template, for messages: "POST /users".
 
     def arguments(self, name: str, arguments: Mapping[str, Any] | None) -> tuple[list[Any], dict[str, Any]]:
         """Return the validated arguments the model gave, to call with.
@@ -180,7 +210,7 @@ class _Call:
         left out before one it gave gets its default.
 
         Raises:
-            ToolError: If the arguments don't fit the endpoint's parameters.
+            ToolError: If the arguments don't fit the parameters.
         """
         given = dict(arguments or {})
         try:
@@ -200,7 +230,8 @@ class _Call:
         """Raise ``ToolError`` for what can go wrong in a call, with its cause.
 
         An HTTP error shows the API's own answer, truncated, as it often says
-        what to fix.
+        what to fix. A tool method's request isn't one endpoint's, so its
+        messages name only the HTTP method.
         """
         try:
             yield
@@ -208,68 +239,198 @@ class _Call:
             raise ToolError(f"{name} couldn't send its request: {error}", tool=name) from error
         except httpx2.HTTPStatusError as error:
             response = error.response
-            message = f"{name}: the API answered {response.status_code} {response.reason_phrase} to {self.request}"
+            target = self.request or f"a {error.request.method} request"
+            message = f"{name}: the API answered {response.status_code} {response.reason_phrase} to {target}"
             body = response.text.strip()
             raise ToolError(f"{message}: {_truncated(body)}" if body else f"{message}.", tool=name) from error
         except httpx2.RequestError as error:
+            target = f"the request to {self.request}" if self.request else "a request"
             raise ToolError(
-                f"{name}: the request to {self.request} failed before the API answered ({type(error).__name__}).",
-                tool=name,
+                f"{name}: {target} failed before the API answered ({type(error).__name__}).", tool=name
             ) from error
         except ValidationError as error:
-            raise ToolError(
-                f"{name}: the API's answer to {self.request} doesn't fit the endpoint's return annotation: "
-                f"{describe_errors(error, values=False)}.",
-                tool=name,
-            ) from error
+            what = (
+                f"the API's answer to {self.request} doesn't fit the endpoint's return annotation"
+                if self.request
+                else "an answer from the API doesn't fit the type it was read into"
+            )
+            raise ToolError(f"{name}: {what}: {describe_errors(error, values=False)}.", tool=name) from error
 
     def dump(self, result: Any) -> Any:
-        """Return the endpoint's result as JSON-ready data."""
+        """Return the result as JSON-ready data."""
         return None if self.output is None else self.output.dump_python(result, mode="json")
 
 
 # --- Building a tool ----------------------------------------------------------
-# What each HTTP method implies, for the hints. POST is in none of them: it
-# usually adds something, so it's neither read-only nor idempotent, and not
-# destructive either, which is for replacing or removing what's there.
-_READ_ONLY = frozenset({"GET", "HEAD", "OPTIONS"})
-_IDEMPOTENT = frozenset({"GET", "HEAD", "OPTIONS", "PUT", "DELETE"})
-_DESTRUCTIVE = frozenset({"PUT", "PATCH", "DELETE"})
-
-
-def _tool(name: str, endpoint: Endpoint, function: Callable[..., Any]) -> Tool | None:
+def _endpoint_tool(name: str, endpoint: Endpoint, function: Callable[..., Any]) -> Tool | None:
     """Return the tool for an endpoint, or ``None`` if a model can't use it."""
-    returns = endpoint.signature.returns
-    if endpoint.stream or returns.base_type is httpx2.Response:
+    if endpoint.stream or endpoint.signature.returns.base_type is httpx2.Response:
         return None
-    parameters = endpoint.signature.parameters[1:]
     try:
-        adapter = arguments_adapter(parameters)
-        input_schema = _compact(adapter.json_schema(by_alias=False))
-        returns_nothing = returns.base_type is None or returns.base_type is NoneType
-        output = None if returns_nothing else TypeAdapter[Any](returns.annotation)
-        output_schema = None if output is None else _compact(output.json_schema(mode="serialization"))
+        return _tool(name, endpoint, function, request=f"{endpoint.method} {endpoint.raw_path or '/'}")
     except (PydanticSchemaGenerationError, PydanticInvalidForJsonSchema):
         return None
-    doc = inspect.cleandoc(endpoint.signature.doc or "")
+
+
+def _method_tool(name: str, tool_method: ToolMethod, function: Callable[..., Any]) -> Tool:
+    """Return the tool for a ``@tool`` method.
+
+    Raises:
+        DefinitionError: If an argument or the result has no JSON form.
+    """
+    try:
+        return _tool(name, tool_method, function, request=None)
+    except (PydanticSchemaGenerationError, PydanticInvalidForJsonSchema) as error:
+        raise DefinitionError(
+            f"Tool '{tool_method.signature.qualname}' can't be described for a model: each of its arguments, and its "
+            f"result, needs a JSON form, unlike a binary file or a raw Response ({type(error).__name__})."
+        ) from error
+
+
+def _tool(name: str, definition: Endpoint | ToolMethod, function: Callable[..., Any], *, request: str | None) -> Tool:
+    """Return the tool for an endpoint or tool method.
+
+    ``request`` is an endpoint's method and path template, its description when
+    it has no docstring, or ``None`` for a tool method, which has a docstring.
+    Pydantic's ``PydanticSchemaGenerationError`` or
+    ``PydanticInvalidForJsonSchema`` propagates for a type with no JSON form.
+    """
+    signature = definition.signature
+    parameters = signature.parameters[1:]
+    returns = signature.returns
+    adapter = arguments_adapter(parameters)
+    input_schema = _compact(adapter.json_schema(by_alias=False))
+    returns_nothing = returns.base_type is None or returns.base_type is NoneType
+    output = None if returns_nothing else TypeAdapter[Any](returns.annotation)
+    output_schema = None if output is None else _compact(output.json_schema(mode="serialization"))
+    doc = inspect.cleandoc(signature.doc or "")
     argument_docs = _argument_docs(doc)
     for parameter_name, schema in input_schema.get("properties", {}).items():
         if "description" not in schema and parameter_name in argument_docs:
             schema["description"] = argument_docs[parameter_name]
-    request = f"{endpoint.method} {endpoint.raw_path or '/'}"
     positional = tuple(p for p in parameters if p.kind is inspect.Parameter.POSITIONAL_ONLY)
     return Tool(
         name=name,
-        description=_description(doc) or request,
+        description=_description(doc) or request or "",
         input_schema=input_schema,
         output_schema=output_schema,
-        read_only=endpoint.method in _READ_ONLY,
-        destructive=endpoint.method in _DESTRUCTIVE,
-        idempotent=endpoint.method in _IDEMPOTENT,
-        tags=tuple(endpoint.tags),
-        is_async=endpoint.signature.is_async,
+        read_only=definition.read_only,
+        destructive=definition.destructive,
+        idempotent=definition.idempotent,
+        tags=tuple(definition.tags),
+        is_async=signature.is_async,
         _call=_Call(function, adapter, output, positional, request),
     )
+
+
+# --- Tool methods -------------------------------------------------------------
+@dataclass(slots=True)
+class ToolMethod:
+    """A method ``@tool`` made a tool, with what ``list_tools`` needs of it.
+
+    Attributes:
+        signature: The method's analysed signature. The first parameter
+            receives the client or resource.
+        read_only: ``@tool``'s ``read_only`` hint.
+        destructive: ``@tool``'s ``destructive`` hint.
+        idempotent: ``@tool``'s ``idempotent`` hint.
+        tags: ``@tool``'s tags, each once. A resource puts its own in front
+            when its class is defined.
+    """
+
+    signature: SignatureInfo
+    read_only: bool
+    destructive: bool
+    idempotent: bool
+    tags: list[str]
+
+
+def tool[F: Callable[..., Any]](
+    *,
+    read_only: bool = False,
+    destructive: bool = False,
+    idempotent: bool = False,
+    tags: list[str] | None = None,
+) -> Callable[[F], F]:
+    """Make a method of a client or resource a tool, beside its endpoints.
+
+    For a tool that isn't one endpoint, such as one that calls several and
+    returns what a model needs in one call. ``list_tools`` lists it as it lists
+    an endpoint: named by its attribute path, described by its docstring, with
+    schemas from its signature. The method itself is returned unchanged.
+
+    The hints mean what ``ToolOptions`` says. They're ``False`` unless set, as
+    there's no HTTP method to take them from. A resource's tags go in front of
+    ``tags``. An endpoint is a tool already: set its hints with its verb's
+    ``tool_options=``.
+
+    Like an endpoint, a tool method is ``def`` on a ``ClientX`` or
+    ``Resource``, and ``async def`` on an ``AsyncClientX`` or
+    ``AsyncResource``, which its class checks when it's defined.
+
+    Raises:
+        DefinitionError: If the method is an endpoint, has no docstring or no
+            return annotation, has no positional first parameter, takes
+            ``*args`` or ``**kwargs``, or is read-only and destructive.
+    """
+
+    def decorator(func: F) -> F:
+        if endpoint_for(func) is not None:  # @tool over the verb.
+            raise DefinitionError(
+                f"'{func.__qualname__}' is an endpoint, so it's a tool already: instead of @tool, set its hints "
+                "with its verb's `tool_options=`."
+            )
+        tool_method = ToolMethod(
+            signature=inspect_definition(func, "Tool"),
+            read_only=read_only,
+            destructive=destructive,
+            idempotent=idempotent,
+            tags=list(dict.fromkeys(tags or ())),
+        )
+        _check_tool_method(tool_method)
+        register_tool_method(func, tool_method)
+        return func
+
+    return decorator
+
+
+def _check_tool_method(tool_method: ToolMethod) -> None:
+    """Raise ``DefinitionError`` unless a ``@tool`` method can be a tool.
+
+    It needs a docstring, which is its description: there's no method and path
+    to fall back on. It needs a return annotation, for its output schema and
+    to turn its result into JSON. A model passes arguments by name, so each
+    parameter after the first, which receives the client or resource, is one
+    argument.
+    """
+    signature = tool_method.signature
+    name = signature.qualname
+    if not _description(inspect.cleandoc(signature.doc or "")):
+        raise DefinitionError(
+            f"Tool '{name}' needs a docstring: it's the tool's description, which a model reads to choose it."
+        )
+    if signature.returns.annotation is NO_VALUE:
+        raise DefinitionError(
+            f"Tool '{name}' needs a return annotation: it's the tool's output schema, and says how its result "
+            "becomes JSON. Use `-> None` if it returns nothing."
+        )
+    first = signature.parameters[0] if signature.parameters else None
+    if first is None or first.kind not in (ParameterKind.POSITIONAL_ONLY, ParameterKind.POSITIONAL_OR_KEYWORD):
+        raise DefinitionError(
+            f"Tool '{name}' needs a positional first parameter, such as `self`, for the client or resource it's "
+            "called on."
+        )
+    for parameter in signature.parameters[1:]:
+        if parameter.kind in (ParameterKind.VAR_POSITIONAL, ParameterKind.VAR_KEYWORD):
+            star = "*" if parameter.kind is ParameterKind.VAR_POSITIONAL else "**"
+            raise DefinitionError(
+                f"Tool '{name}' can't take `{star}{parameter.name}`: a model passes each argument by name, so each "
+                "needs a parameter of its own."
+            )
+    if tool_method.read_only and tool_method.destructive:
+        raise DefinitionError(
+            f"Tool '{name}' can't be both read-only and destructive: a read-only tool changes nothing."
+        )
 
 
 # --- Error messages -----------------------------------------------------------

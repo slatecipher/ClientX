@@ -2,7 +2,7 @@
 
 ``list_tools(client)`` returns one ``Tool`` per endpoint a model can use, on
 the client and the resources mounted on it. Each has a name, a description, a
-JSON Schema of its arguments and of its result, hints from its HTTP method, and
+JSON Schema of its arguments and of its result, hints about what it does, and
 ``call()`` (or ``acall()`` for an async client), which validates a model's
 arguments, calls the endpoint and returns JSON-ready data. A failed call raises
 ``ToolError``, with a message written for the model::
@@ -13,11 +13,16 @@ arguments, calls the endpoint and returns JSON-ready data. A failed call raises
     tools = {tool.name: tool for tool in list_tools(api)}
     tools["users_search"].call({"name": "Ada"})
 
+``@tool`` makes a method of the client or a resource a tool too, such as one
+that calls several endpoints and returns what a model needs in one call.
+``ToolOptions``, a verb's ``tool_options=``, sets an endpoint's hints.
+
 Nothing here depends on an AI library: register the tools with MCP or another
 framework, which decides how a model sees and calls them.
 """
 
-from clientx._tools import Tool, list_tools
+from clientx._tools import Tool, list_tools, tool
+from clientx._types import ToolOptions
 from clientx.exceptions import ToolError
 
-__all__ = ["Tool", "ToolError", "list_tools"]
+__all__ = ["Tool", "ToolError", "ToolOptions", "list_tools", "tool"]

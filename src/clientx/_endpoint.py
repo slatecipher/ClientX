@@ -12,7 +12,7 @@ resource's prefix and tags onto ``raw_path`` and ``tags``, and calls
 import functools
 import inspect
 from collections.abc import AsyncIterator, Iterator
-from dataclasses import dataclass, field
+from dataclasses import InitVar, dataclass, field
 from types import NoneType
 from typing import Any, get_origin
 
@@ -22,10 +22,19 @@ from pydantic import TypeAdapter
 from clientx._builder import build_request
 from clientx._decoding import default_decoder, is_stream
 from clientx._planner import RequestPlan, plan_request
+from clientx._registry import tool_method_for
 from clientx._signature import NO_VALUE, BoundCall, ParameterInfo, ParameterKind, SignatureInfo
-from clientx._types import BuildRequestKwargs, Decoder, MethodType, UseClientDefault
+from clientx._types import BuildRequestKwargs, Decoder, MethodType, ToolOptions, UseClientDefault
 from clientx._validation import build_arguments_validator, check_arguments
 from clientx.exceptions import DefinitionError
+
+# What each HTTP method implies for the tool hints ``tool_options=`` leaves out.
+# POST is in none of them: it usually adds something, so it's neither read-only
+# nor idempotent, and not destructive either, which is for replacing or
+# removing what's there.
+_READ_ONLY = frozenset({"GET", "HEAD", "OPTIONS"})
+_IDEMPOTENT = frozenset({"GET", "HEAD", "OPTIONS", "PUT", "DELETE"})
+_DESTRUCTIVE = frozenset({"PUT", "PATCH", "DELETE"})
 
 
 @dataclass(slots=True)
@@ -57,6 +66,14 @@ class Endpoint:
         stream_response: The decorator's ``stream=True``: the endpoint returns
             the open, unread response, which the caller reads and closes. Only
             with ``-> Response``, and without a ``decoder=``.
+        read_only: A hint for tools: calling the endpoint changes nothing.
+            Like ``destructive`` and ``idempotent``, it's the decorator's
+            ``tool_options=`` setting, or else what the HTTP method implies.
+            ``__post_init__`` sets the three.
+        destructive: A hint for tools: the endpoint can delete or overwrite
+            what's there.
+        idempotent: A hint for tools: calling the endpoint again with the
+            same arguments has no further effect.
         owner: The client or resource class whose body declares the endpoint, or
             ``None`` until that class is defined. An endpoint has one owner, so
             a resource joins its prefix once.
@@ -81,21 +98,28 @@ class Endpoint:
     raise_for_status: bool | None = field(default=None)
     stream_response: bool = field(default=False)
     owner: type | None = field(default=None)
+    tool_options: InitVar[ToolOptions | None] = None
+    read_only: bool = field(init=False)
+    destructive: bool = field(init=False)
+    idempotent: bool = field(init=False)
     request: RequestPlan | None = field(default=None, init=False)
     stream: bool = field(init=False)
     arguments_validator: TypeAdapter[dict[str, Any]] | None = field(default=None, init=False, repr=False)
 
-    def __post_init__(self) -> None:
+    def __post_init__(self, tool_options: ToolOptions | None) -> None:
         """Check the signature and work out how to decode the response, once.
 
         It runs when the method is decorated, before its class exists.
 
         Raises:
             DefinitionError: If the parameters, the return annotation,
-                ``stream=True`` or the ``decoder=`` can't work; see the
-                ``_check_*`` methods and ``default_decoder``.
+                ``stream=True``, the ``decoder=`` or the tool hints can't work,
+                or the method is a ``@tool`` method too; see the ``_check_*``
+                and ``_set_*`` methods and ``default_decoder``.
         """
         self.tags = list(dict.fromkeys(self.tags))  # Each tag once, in order.
+        self._check_not_a_tool_method()
+        self._set_tool_hints(tool_options or ToolOptions())
         self._check_parameters()
         self._check_return_annotation()
         self._check_stream_response()
@@ -110,6 +134,35 @@ class Endpoint:
                 self.decoder = default_decoder(returns, is_async=is_async)
         except DefinitionError as error:
             raise DefinitionError(f"Endpoint '{name}': {error}") from error
+
+    def _check_not_a_tool_method(self) -> None:
+        """Raise ``DefinitionError`` if ``@tool`` is under the verb.
+
+        ``@tool`` over the verb raises when it's applied, as it gets the
+        endpoint.
+        """
+        if tool_method_for(self.signature.func) is not None:
+            raise DefinitionError(
+                f"'{self.signature.qualname}' is an endpoint, so it's a tool already: instead of @tool, set its "
+                "hints with its verb's `tool_options=`."
+            )
+
+    def _set_tool_hints(self, options: ToolOptions) -> None:
+        """Set each tool hint from ``options``, or else from the HTTP method.
+
+        Raises:
+            DefinitionError: If the hints say read-only and destructive.
+        """
+        method = self.method
+        self.read_only = method in _READ_ONLY if options.read_only is None else options.read_only
+        self.destructive = method in _DESTRUCTIVE if options.destructive is None else options.destructive
+        self.idempotent = method in _IDEMPOTENT if options.idempotent is None else options.idempotent
+        if self.read_only and self.destructive:
+            raise DefinitionError(
+                f"Endpoint '{self.signature.qualname}' can't be both read-only and destructive: a read-only endpoint "
+                "changes nothing. Set `read_only=False` or `destructive=False` in `tool_options=`; a hint left out "
+                f"there comes from the HTTP method, {method}."
+            )
 
     def _check_parameters(self) -> None:
         """Raise ``DefinitionError`` unless the parameters fit an endpoint.

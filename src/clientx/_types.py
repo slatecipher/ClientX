@@ -95,6 +95,36 @@ class Send:
     json_part: bool | None = None
 
 
+# --- Tool options -------------------------------------------------------------
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ToolOptions:
+    """Hints about what an endpoint does, for the tool ``list_tools`` makes.
+
+    Pass it to a verb decorator's ``tool_options=``. Each hint is worked out on
+    its own: one you set is used as it is, and one left as ``None`` comes from
+    the HTTP method. ``GET``, ``HEAD`` and ``OPTIONS`` are read-only,
+    ``PUT``, ``PATCH`` and ``DELETE`` destructive, and ``GET``, ``HEAD``,
+    ``OPTIONS``, ``PUT`` and ``DELETE`` idempotent. Set the ones the method gets
+    wrong, such as ``read_only=True`` for ``POST /search``. Setting one hint
+    never changes another: ``read_only=False`` on a ``GET`` leaves it
+    idempotent unless ``idempotent=False`` is set too.
+
+    An endpoint can't be read-only and destructive: one whose hints, set or
+    from its method, say both raises ``DefinitionError`` when it's decorated.
+
+    Attributes:
+        read_only: Calling it changes nothing.
+        destructive: It can delete or overwrite what's there. ``False`` means
+            it only adds.
+        idempotent: Calling it again with the same arguments has no further
+            effect.
+    """
+
+    read_only: bool | None = None
+    destructive: bool | None = None
+    idempotent: bool | None = None
+
+
 # --- Type aliases -------------------------------------------------------------
 type MethodType = Literal["GET", "PUT", "POST", "PATCH", "DELETE", "HEAD", "OPTIONS"]
 

@@ -10,9 +10,8 @@ from clientx._client import AsyncClientX, AsyncResource, ClientX, EndpointOwner,
 from clientx._decoding import adecode, araise_status_error, decode, raise_status_error
 from clientx._endpoint import Endpoint
 from clientx._registry import register_endpoint_function
-from clientx._signature import BoundCall, SignatureInfo, inspect_signature
-from clientx._types import Decoder, MethodType, UseClientDefault
-from clientx.exceptions import DefinitionError
+from clientx._signature import BoundCall, inspect_definition
+from clientx._types import Decoder, MethodType, ToolOptions, UseClientDefault
 
 
 # --- What type checkers see ---------------------------------------------------
@@ -86,6 +85,7 @@ class Method:
         stream: bool = False,
         deprecated: str | None = None,
         tags: list[str] | None = None,
+        tool_options: ToolOptions | None = None,
         timeout: Timeout | float | None | UseClientDefault = USE_CLIENT_DEFAULT,
         raise_for_status: bool | None = None,
     ) -> EndpointDecorator: ...
@@ -98,6 +98,7 @@ class Method:
         stream: bool = False,
         deprecated: str | None = None,
         tags: list[str] | None = None,
+        tool_options: ToolOptions | None = None,
         timeout: Timeout | float | None | UseClientDefault = USE_CLIENT_DEFAULT,
         raise_for_status: bool | None = None,
     ) -> DecodedEndpointDecorator[D]: ...
@@ -109,6 +110,7 @@ class Method:
         stream: bool = False,
         deprecated: str | None = None,
         tags: list[str] | None = None,
+        tool_options: ToolOptions | None = None,
         timeout: Timeout | float | None | UseClientDefault = USE_CLIENT_DEFAULT,
         raise_for_status: bool | None = None,
     ) -> Any:
@@ -130,6 +132,9 @@ class Method:
             deprecated: The message of a ``DeprecationWarning`` each call emits.
             tags: Labels that group endpoints, each kept once. A resource's tags
                 go in front. ClientX doesn't use them itself yet.
+            tool_options: Hints about what the endpoint does, for its tool. Each
+                one set is used as it is, and each left out comes from the HTTP
+                method; see ``ToolOptions``.
             timeout: The request timeout, as httpx2 takes it: the default uses
                 the client's, and ``None`` turns it off.
             raise_for_status: Whether a 4xx or 5xx response raises
@@ -140,13 +145,14 @@ class Method:
             endpoint = Endpoint(
                 method=self.method,
                 raw_path=path,
-                signature=_inspect_endpoint_signature(func),
+                signature=inspect_definition(func, "Endpoint"),
                 tags=list(tags or ()),
                 timeout=timeout,
                 raise_for_status=raise_for_status,
                 decoder=decoder,
                 stream_response=stream,
                 deprecated=deprecated,
+                tool_options=tool_options,
             )
 
             @wraps(func)
@@ -190,22 +196,6 @@ class Method:
             return endpoint_function
 
         return decorator
-
-
-def _inspect_endpoint_signature(func: Callable[..., Any]) -> SignatureInfo:
-    """Inspect an endpoint, raising ``DefinitionError`` for an undefined name.
-
-    Its annotations are evaluated now, when it's decorated, so a type defined
-    further down the module isn't defined yet. Python's ``NameError`` doesn't
-    say which endpoint it's in.
-    """
-    try:
-        return inspect_signature(func)
-    except NameError as error:
-        raise DefinitionError(
-            f"Endpoint '{func.__qualname__}': {error}. ClientX evaluates annotations when the method is decorated: "
-            "define the types it names before its class."
-        ) from error
 
 
 def _check_arguments(endpoint: Endpoint, client: ClientX | AsyncClientX, bound: BoundCall) -> None:

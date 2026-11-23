@@ -66,6 +66,8 @@ Every endpoint on the client, and on the resources mounted on it, is a tool, exc
 
 An endpoint's second name in its class is the same endpoint, so it's listed once.
 
+A method of your own becomes a tool too with `@tool`: see [Tools that aren't endpoints](#tools-that-arent-endpoints).
+
 ## What a tool has
 
 | Attribute | What it is |
@@ -74,7 +76,7 @@ An endpoint's second name in its class is the same endpoint, so it's listed once
 | `description` | The endpoint's docstring, up to its first section, such as `Args:`. Without a docstring, the method and path: `GET /users/{user_id}`. |
 | `input_schema` | The JSON Schema of the arguments: an object with one property per parameter, named as in the method. |
 | `output_schema` | The JSON Schema of the result, from the return annotation, or `None` for `-> None`. |
-| `read_only`, `destructive`, `idempotent` | Hints from the HTTP method: `GET`, `HEAD` and `OPTIONS` only read; `PUT`, `PATCH` and `DELETE` can change or delete what's there; and `GET`, `HEAD`, `OPTIONS`, `PUT` and `DELETE` have the same effect when called twice. |
+| `read_only`, `destructive`, `idempotent` | Hints about what it does: it changes nothing; it can delete or overwrite what's there; calling it again has no further effect. Each is set on its own: an endpoint's comes from its `tool_options=`, or else its HTTP method, and a tool method's from `@tool`, or else it's `False`. See [Hints](#hints). |
 | `tags` | The endpoint's tags, its resource's first (see [Tags](resources.md#tags)), to choose which tools to register by. |
 | `is_async` | The endpoint is `async def`, so the tool is called with `await tool.acall(arguments)` instead of `call()`. |
 
@@ -231,7 +233,135 @@ tools = [tool for tool in list_tools(api) if "ai" in tool.tags]  # products_sear
 
 `products_search` is a tool because its resource is tagged, and `orders_retrieve` because it's tagged itself. `orders_cancel` isn't tagged, so it's left out, and so is an endpoint added later to `Orders`, until you tag it.
 
-The `read_only` hint is another way to start, but it comes from the HTTP method, so it can be wrong for an endpoint such as `POST /search`, which only reads.
+The hints are another way to choose, as in `[t for t in list_tools(api) if t.read_only]`: see [Hints](#hints).
+
+## Hints
+
+Each tool has three hints about what it does. ClientX doesn't act on them: they're for choosing tools, and for frameworks that show them to a model, such as MCP's tool annotations.
+
+| Hint | Means |
+|---|---|
+| `read_only` | Calling it changes nothing. |
+| `destructive` | It can delete or overwrite what's there. `False` means it only adds. |
+| `idempotent` | Calling it again with the same arguments has no further effect. |
+
+### Where each hint comes from
+
+Each of an endpoint's hints is worked out on its own, when the endpoint is defined:
+
+1. **If its `tool_options=` sets the hint,** that's the hint's value.
+2. **If it leaves the hint out,** the value comes from the endpoint's HTTP method:
+
+| HTTP method | `read_only` | `destructive` | `idempotent` |
+|---|---|---|---|
+| `GET`, `HEAD`, `OPTIONS` | `True` | `False` | `True` |
+| `POST` | `False` | `False` | `False` |
+| `PUT` | `False` | `True` | `True` |
+| `PATCH` | `False` | `True` | `False` |
+| `DELETE` | `False` | `True` | `True` |
+
+So:
+
+- **An endpoint without `tool_options=`** takes all three hints from its method.
+- **An endpoint with `tool_options=`** takes from its method only the hints it leaves out. In `ToolOptions(read_only=True)`, `destructive` and `idempotent` still come from the method.
+- **Setting one hint never changes another.** `read_only=False` on a `GET` leaves it idempotent, as `GET` is: set `idempotent=False` too if calling it again has an effect.
+- **A [tool method](#tools-that-arent-endpoints) has no HTTP method,** so each hint it leaves out is `False`.
+
+### Setting hints
+
+The HTTP method can be wrong: `POST /search` only reads, and some APIs change something on a `GET`. Set the hints it gets wrong with `tool_options=`:
+
+<!-- docs_src/tools/tool_options.py -->
+```python
+from typing import Annotated, Any
+
+from clientx import ClientX, Json, Query, method
+from clientx.tools import ToolOptions, list_tools
+
+
+class ShopAPI(ClientX, base_url="https://api.shop.example.com"):
+    @method.post("/search", tool_options=ToolOptions(read_only=True, idempotent=True))
+    def search(self, query: Annotated[str, Json()]) -> list[dict[str, Any]]:
+        """Search the catalog by name or description."""
+        ...
+
+    @method.get("/cart/add", tool_options=ToolOptions(read_only=False, idempotent=False))
+    def add_to_cart(self, product_id: Annotated[int, Query()]) -> dict[str, Any]:
+        """Add one of a product to the cart."""
+        ...
+
+
+api = ShopAPI()
+read_only = [tool for tool in list_tools(api) if tool.read_only]  # search
+```
+
+Each tool ends up with these hints:
+
+| Tool | `read_only` | `destructive` | `idempotent` |
+|---|---|---|---|
+| `search` (`POST`) | `True`, set | `False`, from `POST` | `True`, set |
+| `add_to_cart` (`GET`) | `False`, set | `False`, from `GET` | `False`, set |
+
+- `search` only reads, and calling it again changes nothing, so it sets `read_only` and `idempotent`. It leaves out `destructive`, so `POST` gives `False`.
+- `add_to_cart` changes the cart, so it sets `read_only=False`. It sets `idempotent=False` too: left out, it would come from `GET`, which is idempotent, and a framework could retry the call and add the product twice. It leaves out `destructive`, so `GET` gives `False`, which is right: it only adds.
+- An endpoint can't be read-only and destructive. The check runs on the hints it ends up with, set or from its method, so `ToolOptions(destructive=True)` on a `GET` raises `DefinitionError` when its class is defined: `read_only` comes from `GET`. Set `read_only=False` with it.
+- A hint belongs to the endpoint, not to one call. An endpoint that reads or writes depending on an argument, such as `GET /api?action=...`, needs the hints of its riskiest call.
+
+## Tools that aren't endpoints
+
+A model calls one tool at a time, so a task that takes several requests takes it several turns, and it has to piece the answers together itself. Do that work for it in a method of your own, and make the method a tool with `@tool`:
+
+<!-- docs_src/tools/tool_methods.py -->
+```python
+from clientx import ClientX, method
+from clientx.tools import list_tools, tool
+from pydantic import BaseModel
+
+
+class Product(BaseModel):
+    id: int
+    name: str
+
+
+class Order(BaseModel):
+    id: int
+    status: str
+    product_ids: list[int]
+
+
+class ShopAPI(ClientX, base_url="https://api.shop.example.com"):
+    @method.get("/orders/{order_id}")
+    def order(self, order_id: int) -> Order:
+        """Fetch an order, with the IDs of its products."""
+        ...
+
+    @method.get("/products/{product_id}")
+    def product(self, product_id: int) -> Product:
+        """Fetch a product."""
+        ...
+
+    @tool(read_only=True, idempotent=True)
+    def order_products(self, order_id: int) -> list[Product]:
+        """List the products in an order, in full.
+
+        Args:
+            order_id: The order's ID, as on its confirmation.
+        """
+        order = self.order(order_id)
+        return [self.product(product_id) for product_id in order.product_ids]
+
+
+api = ShopAPI()
+print([each.name for each in list_tools(api)])  # ['order', 'product', 'order_products']
+```
+
+`list_tools` lists `order_products` with the endpoints, and a model calls it the same way. As for an endpoint, it's named by its attribute path, described by its docstring, and its schemas come from its signature. With one call, the model gets each product in the order, instead of calling `order`, then `product` once per product.
+
+- **It needs a docstring:** that's the tool's description, and there's no method and path to fall back on. It needs a return annotation too, and each argument and the result need a JSON form: a tool method without one raises `DefinitionError` when you list the tools, rather than being left out, since you made it a tool on purpose.
+- **Its hints are `False` unless you set them,** as there's no HTTP method to take them from: `@tool(read_only=True)` is read-only, but neither destructive nor idempotent. They mean what they do for an endpoint (see [Hints](#hints)). Tag it with `@tool(tags=[...])`: a resource's tags go in front, as for an endpoint.
+- **It's the kind of its class,** as an endpoint is: `def` on a `ClientX` or `Resource`, and `async def` on an `AsyncClientX` or `AsyncResource`.
+- **A request it sends that fails raises `ToolError`,** as for an endpoint (see [Errors](#errors)). The message names only the HTTP method, as in `to a GET request`, since the tool's requests aren't one endpoint's. Other exceptions pass through.
+- **An endpoint is a tool already:** `@tool` on one raises `DefinitionError`. Set its hints with `tool_options=` instead.
 
 ## Serving many users
 

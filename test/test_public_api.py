@@ -42,7 +42,7 @@ def test_submodule_exports() -> None:
     assert method.__all__ == ["delete", "get", "head", "options", "patch", "post", "put"]
     assert sorted(arguments.__all__) == ["Body", "File", "Form", "Header", "Json", "Query", "Send", "Url"]
     assert sorted(exceptions.__all__) == ["ArgumentError", "ClientXError", "DefinitionError", "ToolError"]
-    assert sorted(tools.__all__) == ["Tool", "ToolError", "list_tools"]
+    assert sorted(tools.__all__) == ["Tool", "ToolError", "ToolOptions", "list_tools", "tool"]
 
 
 def test_the_reference_page_lists_every_public_name() -> None:
