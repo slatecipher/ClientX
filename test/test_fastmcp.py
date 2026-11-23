@@ -29,10 +29,7 @@ class Node(BaseModel):
 
 
 def serve(client: ClientX | AsyncClientX) -> FastMCP:
-    server = FastMCP("test")
-    for tool in list_tools(client):
-        server.add_tool(fastmcp_tool(tool))
-    return server
+    return FastMCP("test", tools=[fastmcp_tool(tool) for tool in list_tools(client)])
 
 
 @pytest.mark.anyio

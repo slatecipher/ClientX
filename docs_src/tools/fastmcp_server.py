@@ -19,10 +19,8 @@ class ShopAPI(AsyncClientX, base_url="https://api.shop.example.com"):
 
 
 api = ShopAPI()
-server = FastMCP("shop")
-for tool in list_tools(api):
-    if tool.read_only:  # product, but not cancel_order
-        server.add_tool(fastmcp_tool(tool))
+# The read-only tools: product, but not cancel_order.
+server = FastMCP("shop", tools=[fastmcp_tool(tool) for tool in list_tools(api) if tool.read_only])
 
 
 @server.tool

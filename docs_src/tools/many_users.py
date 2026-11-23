@@ -47,9 +47,8 @@ server = FastMCP(
         issuer="https://auth.example.com",
         audience="https://mcp.shop.example.com",
     ),
+    tools=[fastmcp_tool(tool) for tool in list_tools(api)],
 )
-for tool in list_tools(api):
-    server.add_tool(fastmcp_tool(tool))
 
 if __name__ == "__main__":
     server.run(transport="http")

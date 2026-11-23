@@ -1,7 +1,8 @@
 """Turn ClientX tools into FastMCP tools, to serve them over MCP.
 
-``fastmcp_tool(tool)`` returns a FastMCP tool, for ``FastMCP.add_tool``, that
-calls a ``clientx.tools.Tool``:
+``fastmcp_tool(tool)`` returns a FastMCP tool that calls a
+``clientx.tools.Tool``, for a ``FastMCP`` server's ``tools=`` or
+``add_tool()``:
 
 - Schemas: its ``input_schema`` is the FastMCP tool's ``parameters``, as it
   is. FastMCP passes the model's arguments through unvalidated, so the ClientX
@@ -44,7 +45,7 @@ except ImportError as error:
 
 
 def fastmcp_tool(tool: Tool) -> FastMCPTool:
-    """Return a FastMCP tool that calls ``tool``, for ``FastMCP.add_tool``."""
+    """Return a FastMCP tool that calls ``tool``, for a ``FastMCP`` server."""
     return _ClientXTool.calling(tool)
 
 

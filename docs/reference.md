@@ -241,7 +241,7 @@ from clientx.fastmcp import fastmcp_tool
 fastmcp_tool(tool: Tool) -> fastmcp.tools.Tool
 ```
 
-Returns a FastMCP tool that calls a ClientX tool, for `FastMCP.add_tool`. Its parameters are the tool's `input_schema`, as it is, and the tool validates the model's arguments. A result that isn't an object is wrapped as `{"result": ...}`, as FastMCP wraps its own. The hints become MCP's annotations, and the tags FastMCP's. A `ToolError`'s message reaches the model, and any other exception's only its type. A sync client's tool runs in a worker thread. It needs FastMCP: `pip install "clientx[fastmcp]"`. See [Serving tools with FastMCP](tools.md#serving-tools-with-fastmcp).
+Returns a FastMCP tool that calls a ClientX tool, for a `FastMCP` server's `tools=`, or `add_tool()`. Its parameters are the tool's `input_schema`, as it is, and the tool validates the model's arguments. A result that isn't an object is wrapped as `{"result": ...}`, as FastMCP wraps its own. The hints become MCP's annotations, and the tags FastMCP's. A `ToolError`'s message reaches the model, and any other exception's only its type. A sync client's tool runs in a worker thread. It needs FastMCP: `pip install "clientx[fastmcp]"`. See [Serving tools with FastMCP](tools.md#serving-tools-with-fastmcp).
 
 ## From httpx2
 
