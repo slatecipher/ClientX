@@ -87,6 +87,7 @@ A model chooses a tool and fills in its arguments from what the tool says, so th
 
 - **The tool's description** is the endpoint's docstring, up to its first section. Put what the endpoint does, and when to use it, in the summary and the paragraphs after it. A [deprecated](endpoints.md#deprecating-endpoints) endpoint's description starts with `Deprecated:` and its message, such as `Deprecated: Use get_user() instead.`, then a blank line and the docstring.
 - **An argument's description** is its helper's `description=`, such as `Query(description="...")`, or else its entry in the docstring's `Args:` section. A [Google-style](../CONTRIBUTING.md#docstrings) `Args:` section then serves a model, editors' hovers and `help()` at once.
+- **Models describe themselves.** A model's docstring and its fields' `Field(description="...")` are kept: in `input_schema` for an argument, and in `output_schema` for a result. So say what a response's fields mean there, such as which values a status takes. Pydantic leaves out a docstring written under a field unless the model sets `model_config = ConfigDict(use_attribute_docstrings=True)`.
 - **The schemas are compact.** Pydantic's `title` on every property is left out, and a model or `type` alias is written in place rather than behind a `$ref`, unless it refers to itself. Constraints, such as `Query(ge=1)`, and defaults are kept.
 
 ### Writing descriptions for a model
