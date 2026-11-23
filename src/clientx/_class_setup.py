@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING
 
 from httpx2 import URL, InvalidURL
 
-from clientx._registry import endpoint_for
+from clientx._registry import endpoint_for, tool_method_for
 from clientx.exceptions import DefinitionError
 
 if TYPE_CHECKING:
@@ -48,7 +48,7 @@ def set_up_client(
     _check_one_kind(cls, _CLIENT_BASES)
     _check_member_names(cls, base, fix="Rename it, or put it on a Resource mounted on the client.")
     _check_resource_classes(cls)
-    _check_endpoint_kinds(cls, _CLIENT_BASES)
+    _check_kinds(cls, _CLIENT_BASES)
     if base_url is not None:
         try:
             cls.__clientx_base_url__ = parse_base_url(base_url)
@@ -74,12 +74,13 @@ def set_up_resource(
     ``tags`` are added to its parent's, each tag once. The prefix is joined to
     each endpoint's path now, so it's absolute: it doesn't depend on where the
     resource is mounted. Each endpoint's request plan is worked out after the
-    join, because the prefix can add placeholders.
+    join, because the prefix can add placeholders. The tags also go in front of
+    each ``@tool`` method's in the body.
     """
     _check_one_kind(cls, _RESOURCE_BASES)
     _check_member_names(cls, base, fix="Rename it.")
     _check_resource_classes(cls)
-    _check_endpoint_kinds(cls, _RESOURCE_BASES)
+    _check_kinds(cls, _RESOURCE_BASES)
     if prefix is not None:
         cls.__clientx_prefix__ = prefix
     if tags is not None:
@@ -89,6 +90,9 @@ def set_up_resource(
         endpoint.raw_path = _join_path(cls.__clientx_prefix__, endpoint.raw_path)
         endpoint.tags = list(dict.fromkeys([*cls.__clientx_tags__, *endpoint.tags]))
         endpoint.set_up_request()
+    tool_methods = {id(method): method for value in vars(cls).values() if (method := tool_method_for(value))}
+    for tool_method in tool_methods.values():  # Each once, though it has a second name.
+        tool_method.tags = list(dict.fromkeys([*cls.__clientx_tags__, *tool_method.tags]))
 
 
 def check_mount(resource_name: str, *, is_async: bool, owner: type) -> None:
@@ -143,22 +147,29 @@ def _check_one_kind(cls: type, bases: tuple[str, str]) -> None:
         raise DefinitionError(f"'{cls.__qualname__}' can't subclass both {bases[0]} and {bases[1]}: choose one.")
 
 
-def _check_endpoint_kinds(cls: type[ClientX | AsyncClientX | Resource | AsyncResource], bases: tuple[str, str]) -> None:
-    """Raise ``DefinitionError`` if an endpoint is the wrong kind for ``cls``.
+def _check_kinds(cls: type[ClientX | AsyncClientX | Resource | AsyncResource], bases: tuple[str, str]) -> None:
+    """Raise ``DefinitionError`` for an endpoint or tool of the wrong kind.
 
     ``ClientX`` and ``Resource`` send with a sync ``httpx2.Client``, so their
-    endpoints are ``def`` methods; ``AsyncClientX`` and ``AsyncResource``
-    endpoints are ``async def`` methods. Endpoints inherited from a parent class
-    were checked when it was defined.
+    endpoints, and the ``@tool`` methods that call them, are ``def`` methods;
+    ``AsyncClientX`` and ``AsyncResource`` ones are ``async def`` methods.
+    Those inherited from a parent class were checked when it was defined.
     """
     is_async = cls.__clientx_is_async__
     for value in vars(cls).values():
         endpoint = endpoint_for(value)
-        if endpoint is not None and endpoint.signature.is_async != is_async:
-            kind, fix = ("`async def`", "`def`") if endpoint.signature.is_async else ("a plain `def`", "`async def`")
+        tool_method = tool_method_for(value)
+        if endpoint is not None:
+            label, role, signature = "Endpoint", "an endpoint", endpoint.signature
+        elif tool_method is not None:
+            label, role, signature = "Tool", "a tool", tool_method.signature
+        else:
+            continue
+        if signature.is_async != is_async:
+            kind, fix = ("`async def`", "`def`") if signature.is_async else ("a plain `def`", "`async def`")
             raise DefinitionError(
-                f"Endpoint '{endpoint.signature.qualname}' is {kind}, so it can't be an endpoint of "
-                f"'{cls.__qualname__}', a{'n' if is_async else ''} {bases[is_async]} subclass. "
+                f"{label} '{signature.qualname}' is {kind}, so it can't be {role} of '{cls.__qualname__}', "
+                f"a{'n' if is_async else ''} {bases[is_async]} subclass. "
                 f"Define it with {fix}, or subclass {bases[not is_async]} instead."
             )
 

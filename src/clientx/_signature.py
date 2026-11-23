@@ -16,6 +16,7 @@ from pydantic.fields import FieldInfo
 
 from clientx._arguments import get_httpx_argument
 from clientx._types import HttpxArgument, Send
+from clientx.exceptions import DefinitionError
 
 ParameterKind = inspect._ParameterKind  # pyright: ignore[reportPrivateUsage]
 """A parameter's kind, such as positional-only or keyword-only.
@@ -310,3 +311,20 @@ def inspect_signature(func: Callable[..., Any]) -> SignatureInfo:
         returns=ReturnInfo(return_annotation, return_base_type, return_metadata),
         signature=signature,
     )
+
+
+def inspect_definition(func: Callable[..., Any], kind: str) -> SignatureInfo:
+    """Inspect a method, raising ``DefinitionError`` for an undefined name.
+
+    Its annotations are evaluated now, when it's decorated, so a type defined
+    further down the module isn't defined yet. Python's ``NameError`` doesn't
+    say which method it's in. ``kind`` names what the method is, for the
+    message: ``"Endpoint"`` or ``"Tool"``.
+    """
+    try:
+        return inspect_signature(func)
+    except NameError as error:
+        raise DefinitionError(
+            f"{kind} '{func.__qualname__}': {error}. ClientX evaluates annotations when the method is decorated: "
+            "define the types it names before its class."
+        ) from error

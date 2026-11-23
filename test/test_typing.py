@@ -36,6 +36,7 @@ import pytest
 from pydantic import BaseModel
 
 from clientx import AsyncClientX, AsyncResource, ClientX, DefinitionError, Query, Resource, Response, method
+from clientx.tools import ToolOptions, tool
 
 
 class User(BaseModel):
@@ -51,7 +52,7 @@ class Users(Resource, prefix="/users"):
 class API(ClientX):
     users = Users()
 
-    @method.get("/users")
+    @method.get("/users", tool_options=ToolOptions(idempotent=True))
     def list_users(self, page: Annotated[int, Query(ge=1)] = 1) -> list[User]: ...
 
     @method.get("/health")
@@ -62,6 +63,11 @@ class API(ClientX):
 
     @method.delete("/users/{user_id}")
     def delete_user(self, user_id: int, /) -> None: ...
+
+    @tool(read_only=True)
+    def user_names(self, page: int = 1) -> list[str]:
+        """List the users' names."""
+        return [user.name for user in self.list_users(page)]
 
 
 class AsyncUsers(AsyncResource, prefix="/users"):
@@ -89,6 +95,7 @@ def test_endpoints_keep_their_return_types() -> None:
     assert_type(api.list_users(), list[User])
     assert_type(api.health(), Response)
     assert_type(api.delete_user(1), None)
+    assert_type(api.user_names(), list[str])
 
 
 def test_a_class_base_url_makes_the_argument_optional() -> None:
@@ -155,7 +162,7 @@ async def decode_async_events(response: httpx2.Response) -> AsyncIterator[Event]
 
 
 class Decoded(ClientX):
-    @method.post("/jobs", decoder=status_of)
+    @method.post("/jobs", decoder=status_of, tool_options=ToolOptions(idempotent=False))
     def submit(self) -> int: ...
 
     @method.get("/events", decoder=decode_events)

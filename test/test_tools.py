@@ -1,6 +1,7 @@
 """Tools: endpoints described for a model, and called with its arguments."""
 
 import json
+import re
 from collections.abc import Callable, Iterator
 from typing import Annotated, Any, BinaryIO
 
@@ -8,8 +9,8 @@ import httpx2
 import pytest
 from pydantic import BaseModel
 
-from clientx import AsyncClientX, ClientX, File, Header, Json, Query, Resource, Response, Send, method
-from clientx.tools import Tool, ToolError, list_tools
+from clientx import AsyncClientX, ClientX, DefinitionError, File, Header, Json, Query, Resource, Response, Send, method
+from clientx.tools import Tool, ToolError, ToolOptions, list_tools, tool
 
 type MockTransport = Callable[..., httpx2.MockTransport]
 
@@ -174,6 +175,35 @@ def test_the_hints_come_from_the_http_method(verb: Any, hints: tuple[bool, bool,
     assert tool.output_schema is None
 
 
+def test_tool_options_set_hints_and_the_http_method_gives_the_rest() -> None:
+    class API(ClientX):
+        @method.post("/search", tool_options=ToolOptions(read_only=True))
+        def search(self) -> None: ...
+
+        @method.get("/cart/add", tool_options=ToolOptions(read_only=False))
+        def add_to_cart(self) -> None: ...
+
+    tools = tools_of(API(BASE_URL))
+    assert (tools["search"].read_only, tools["search"].destructive, tools["search"].idempotent) == (True, False, False)
+    add = tools["add_to_cart"]
+    assert (add.read_only, add.destructive, add.idempotent) == (False, False, True)
+
+
+@pytest.mark.parametrize(
+    ("verb", "options"),
+    [
+        pytest.param(method.post, ToolOptions(read_only=True, destructive=True), id="both-set"),
+        pytest.param(method.get, ToolOptions(destructive=True), id="read-only-from-GET"),
+    ],
+)
+def test_an_endpoint_cant_be_read_only_and_destructive(verb: Any, options: ToolOptions) -> None:
+    with pytest.raises(DefinitionError, match=r"Endpoint '.*API\.act' can't be both read-only and destructive"):
+
+        class API(ClientX):
+            @verb("/thing", tool_options=options)
+            def act(self) -> None: ...
+
+
 def test_a_tool_has_its_endpoints_tags() -> None:
     class Users(Resource, prefix="/users", tags=["users"]):
         @method.get("/{user_id}", tags=["read"])
@@ -183,6 +213,137 @@ def test_a_tool_has_its_endpoints_tags() -> None:
         users = Users()
 
     assert tools_of(API(BASE_URL))["users_retrieve"].tags == ("users", "read")
+
+
+def test_a_tool_method_is_a_tool_beside_the_endpoints(mock_transport: MockTransport) -> None:
+    class Teams(Resource, prefix="/teams", tags=["teams"]):
+        @method.get("/{team_id}/members")
+        def member_ids(self, team_id: int) -> list[int]: ...
+
+        @method.get("/members/{user_id}")
+        def member(self, user_id: int) -> User: ...
+
+        @tool(read_only=True, tags=["composite"])
+        def members(self, team_id: int) -> list[User]:
+            """List a team's members, in full.
+
+            Args:
+                team_id: The team's ID.
+            """
+            return [self.member(user_id) for user_id in self.member_ids(team_id)]
+
+    class API(ClientX):
+        teams = Teams()
+
+    def answer(request: httpx2.Request) -> httpx2.Response:
+        if request.url.path == "/teams/7/members":
+            return httpx2.Response(200, json=[1, 2])
+        return httpx2.Response(200, json={"id": int(request.url.path.rsplit("/", 1)[1]), "name": "Ada"})
+
+    tools = tools_of(API(BASE_URL, transport=mock_transport(handler=answer)))
+    assert list(tools) == ["teams_member_ids", "teams_member", "teams_members"]
+    members = tools["teams_members"]
+    assert members.description == "List a team's members, in full."
+    assert members.input_schema["properties"] == {"team_id": {"type": "integer", "description": "The team's ID."}}
+    # Hints left out are False: there's no HTTP method to take them from.
+    assert (members.read_only, members.destructive, members.idempotent) == (True, False, False)
+    assert members.tags == ("teams", "composite")
+    assert members.call({"team_id": "7"}) == [{"id": 1, "name": "Ada"}, {"id": 2, "name": "Ada"}]
+
+
+def test_a_tool_methods_http_error_names_only_the_http_method(mock_transport: MockTransport) -> None:
+    class API(ClientX):
+        @method.get("/users/{user_id}")
+        def user(self, user_id: int) -> User: ...
+
+        @tool()
+        def users(self, user_ids: list[int]) -> list[User]:
+            """Fetch several users."""
+            return [self.user(user_id) for user_id in user_ids]
+
+    users = tools_of(API(BASE_URL, transport=mock_transport(status=404, json={"detail": "No such user."})))["users"]
+    with pytest.raises(ToolError) as caught:
+        users.call({"user_ids": [1]})
+    assert str(caught.value) == 'users: the API answered 404 Not Found to a GET request: {"detail":"No such user."}'
+
+
+def test_an_endpoint_cant_also_be_a_tool_method() -> None:
+    message = r"'.*API\.retrieve' is an endpoint, so it's a tool already"
+    with pytest.raises(DefinitionError, match=message):
+
+        class API(ClientX):
+            @tool()
+            @method.get("/users/{user_id}")
+            def retrieve(self, user_id: int) -> User: ...
+
+    with pytest.raises(DefinitionError, match=message):
+
+        class OtherAPI(ClientX):
+            @method.get("/users/{user_id}")
+            @tool()
+            def retrieve(self, user_id: int) -> User:
+                """Fetch a user."""
+                ...
+
+
+def _undocumented(self: ClientX) -> None: ...
+
+
+def _unannotated(self: ClientX):
+    """Do something."""
+
+
+def _no_self() -> None:
+    """Do something."""
+
+
+def _variadic(self: ClientX, *user_ids: int) -> None:
+    """Do something."""
+
+
+def _documented(self: ClientX) -> None:
+    """Do something."""
+
+
+@pytest.mark.parametrize(
+    ("decorator", "func", "message"),
+    [
+        pytest.param(tool(), _undocumented, "Tool '_undocumented' needs a docstring", id="no docstring"),
+        pytest.param(tool(), _unannotated, "Tool '_unannotated' needs a return annotation", id="no return annotation"),
+        pytest.param(tool(), _no_self, "Tool '_no_self' needs a positional first parameter", id="no self"),
+        pytest.param(tool(), _variadic, "Tool '_variadic' can't take `*user_ids`", id="*args"),
+        pytest.param(
+            tool(read_only=True, destructive=True),
+            _documented,
+            "Tool '_documented' can't be both read-only and destructive",
+            id="read-only and destructive",
+        ),
+    ],
+)
+def test_a_tool_method_is_checked_when_decorated(
+    decorator: Callable[[Callable[..., Any]], Callable[..., Any]], func: Callable[..., Any], message: str
+) -> None:
+    with pytest.raises(DefinitionError, match=re.escape(message)):
+        decorator(func)
+
+
+def test_a_tool_method_is_its_classs_kind() -> None:
+    with pytest.raises(DefinitionError, match=r"Tool '.*API\.fetch' is `async def`, so it can't be a tool of"):
+
+        class API(ClientX):
+            @tool()
+            async def fetch(self) -> None:
+                """Fetch something."""
+
+
+def test_a_tool_method_with_no_json_form_raises_when_listed() -> None:
+    class API(ClientX):
+        @tool()
+        def upload(self, file: BinaryIO) -> None:
+            """Upload a file."""
+
+    with pytest.raises(DefinitionError, match=r"Tool '.*API\.upload' can't be described for a model"):
+        list_tools(API(BASE_URL))
 
 
 def test_a_call_validates_leniently_and_passes_only_the_given_arguments(mock_transport: MockTransport) -> None:

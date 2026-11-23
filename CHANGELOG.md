@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- `tool_options=` on the verb decorators sets an endpoint's tool hints with `ToolOptions(read_only=..., destructive=..., idempotent=...)`, from `clientx.tools`, for an endpoint whose HTTP method says the wrong thing, such as `POST /search`, which only reads, or a `GET` that changes something. Each hint is worked out on its own: one you set is used as it is, and one you leave out comes from the HTTP method, as before, so setting one never changes another. An endpoint whose hints say read-only and destructive raises `DefinitionError`.
+- `@tool`, from `clientx.tools`, makes a method of a client or resource a tool, listed and called as an endpoint is, for work that takes several requests, such as fetching an order and then each of its products. It needs a docstring, which is its description, and a return annotation. Its hints are `False` unless set, as in `@tool(read_only=True)`, and it takes `tags=`, after its resource's. `@tool` on an endpoint raises `DefinitionError`: set an endpoint's hints with `tool_options=`.
+
 ### Changed
 
 - The `User-Agent` lists every product that's set, most significant first, instead of only the first: the app's, from `user_agent=` or a `User-Agent` in `headers=` when the client is created, then the class's `user_agent=` class argument, then `ClientX/<version>`. A package built on ClientX keeps its own product in the header when its users add theirs, so the API can still tell which package and version sent a request. A client with a `user_agent=` class argument now sends `ClientX/<version>` after it too. **Breaking:** a test or server that expects the exact `User-Agent` a client sent before sees a longer one. To send one exact `User-Agent`, set `client.headers["User-Agent"]` after creating the client.
