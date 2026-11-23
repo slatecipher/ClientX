@@ -1,8 +1,6 @@
 """Turn ClientX tools into FastMCP tools, to serve them over MCP.
 
-``fastmcp_tool(tool)`` returns a FastMCP tool that calls a
-``clientx.tools.Tool``, for a ``FastMCP`` server's ``tools=`` or
-``add_tool()``:
+``fastmcp_tool(tool)`` wraps a ClientX tool as a FastMCP tool:
 
 - Schemas: its ``input_schema`` is the FastMCP tool's ``parameters``, as it
   is. FastMCP passes the model's arguments through unvalidated, so the ClientX
