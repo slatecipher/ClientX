@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-23
+
 ### Added
 
 - `tool_options=` on the verb decorators sets an endpoint's tool hints with `ToolOptions(read_only=..., destructive=..., idempotent=...)`, from `clientx.tools`, for an endpoint whose HTTP method says the wrong thing, such as `POST /search`, which only reads, or a `GET` that changes something. Each hint is worked out on its own: one you set is used as it is, and one you leave out comes from the HTTP method, as before, so setting one never changes another. An endpoint whose hints say read-only and destructive raises `DefinitionError`.
@@ -51,7 +53,8 @@ First public release.
 - `llms.txt`: a compact guide to ClientX's patterns and pitfalls for AI coding assistants.
 - Support for Python 3.12, 3.13 and 3.14, with inline type information (`py.typed`).
 
-[Unreleased]: https://github.com/slatecipher/ClientX/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/slatecipher/ClientX/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/slatecipher/ClientX/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/slatecipher/ClientX/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/slatecipher/ClientX/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/slatecipher/ClientX/releases/tag/v0.1.0
