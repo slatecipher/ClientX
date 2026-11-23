@@ -1,9 +1,7 @@
 """Serve a client's tools over MCP with FastMCP.
 
-``fastmcp_tool(tool)`` turns a tool from ``clientx.tools.list_tools`` into a
-FastMCP tool. Give the ones a model should use to your own ``FastMCP`` server,
-with its ``tools=`` or ``add_tool()``, next to any tools of its own; the
-server's name, transport and auth stay yours::
+``fastmcp_tool(tool)`` turns a ClientX tool into a FastMCP tool, for your own
+FastMCP server::
 
     from fastmcp import FastMCP
 
