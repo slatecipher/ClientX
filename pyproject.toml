@@ -29,6 +29,10 @@ dependencies = [
     "pydantic>=2.12.5",
 ]
 
+[project.optional-dependencies]
+# `clientx.fastmcp`: serve a client's tools with FastMCP.
+fastmcp = ["fastmcp>=4.2.0,<5"]
+
 [project.urls]
 Repository = "https://github.com/slatecipher/ClientX"
 Issues = "https://github.com/slatecipher/ClientX/issues"
@@ -40,6 +44,7 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
+    "fastmcp>=4.2.0",
     "mypy>=2.4.1",
     "pyright>=1.1.411",
     "pytest>=9.0.2",

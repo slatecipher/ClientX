@@ -1,10 +1,12 @@
-import contextvars
 from collections.abc import Generator
-from typing import Any
 
 import httpx2
 from clientx import AsyncClientX, method
+from clientx.fastmcp import fastmcp_tool
 from clientx.tools import list_tools
+from fastmcp import FastMCP
+from fastmcp.server.auth.providers.jwt import JWTVerifier
+from fastmcp.server.dependencies import get_access_token
 from pydantic import BaseModel
 
 
@@ -20,26 +22,34 @@ class ShopAPI(AsyncClientX, base_url="https://api.shop.example.com"):
         ...
 
 
-# The upstream token of the user whose tool call is running.
-upstream_token: contextvars.ContextVar[str] = contextvars.ContextVar("upstream_token")
+# Each user's upstream token, stored when they authorized your server with the
+# shop's API: use a real store.
+upstream_tokens: dict[str, str] = {}
 
 
 class CurrentUserAuth(httpx2.Auth):
     """Send the upstream token of the user whose tool call is running."""
 
     def auth_flow(self, request: httpx2.Request) -> Generator[httpx2.Request, httpx2.Response, None]:
-        request.headers["Authorization"] = f"Bearer {upstream_token.get()}"
+        # The token the user's app sent your server, which its auth validated.
+        caller = get_access_token()
+        if caller is None or caller.subject is None:
+            raise RuntimeError("No signed-in user: give the server auth=.")
+        request.headers["Authorization"] = f"Bearer {upstream_tokens[caller.subject]}"
         yield request
 
 
-# Each user's upstream token, stored when they connected: use a real store.
-upstream_tokens: dict[str, str] = {}
-
 api = ShopAPI(auth=CurrentUserAuth())  # one client and one connection pool, for every user
-tools = {tool.name: tool for tool in list_tools(api)}  # described once, at startup
+server = FastMCP(
+    "shop",
+    auth=JWTVerifier(
+        jwks_uri="https://auth.example.com/.well-known/jwks.json",
+        issuer="https://auth.example.com",
+        audience="https://mcp.shop.example.com",
+    ),
+)
+for tool in list_tools(api):
+    server.add_tool(fastmcp_tool(tool))
 
-
-async def handle_tool_call(user_id: str, name: str, arguments: dict[str, Any]) -> Any:
-    """Run a tool for a user your server has already authenticated."""
-    upstream_token.set(upstream_tokens[user_id])
-    return await tools[name].acall(arguments)
+if __name__ == "__main__":
+    server.run(transport="http")

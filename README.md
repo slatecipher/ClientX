@@ -113,7 +113,7 @@ ClientX is inspired by FastAPI, which reads type hints to define server endpoint
 - Built-in deprecation warnings per endpoint.
 - Full access to `httpx2.Client` configuration through `ClientX(...)` arguments.
 - Async clients (`AsyncClientX`, `AsyncResource`) with the same decorators, for `async def` endpoints.
-- AI tools from the same endpoints (`clientx.tools`): descriptions from docstrings, JSON Schemas, and errors a model can act on.
+- AI tools from the same endpoints (`clientx.tools`): descriptions from docstrings, JSON Schemas, and errors a model can act on. Serve them over MCP with FastMCP (`clientx.fastmcp`).
 
 ## Guide
 

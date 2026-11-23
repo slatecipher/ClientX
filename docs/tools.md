@@ -191,6 +191,65 @@ MCP's `outputSchema` must describe an object, so a tool whose result isn't one, 
 
 Strict modes, which constrain the model's arguments to the schema exactly, have rules of their own: OpenAI's needs every property listed in `required`, with optional ones made nullable, and Anthropic's needs `additionalProperties: false` and a `required` list. ClientX doesn't change its schemas for either, so adjust a schema before you turn a strict mode on.
 
+For an MCP server, `clientx.fastmcp` does all of this for [FastMCP](#serving-tools-with-fastmcp).
+
+## Serving tools with FastMCP
+
+[FastMCP](https://gofastmcp.com) is a framework for MCP servers, built on the official MCP SDK. `fastmcp_tool(tool)` turns a ClientX tool into a FastMCP tool, so you can register the ones a model should use on your own server, next to tools of its own. It needs FastMCP, which the `fastmcp` extra installs:
+
+```bash
+pip install "clientx[fastmcp]"
+```
+
+<!-- docs_src/tools/fastmcp_server.py -->
+```python
+from typing import Any
+
+from clientx import AsyncClientX, method
+from clientx.fastmcp import fastmcp_tool
+from clientx.tools import list_tools
+from fastmcp import FastMCP
+
+
+class ShopAPI(AsyncClientX, base_url="https://api.shop.example.com"):
+    @method.get("/products/{product_id}")
+    async def product(self, product_id: int) -> dict[str, Any]:
+        """Fetch a product, with its price and stock."""
+        ...
+
+    @method.delete("/orders/{order_id}")
+    async def cancel_order(self, order_id: int) -> None:
+        """Cancel an order."""
+        ...
+
+
+api = ShopAPI()
+server = FastMCP("shop")
+for tool in list_tools(api):
+    if tool.read_only:  # product, but not cancel_order
+        server.add_tool(fastmcp_tool(tool))
+
+
+@server.tool
+def shipping_days(country: str) -> int:
+    """Return how many days shipping to a country takes."""
+    return 2 if country == "US" else 7
+
+
+if __name__ == "__main__":
+    server.run()  # Over stdio, by default.
+```
+
+`product` and `shipping_days` are the server's tools. The server's name, transport, auth and everything else are FastMCP's: see [its docs](https://gofastmcp.com) for serving over HTTP, and [Serving many users](#serving-many-users) for whose credentials a shared client sends.
+
+The FastMCP tool keeps what ClientX describes:
+
+- **Schemas:** the tool's `input_schema` is what the model sees, as it is. FastMCP passes the model's arguments through, and the ClientX tool validates them as `call()` does: leniently, and passing only the arguments the model gave.
+- **Results:** a result goes back as structured content, and as text: a string as it is, anything else as JSON. MCP needs an output schema that describes an object, so a result that isn't one, such as a list, is wrapped as `{"result": ...}`, marked as FastMCP marks its own, so FastMCP's client unwraps it.
+- **Hints and tags:** `read_only`, `destructive` and `idempotent` become MCP's `readOnlyHint`, `destructiveHint` and `idempotentHint`, and the tool's tags become FastMCP's.
+- **Errors:** a `ToolError`'s message reaches the model, as the tool's error. Any other exception, such as a decoder's own, reaches it as a message that names only its type, such as `products failed unexpectedly (RuntimeError).`: FastMCP would otherwise show the exception's message, which can hold a URL or a credential. The original exception is the cause, for the server's logs.
+- **Sync clients:** a `ClientX` tool's `call()` runs in a worker thread, so it doesn't block the server. An `AsyncClientX` suits a server best: its calls run on the server's event loop.
+
 ## Choosing tools
 
 A model can call any tool you register, so register only what it should use. To choose in the class itself, tag the endpoints a model should use, or a whole resource, and keep the tools with that tag:
@@ -367,24 +426,26 @@ print([each.name for each in list_tools(api)])  # ['order', 'product', 'order_pr
 
 A tool calls the API through its client, with the client's `auth=`, so one client sends one user's credentials. A server that calls an API for many users, such as a public MCP server, can still use one client: give it an `httpx2.Auth` that sends the credentials of the user whose tool call is running.
 
-Here's a hypothetical flow. You host a public MCP server for a shop's API, and run your ClientX client behind it:
+Here's a hypothetical flow. You host a public MCP server for a shop's API with [FastMCP](#serving-tools-with-fastmcp), and run your ClientX client behind it:
 
 1. **A user connects** their AI app, such as Claude, to your MCP server.
-2. **They sign in through your server's OAuth flow.** Their app gets a token issued for your server, which validates it on each request, so it knows who's calling.
+2. **They sign in through your server's OAuth flow.** Their app gets a token issued for your server. The server's `auth=` validates it on each request, so the server knows who's calling.
 3. **They authorize your server with the shop's API.** Your server is an OAuth client of that API, so it gets that user's upstream token, and stores it.
-4. **On each tool call, your server looks up that user's upstream token,** and runs the tool. The shared client sends that user's token.
+4. **On each tool call, the client's `httpx2.Auth` looks up that user's upstream token,** by the validated token's subject, and the shared client sends it.
 
-Never send the shop's API the token the user's app sent you. It was issued for your server, and the MCP specification forbids [passing it through](https://modelcontextprotocol.io/specification/latest/basic/security_best_practices#token-passthrough): your server's token and the upstream token stay separate.
+Never send the shop's API the token the user's app sent you. It was issued for your server, and the MCP specification forbids [passing it through](https://modelcontextprotocol.io/specification/latest/basic/security_best_practices#token-passthrough): your server's token and the upstream token stay separate. In the sample, that's `caller.token`: use only its `subject`, to find the user's upstream token.
 
 <!-- docs_src/tools/many_users.py -->
 ```python
-import contextvars
 from collections.abc import Generator
-from typing import Any
 
 import httpx2
 from clientx import AsyncClientX, method
+from clientx.fastmcp import fastmcp_tool
 from clientx.tools import list_tools
+from fastmcp import FastMCP
+from fastmcp.server.auth.providers.jwt import JWTVerifier
+from fastmcp.server.dependencies import get_access_token
 from pydantic import BaseModel
 
 
@@ -400,33 +461,42 @@ class ShopAPI(AsyncClientX, base_url="https://api.shop.example.com"):
         ...
 
 
-# The upstream token of the user whose tool call is running.
-upstream_token: contextvars.ContextVar[str] = contextvars.ContextVar("upstream_token")
+# Each user's upstream token, stored when they authorized your server with the
+# shop's API: use a real store.
+upstream_tokens: dict[str, str] = {}
 
 
 class CurrentUserAuth(httpx2.Auth):
     """Send the upstream token of the user whose tool call is running."""
 
     def auth_flow(self, request: httpx2.Request) -> Generator[httpx2.Request, httpx2.Response, None]:
-        request.headers["Authorization"] = f"Bearer {upstream_token.get()}"
+        # The token the user's app sent your server, which its auth validated.
+        caller = get_access_token()
+        if caller is None or caller.subject is None:
+            raise RuntimeError("No signed-in user: give the server auth=.")
+        request.headers["Authorization"] = f"Bearer {upstream_tokens[caller.subject]}"
         yield request
 
 
-# Each user's upstream token, stored when they connected: use a real store.
-upstream_tokens: dict[str, str] = {}
-
 api = ShopAPI(auth=CurrentUserAuth())  # one client and one connection pool, for every user
-tools = {tool.name: tool for tool in list_tools(api)}  # described once, at startup
+server = FastMCP(
+    "shop",
+    auth=JWTVerifier(
+        jwks_uri="https://auth.example.com/.well-known/jwks.json",
+        issuer="https://auth.example.com",
+        audience="https://mcp.shop.example.com",
+    ),
+)
+for tool in list_tools(api):
+    server.add_tool(fastmcp_tool(tool))
 
-
-async def handle_tool_call(user_id: str, name: str, arguments: dict[str, Any]) -> Any:
-    """Run a tool for a user your server has already authenticated."""
-    upstream_token.set(upstream_tokens[user_id])
-    return await tools[name].acall(arguments)
+if __name__ == "__main__":
+    server.run(transport="http")
 ```
 
-- **Concurrent calls don't mix users.** Each request runs in its own async task, and a `ContextVar` set in a task belongs to that task. Two users calling at once each send their own token, through the same client and its connection pool.
-- **Use an `AsyncClientX`, and `acall()`.** A sync client's calls often run in worker threads, and some ways of starting a thread don't carry the `ContextVar` over, so the token would be missing.
+- **Concurrent calls don't mix users.** FastMCP keeps each request's validated token in that request's context, so `get_access_token()` returns the caller of the tool call that's running. Two users calling at once each send their own token, through the same client and its connection pool.
+- **Prefer an `AsyncClientX`.** Its calls run on the server's event loop. A sync client works too: `fastmcp_tool` runs its calls in worker threads that keep the request's context.
+- **Choose how the server checks tokens in FastMCP.** `JWTVerifier` checks tokens from an identity provider you already use. FastMCP's [docs](https://gofastmcp.com) cover its other ways, such as running the OAuth flow itself.
 - **Refresh a token in `auth_flow`.** An `httpx2.Auth` can read the response and send the request again: on a 401, refresh the user's token and retry (see httpx2's [Authentication](https://pydantic.dev/docs/httpx2/advanced/authentication/) documentation). If the refresh fails, the `ToolError`, such as `the API answered 401 Unauthorized`, tells the model to ask the user to connect again.
 - **The model never sees a token.** It's only in the request's headers, and a `ToolError` message holds neither headers nor the query string.
 
