@@ -16,6 +16,7 @@ make typecheck        # pyright on src, docs_src and scripts (strict) and test/t
 make typecheck-tests  # pyright on test/; advisory in CI
 make docs             # copy the samples in docs_src/ into the pages that show them
 make test-ci          # pytest with the 95% coverage gate CI uses (make test: without the gate)
+make release-pr       # maintainer: open the release PR and its draft release (CONTRIBUTING.md's Releasing)
 uv run pytest test/test_paths.py                       # one file
 uv run pytest test/test_paths.py::test_name --no-cov   # one test, without coverage
 ```
