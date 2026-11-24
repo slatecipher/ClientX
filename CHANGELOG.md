@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-24
+
 ### Added
 
 - `include_in_tools=False` on the verb decorators keeps a public endpoint out of `list_tools`, whatever its types, for one only code should call, such as an export that holds credentials. It's part of the endpoint's definition, so every app that serves the client's tools leaves it out, and a change to its types can't make it a tool. Combined with `tool_options=`, it raises `DefinitionError`.
@@ -80,7 +82,8 @@ First public release.
 - `llms.txt`: a compact guide to ClientX's patterns and pitfalls for AI coding assistants.
 - Support for Python 3.12, 3.13 and 3.14, with inline type information (`py.typed`).
 
-[Unreleased]: https://github.com/slatecipher/ClientX/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/slatecipher/ClientX/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/slatecipher/ClientX/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/slatecipher/ClientX/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/slatecipher/ClientX/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/slatecipher/ClientX/compare/v0.3.0...v0.4.0
