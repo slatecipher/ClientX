@@ -87,6 +87,29 @@ def test_an_endpoint_a_model_cant_use_isnt_a_tool() -> None:
     assert list(tools_of(API(BASE_URL))) == ["users"]
 
 
+def test_a_private_name_isnt_a_tool() -> None:
+    class Hidden(Resource, prefix="/hidden"):
+        @method.get()
+        def search(self) -> None: ...
+
+    class Groups(Resource, prefix="/groups"):
+        @method.delete("/{name}")
+        def _delete(self, name: str) -> None: ...
+
+        @method.get()
+        def _search(self) -> None: ...
+
+        search = _search
+
+    class API(ClientX):
+        groups = Groups()
+        _hidden = Hidden()
+
+    # Nothing on a private resource either, and a second name that isn't
+    # private is listed.
+    assert list(tools_of(API(BASE_URL))) == ["groups_search"]
+
+
 def test_a_description_is_the_docstring_up_to_its_sections_or_the_request() -> None:
     class API(ClientX):
         @method.post("/users")
@@ -329,36 +352,41 @@ def test_an_endpoint_cant_also_be_a_tool_method() -> None:
                 ...
 
 
-def _undocumented(self: ClientX) -> None: ...
+def undocumented(self: ClientX) -> None: ...
 
 
-def _unannotated(self: ClientX):
+def unannotated(self: ClientX):
     """Do something."""
 
 
-def _no_self() -> None:
+def no_self() -> None:
     """Do something."""
 
 
-def _variadic(self: ClientX, *user_ids: int) -> None:
+def variadic(self: ClientX, *user_ids: int) -> None:
     """Do something."""
 
 
-def _documented(self: ClientX) -> None:
+def documented(self: ClientX) -> None:
+    """Do something."""
+
+
+def _private(self: ClientX) -> None:
     """Do something."""
 
 
 @pytest.mark.parametrize(
     ("decorator", "func", "message"),
     [
-        pytest.param(tool(), _undocumented, "Tool '_undocumented' needs a docstring", id="no docstring"),
-        pytest.param(tool(), _unannotated, "Tool '_unannotated' needs a return annotation", id="no return annotation"),
-        pytest.param(tool(), _no_self, "Tool '_no_self' needs a positional first parameter", id="no self"),
-        pytest.param(tool(), _variadic, "Tool '_variadic' can't take `*user_ids`", id="*args"),
+        pytest.param(tool(), _private, "Tool '_private' has a private name", id="private name"),
+        pytest.param(tool(), undocumented, "Tool 'undocumented' needs a docstring", id="no docstring"),
+        pytest.param(tool(), unannotated, "Tool 'unannotated' needs a return annotation", id="no return annotation"),
+        pytest.param(tool(), no_self, "Tool 'no_self' needs a positional first parameter", id="no self"),
+        pytest.param(tool(), variadic, "Tool 'variadic' can't take `*user_ids`", id="*args"),
         pytest.param(
             tool(read_only=True, destructive=True),
-            _documented,
-            "Tool '_documented' can't be both read-only and destructive",
+            documented,
+            "Tool 'documented' can't be both read-only and destructive",
             id="read-only and destructive",
         ),
     ],

@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- `list_tools` leaves out endpoints and `@tool` methods with private names, which start with `_`, and everything on a resource mounted under one, as Python marks them private. A `@tool` method can check something before it calls a private endpoint, such as refusing to delete a default group, and a model can't go around the check: the tools guide shows how in "Guarding an endpoint". A second name that isn't private is still listed, and `@tool` on a private name raises `DefinitionError`. **Breaking:** an endpoint with a private name isn't a tool any more. Name it without the leading `_` to keep it one.
+
 ## [0.4.1] - 2026-11-24
 
 ### Fixed

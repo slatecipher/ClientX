@@ -56,15 +56,16 @@ except ToolError as error:
 
 ## Which endpoints become tools
 
-Every endpoint on the client, and on the resources mounted on it, is a tool, except one a model can't use well. `list_tools` leaves these out:
+Every endpoint on the client, and on the resources mounted on it, is a tool, except one that's private or that a model can't use well. `list_tools` leaves these out:
 
 | The endpoint | Why it's left out | To make it a tool |
 |---|---|---|
 | Streams: `-> Iterator[...]`, `-> AsyncIterator[...]` or `stream=True` | A stream can be endless, and wouldn't fit in a model's context. | Add an endpoint that returns the data whole, or a page of it. |
 | Returns the raw `Response` | A response object isn't data a model can read. | Annotate what the API returns, such as a model or `dict[str, Any]`. |
 | Takes an argument with no JSON form, such as a binary file (`BinaryIO`) | A model sends its arguments as JSON. | Keep it for your code: a model can't send a file. |
+| Has a private name, which starts with `_`, such as `_delete`, or is on a resource mounted under one | It's private in Python, so it's private from a model too: a method of yours can check something before calling it, and a model can't go around the check (see [Guarding an endpoint](#guarding-an-endpoint)). | Name it without the leading `_`. |
 
-An endpoint's second name in its class is the same endpoint, so it's listed once.
+An endpoint's second name in its class is the same endpoint, so it's listed once. A second name that isn't private is listed even when the first one is.
 
 A method of your own becomes a tool too with `@tool`: see [Tools that aren't endpoints](#tools-that-arent-endpoints).
 
@@ -424,6 +425,56 @@ print([each.name for each in list_tools(api)])  # ['order', 'product', 'order_pr
 - **It's the kind of its class,** as an endpoint is: `def` on a `ClientX` or `Resource`, and `async def` on an `AsyncClientX` or `AsyncResource`.
 - **A request it sends that fails raises `ToolError`,** as for an endpoint (see [Errors](#errors)). The message names only the HTTP method, as in `to a GET request`, since the tool's requests aren't one endpoint's. Other exceptions pass through.
 - **An endpoint is a tool already:** `@tool` on one raises `DefinitionError`. Set its hints with `tool_options=` instead.
+- **Its name can't be private:** `@tool` on a method whose name starts with `_` raises `DefinitionError`, since `list_tools` would leave it out.
+
+### Guarding an endpoint
+
+Sometimes a request mustn't be sent until something is checked, and the check needs a request of its own. An endpoint's body never runs, so the check can't go there. Put it in a tool method, and give the endpoint it guards a private name, which `list_tools` leaves out:
+
+<!-- docs_src/tools/guard.py -->
+```python
+from clientx import ArgumentError, ClientX, Resource, method
+from clientx.tools import list_tools, tool
+from pydantic import BaseModel
+
+
+class Group(BaseModel):
+    id: int
+    name: str
+    is_default: bool
+
+
+class Groups(Resource, prefix="/groups"):
+    @method.get("/{name}")
+    def retrieve(self, name: str) -> Group:
+        """Fetch a group, and whether it's the default group."""
+        ...
+
+    @method.delete("/{name}")
+    def _delete(self, name: str) -> None: ...
+
+    @tool(destructive=True, idempotent=True)
+    def delete(self, name: str) -> None:
+        """Delete a group, which removes its members from it.
+
+        The default group can't be deleted.
+        """
+        # The API would delete the default group too, and every user would
+        # lose theirs.
+        if self.retrieve(name).is_default:
+            raise ArgumentError(f"Refused to delete {name!r}: it's the default group.", parameter="name")
+        self._delete(name)
+
+
+class TeamAPI(ClientX, base_url="https://api.team.example.com"):
+    groups = Groups()
+
+
+api = TeamAPI()
+print([each.name for each in list_tools(api)])  # ['groups_retrieve', 'groups_delete']
+```
+
+A model gets `groups_delete`, the tool method, and never `_delete`, so it can't go around the check. A Python caller calls `api.groups.delete()` and gets the check too. The `ArgumentError` the check raises becomes a `ToolError` whose message the model sees (see [Errors](#errors)), and a Python caller gets the `ArgumentError` itself.
 
 ## Serving many users
 
