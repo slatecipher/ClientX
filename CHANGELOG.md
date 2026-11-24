@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-24
+
 ### Changed
 
 - `list_tools` leaves out endpoints and `@tool` methods with private names, which start with `_`, and everything on a resource mounted under one, as Python marks them private. A `@tool` method can check something before it calls a private endpoint, such as refusing to delete a default group, and a model can't go around the check: the tools guide shows how in "Guarding an endpoint". A second name that isn't private is still listed, and `@tool` on a private name raises `DefinitionError`. **Breaking:** an endpoint with a private name isn't a tool any more. Name it without the leading `_` to keep it one.
@@ -70,7 +72,8 @@ First public release.
 - `llms.txt`: a compact guide to ClientX's patterns and pitfalls for AI coding assistants.
 - Support for Python 3.12, 3.13 and 3.14, with inline type information (`py.typed`).
 
-[Unreleased]: https://github.com/slatecipher/ClientX/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/slatecipher/ClientX/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/slatecipher/ClientX/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/slatecipher/ClientX/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/slatecipher/ClientX/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/slatecipher/ClientX/compare/v0.2.1...v0.3.0
