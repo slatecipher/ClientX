@@ -66,6 +66,8 @@ class Endpoint:
         stream_response: The decorator's ``stream=True``: the endpoint returns
             the open, unread response, which the caller reads and closes. Only
             with ``-> Response``, and without a ``decoder=``.
+        include_in_tools: The decorator's ``include_in_tools=``: ``False``
+            keeps the endpoint out of ``list_tools``, whatever its types.
         read_only: A hint for tools: calling the endpoint changes nothing.
             Like ``destructive`` and ``idempotent``, it's the decorator's
             ``tool_options=`` setting, or else what the HTTP method implies.
@@ -97,6 +99,7 @@ class Endpoint:
     timeout: Timeout | float | None | UseClientDefault = field(default=USE_CLIENT_DEFAULT)
     raise_for_status: bool | None = field(default=None)
     stream_response: bool = field(default=False)
+    include_in_tools: bool = field(default=True)
     owner: type | None = field(default=None)
     tool_options: InitVar[ToolOptions | None] = None
     read_only: bool = field(init=False)
@@ -119,7 +122,7 @@ class Endpoint:
         """
         self.tags = list(dict.fromkeys(self.tags))  # Each tag once, in order.
         self._check_not_a_tool_method()
-        self._set_tool_hints(tool_options or ToolOptions())
+        self._set_tool_hints(tool_options)
         self._check_parameters()
         self._check_return_annotation()
         self._check_stream_response()
@@ -147,12 +150,20 @@ class Endpoint:
                 "hints with its verb's `tool_options=`."
             )
 
-    def _set_tool_hints(self, options: ToolOptions) -> None:
+    def _set_tool_hints(self, options: ToolOptions | None) -> None:
         """Set each tool hint from ``options``, or else from the HTTP method.
 
         Raises:
-            DefinitionError: If the hints say read-only and destructive.
+            DefinitionError: If the hints say read-only and destructive, or are
+                set on an endpoint that ``include_in_tools=False`` keeps out of
+                the tools.
         """
+        if options is not None and not self.include_in_tools:
+            raise DefinitionError(
+                f"Endpoint '{self.signature.qualname}' sets both `include_in_tools=False` and `tool_options=`: hints "
+                "are for a tool, and it isn't one. Drop `tool_options=`."
+            )
+        options = options or ToolOptions()
         method = self.method
         self.read_only = method in _READ_ONLY if options.read_only is None else options.read_only
         self.destructive = method in _DESTRUCTIVE if options.destructive is None else options.destructive

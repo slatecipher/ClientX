@@ -86,6 +86,7 @@ class Method:
         deprecated: str | None = None,
         tags: list[str] | None = None,
         tool_options: ToolOptions | None = None,
+        include_in_tools: bool = True,
         timeout: Timeout | float | None | UseClientDefault = USE_CLIENT_DEFAULT,
         raise_for_status: bool | None = None,
     ) -> EndpointDecorator: ...
@@ -99,6 +100,7 @@ class Method:
         deprecated: str | None = None,
         tags: list[str] | None = None,
         tool_options: ToolOptions | None = None,
+        include_in_tools: bool = True,
         timeout: Timeout | float | None | UseClientDefault = USE_CLIENT_DEFAULT,
         raise_for_status: bool | None = None,
     ) -> DecodedEndpointDecorator[D]: ...
@@ -111,6 +113,7 @@ class Method:
         deprecated: str | None = None,
         tags: list[str] | None = None,
         tool_options: ToolOptions | None = None,
+        include_in_tools: bool = True,
         timeout: Timeout | float | None | UseClientDefault = USE_CLIENT_DEFAULT,
         raise_for_status: bool | None = None,
     ) -> Any:
@@ -135,6 +138,10 @@ class Method:
             tool_options: Hints about what the endpoint does, for its tool. Each
                 one set is used as it is, and each left out comes from the HTTP
                 method; see ``ToolOptions``.
+            include_in_tools: ``False`` keeps the endpoint out of
+                ``list_tools``, whatever its types, for one only code should
+                call, such as an export that holds credentials. It can't be
+                combined with ``tool_options=``.
             timeout: The request timeout, as httpx2 takes it: the default uses
                 the client's, and ``None`` turns it off.
             raise_for_status: Whether a 4xx or 5xx response raises
@@ -153,6 +160,7 @@ class Method:
                 stream_response=stream,
                 deprecated=deprecated,
                 tool_options=tool_options,
+                include_in_tools=include_in_tools,
             )
 
             @wraps(func)

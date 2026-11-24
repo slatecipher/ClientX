@@ -63,12 +63,47 @@ Every endpoint on the client, and on the resources mounted on it, is a tool, exc
 | Streams: `-> Iterator[...]`, `-> AsyncIterator[...]` or `stream=True` | A stream can be endless, and wouldn't fit in a model's context. | Add an endpoint that returns the data whole, or a page of it. |
 | Returns the raw `Response` | A response object isn't data a model can read. | Annotate what the API returns, such as a model or `dict[str, Any]`. |
 | Returns `bytes`, such as a file download | A model can't read binary data, and it often isn't text, so it wouldn't become JSON. | Annotate text as `str`. Keep a file download for your code. |
+| Has `include_in_tools=False` | You keep it from models, such as an export that holds credentials (see [Keeping an endpoint from a model](#keeping-an-endpoint-from-a-model)). | Remove `include_in_tools=False`. |
 | Takes an argument with no JSON form, such as a binary file (`BinaryIO`) | A model sends its arguments as JSON. | Keep it for your code: a model can't send a file. |
 | Has a private name, which starts with `_`, such as `_delete`, or is on a resource mounted under one | It's private in Python, so it's private from a model too: a method of yours can check something before calling it, and a model can't go around the check (see [Guarding an endpoint](#guarding-an-endpoint)). | Name it without the leading `_`. |
 
 An endpoint's second name in its class is the same endpoint, so it's listed once. A second name that isn't private is listed even when the first one is.
 
 A method of your own becomes a tool too with `@tool`: see [Tools that aren't endpoints](#tools-that-arent-endpoints).
+
+### Keeping an endpoint from a model
+
+Some endpoints belong in your client's Python API but must never reach a model, such as one that exports a configuration holding credentials. Pass `include_in_tools=False` to the verb, and `list_tools` leaves the endpoint out, whatever its types:
+
+<!-- docs_src/tools/include_in_tools.py -->
+```python
+from typing import Any
+
+from clientx import ClientX, method
+from clientx.tools import list_tools
+
+
+class RouterAPI(ClientX, base_url="https://router.example.com/api"):
+    @method.get("/status")
+    def status(self) -> dict[str, Any]:
+        """Fetch the router's status: its uptime, and the devices connected."""
+        ...
+
+    # The configuration holds the admin password's hash and the Wi-Fi keys.
+    @method.get("/config", include_in_tools=False)
+    def config(self) -> dict[str, Any]:
+        """Export the whole configuration, to back it up."""
+        ...
+
+
+api = RouterAPI()
+print([each.name for each in list_tools(api)])  # ['status']
+```
+
+- **It's in the endpoint's definition,** so every app that serves your client's tools leaves the endpoint out. [Choosing tools](#choosing-tools) by tag is each app's own choice, and an app that forgets would offer it. A change to the endpoint's types can't make it a tool either.
+- **It only leaves an endpoint out.** The default, `True`, doesn't make a stream or a `-> Response` endpoint a tool.
+- **It can't be combined with `tool_options=`,** which raises `DefinitionError`: hints are for a tool, and the endpoint isn't one.
+- **A private name, such as `_config`, leaves an endpoint out too,** but marks it private for Python callers as well. Use a private name for an endpoint a [tool method guards](#guarding-an-endpoint), and `include_in_tools=False` for one your users call.
 
 ## What a tool has
 
