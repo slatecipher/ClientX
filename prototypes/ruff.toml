@@ -1,0 +1,17 @@
+# Prototypes, which aren't shipped. The generated client reads like a user's
+# code, so `clientx` sorts with the other third-party imports. The generator is
+# a single exploratory script: it needs no docstrings on its internals and may
+# run ruff on its output.
+extend = "../ruff.toml"
+
+[lint]
+per-file-ignores = { "openapi_gen/generate.py" = [
+    "D1",
+    "C901",
+    "S404",
+    "S603",
+    "S607",
+], "openapi_gen/test_*.py" = ["D", "S101", "S105", "S106", "S404", "S603"] }
+
+[lint.isort]
+known-third-party = ["clientx"]
