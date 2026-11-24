@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- `list_tools` leaves out an endpoint that returns `bytes`, as it leaves out one that returns the raw `Response`: a model can't read binary data. Calling one as a tool returned its body as a string if the bytes happened to be UTF-8, which handed a model a file such as a backup archive, and raised `UnicodeDecodeError` otherwise, rather than a `ToolError`. `@tool` on a method that returns `bytes` raises `DefinitionError`. **Breaking:** an endpoint that returns text as `bytes` isn't a tool any more. Annotate it `-> str` to keep it one.
+
 ## [0.5.0] - 2026-11-24
 
 ### Changed

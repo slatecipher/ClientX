@@ -214,7 +214,7 @@ tool.call(arguments: Mapping[str, Any] | None = None) -> Any  # on a ClientX
 await tool.acall(arguments: Mapping[str, Any] | None = None) -> Any  # on an AsyncClientX
 ```
 
-`list_tools` returns a `Tool` for each endpoint on the client and its mounted resources that a model can use, and for each `@tool` method there: endpoints that stream, return the raw `Response`, or take an argument with no JSON form are left out, and so are private names, which start with `_`, with everything on a resource mounted under one. Nothing in it depends on an AI library.
+`list_tools` returns a `Tool` for each endpoint on the client and its mounted resources that a model can use, and for each `@tool` method there: endpoints that stream, return the raw `Response` or `bytes`, or take an argument with no JSON form are left out, and so are private names, which start with `_`, with everything on a resource mounted under one. Nothing in it depends on an AI library.
 
 | `Tool` attribute | Type | What it is |
 |---|---|---|
@@ -231,7 +231,7 @@ await tool.acall(arguments: Mapping[str, Any] | None = None) -> Any  # on an Asy
 
 `ToolOptions` sets an endpoint's hints, through its verb's `tool_options=`. Each hint is worked out on its own: one you set is used as it is, and one left as `None` comes from the HTTP method (`GET`, `HEAD` and `OPTIONS` are read-only and idempotent; `PUT` and `DELETE` destructive and idempotent; `PATCH` destructive; `POST` none of them). Setting one hint never changes another. An endpoint whose hints end up read-only and destructive, set or from its method, raises `DefinitionError`. See [Where each hint comes from](tools.md#where-each-hint-comes-from).
 
-`@tool` makes a method of a client or resource a tool, listed and called as an endpoint is. It needs a docstring, its description, and a return annotation. Its hints are `False` unless set, as there's no HTTP method to take them from, and a resource's tags go in front of its own. `@tool` on an endpoint, or on a private name, raises `DefinitionError`. See [Tools that aren't endpoints](tools.md#tools-that-arent-endpoints).
+`@tool` makes a method of a client or resource a tool, listed and called as an endpoint is. It needs a docstring, its description, and a return annotation. Its hints are `False` unless set, as there's no HTTP method to take them from, and a resource's tags go in front of its own. `@tool` on an endpoint, on a private name, or on a method that returns `bytes`, raises `DefinitionError`. See [Tools that aren't endpoints](tools.md#tools-that-arent-endpoints).
 
 ## `clientx.fastmcp`
 
