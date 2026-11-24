@@ -17,8 +17,10 @@ framework can build on it.
   endpoint, and a model can't go around the check. A second name that isn't
   private is listed.
 - Left out: an endpoint that streams (``-> Iterator[...]`` or
-  ``stream=True``), returns the raw ``Response``, or has an argument with no
-  JSON form, such as a binary file. A model can't use them well.
+  ``stream=True``), returns the raw ``Response`` or ``bytes``, or has an
+  argument with no JSON form, such as a binary file. A model can't use them
+  well: ``bytes`` are binary data, which a model can't read, and which often
+  isn't even text, so it wouldn't become JSON.
 - Tool methods: ``@tool`` makes a method of a client or resource a tool, such
   as one that calls several endpoints and returns what a model needs at once.
   It needs a docstring, which is its description. Its hints are ``False``
@@ -27,7 +29,8 @@ framework can build on it.
   defined, as an endpoint is. One whose arguments or result have no JSON form
   raises ``DefinitionError`` when it's listed, rather than being left out:
   it was made a tool on purpose. For the same reason, ``@tool`` on a private
-  name raises ``DefinitionError`` when it's decorated.
+  name, or on a method that returns ``bytes``, raises ``DefinitionError`` when
+  it's decorated.
 - Descriptions: the docstring, up to its first section (``Args:``,
   ``Returns:``...), or else the method and path. A deprecated endpoint is
   still a tool: its description starts with ``Deprecated:`` and the
@@ -95,6 +98,8 @@ def list_tools(client: ClientX | AsyncClientX) -> list[Tool]:
       ``stream=True``;
     - one that returns the raw ``Response``: annotate what the API returns
       instead, such as a model or ``dict[str, Any]``;
+    - one that returns ``bytes``, which a model can't read: annotate text as
+      ``str``;
     - one with an argument that has no JSON form, such as a binary file.
 
     Private names, which start with ``_``, are left out, with everything on a
@@ -288,7 +293,7 @@ class _Call:
 # --- Building a tool ----------------------------------------------------------
 def _endpoint_tool(name: str, endpoint: Endpoint, function: Callable[..., Any]) -> Tool | None:
     """Return the tool for an endpoint, or ``None`` if a model can't use it."""
-    if endpoint.stream or endpoint.signature.returns.base_type is httpx2.Response:
+    if endpoint.stream or endpoint.signature.returns.base_type in (httpx2.Response, bytes):
         return None
     try:
         request = f"{endpoint.method} {endpoint.raw_path or '/'}"
@@ -408,9 +413,9 @@ def tool[F: Callable[..., Any]](
 
     Raises:
         DefinitionError: If the method is an endpoint, has a private name, has
-            no docstring or no return annotation, has no positional first
-            parameter, takes ``*args`` or ``**kwargs``, or is read-only and
-            destructive.
+            no docstring or no return annotation, returns ``bytes``, has no
+            positional first parameter, takes ``*args`` or ``**kwargs``, or is
+            read-only and destructive.
     """
 
     def decorator(func: F) -> F:
@@ -439,7 +444,8 @@ def _check_tool_method(tool_method: ToolMethod) -> None:
     It needs a name that isn't private, or ``list_tools`` would leave it out.
     It needs a docstring, which is its description: there's no method and path
     to fall back on. It needs a return annotation, for its output schema and
-    to turn its result into JSON. A model passes arguments by name, so each
+    to turn its result into JSON, and it can't return ``bytes``, which a model
+    can't read. A model passes arguments by name, so each
     parameter after the first, which receives the client or resource, is one
     argument.
     """
@@ -458,6 +464,11 @@ def _check_tool_method(tool_method: ToolMethod) -> None:
         raise DefinitionError(
             f"Tool '{name}' needs a return annotation: it's the tool's output schema, and says how its result "
             "becomes JSON. Use `-> None` if it returns nothing."
+        )
+    if signature.returns.base_type is bytes:
+        raise DefinitionError(
+            f"Tool '{name}' can't return bytes: a model can't read binary data, and it may not be text. Return "
+            "str for text, or what the model needs to know about the data."
         )
     first = signature.parameters[0] if signature.parameters else None
     if first is None or first.kind not in (ParameterKind.POSITIONAL_ONLY, ParameterKind.POSITIONAL_OR_KEYWORD):

@@ -62,6 +62,7 @@ Every endpoint on the client, and on the resources mounted on it, is a tool, exc
 |---|---|---|
 | Streams: `-> Iterator[...]`, `-> AsyncIterator[...]` or `stream=True` | A stream can be endless, and wouldn't fit in a model's context. | Add an endpoint that returns the data whole, or a page of it. |
 | Returns the raw `Response` | A response object isn't data a model can read. | Annotate what the API returns, such as a model or `dict[str, Any]`. |
+| Returns `bytes`, such as a file download | A model can't read binary data, and it often isn't text, so it wouldn't become JSON. | Annotate text as `str`. Keep a file download for your code. |
 | Takes an argument with no JSON form, such as a binary file (`BinaryIO`) | A model sends its arguments as JSON. | Keep it for your code: a model can't send a file. |
 | Has a private name, which starts with `_`, such as `_delete`, or is on a resource mounted under one | It's private in Python, so it's private from a model too: a method of yours can check something before calling it, and a model can't go around the check (see [Guarding an endpoint](#guarding-an-endpoint)). | Name it without the leading `_`. |
 
@@ -420,7 +421,7 @@ print([each.name for each in list_tools(api)])  # ['order', 'product', 'order_pr
 
 `list_tools` lists `order_products` with the endpoints, and a model calls it the same way. As for an endpoint, it's named by its attribute path, described by its docstring, and its schemas come from its signature. With one call, the model gets each product in the order, instead of calling `order`, then `product` once per product.
 
-- **It needs a docstring:** that's the tool's description, and there's no method and path to fall back on. It needs a return annotation too, and each argument and the result need a JSON form: a tool method without one raises `DefinitionError` when you list the tools, rather than being left out, since you made it a tool on purpose.
+- **It needs a docstring:** that's the tool's description, and there's no method and path to fall back on. It needs a return annotation too, which can't be `bytes`, and each argument and the result need a JSON form: a tool method without one raises `DefinitionError` when you list the tools, rather than being left out, since you made it a tool on purpose.
 - **Its hints are `False` unless you set them,** as there's no HTTP method to take them from: `@tool(read_only=True)` is read-only, but neither destructive nor idempotent. They mean what they do for an endpoint (see [Hints](#hints)). Tag it with `@tool(tags=[...])`: a resource's tags go in front, as for an endpoint.
 - **It's the kind of its class,** as an endpoint is: `def` on a `ClientX` or `Resource`, and `async def` on an `AsyncClientX` or `AsyncResource`.
 - **A request it sends that fails raises `ToolError`,** as for an endpoint (see [Errors](#errors)). The message names only the HTTP method, as in `to a GET request`, since the tool's requests aren't one endpoint's. Other exceptions pass through.

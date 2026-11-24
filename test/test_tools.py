@@ -78,6 +78,9 @@ def test_an_endpoint_a_model_cant_use_isnt_a_tool() -> None:
         @method.get("/status")
         def status(self) -> Response: ...
 
+        @method.get("/backup")
+        def backup(self) -> bytes: ...
+
         @method.post("/upload")
         def upload(self, file: Annotated[BinaryIO, File()]) -> None: ...
 
@@ -359,6 +362,11 @@ def unannotated(self: ClientX):
     """Do something."""
 
 
+def binary(self: ClientX) -> bytes:
+    """Do something."""
+    return b""
+
+
 def no_self() -> None:
     """Do something."""
 
@@ -381,6 +389,7 @@ def _private(self: ClientX) -> None:
         pytest.param(tool(), _private, "Tool '_private' has a private name", id="private name"),
         pytest.param(tool(), undocumented, "Tool 'undocumented' needs a docstring", id="no docstring"),
         pytest.param(tool(), unannotated, "Tool 'unannotated' needs a return annotation", id="no return annotation"),
+        pytest.param(tool(), binary, "Tool 'binary' can't return bytes", id="bytes"),
         pytest.param(tool(), no_self, "Tool 'no_self' needs a positional first parameter", id="no self"),
         pytest.param(tool(), variadic, "Tool 'variadic' can't take `*user_ids`", id="*args"),
         pytest.param(
