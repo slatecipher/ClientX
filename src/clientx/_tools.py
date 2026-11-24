@@ -10,6 +10,12 @@ framework can build on it.
 - Names: the attribute path from the client, joined with ``_``, so
   ``api.users.create`` is ``users_create``. An endpoint's second name in its
   class is left out: it's the same endpoint.
+- Private names: an endpoint or ``@tool`` method whose name starts with
+  ``_``, and everything on a resource mounted under such a name, is left
+  out, as Python marks it private. A model gets what a Python caller may
+  use, so a ``@tool`` method can check something before it calls a private
+  endpoint, and a model can't go around the check. A second name that isn't
+  private is listed.
 - Left out: an endpoint that streams (``-> Iterator[...]`` or
   ``stream=True``), returns the raw ``Response``, or has an argument with no
   JSON form, such as a binary file. A model can't use them well.
@@ -20,7 +26,8 @@ framework can build on it.
   it's decorated, and its kind (``def`` or ``async def``) when its class is
   defined, as an endpoint is. One whose arguments or result have no JSON form
   raises ``DefinitionError`` when it's listed, rather than being left out:
-  it was made a tool on purpose.
+  it was made a tool on purpose. For the same reason, ``@tool`` on a private
+  name raises ``DefinitionError`` when it's decorated.
 - Descriptions: the docstring, up to its first section (``Args:``,
   ``Returns:``...), or else the method and path. A deprecated endpoint is
   still a tool: its description starts with ``Deprecated:`` and the
@@ -90,7 +97,10 @@ def list_tools(client: ClientX | AsyncClientX) -> list[Tool]:
       instead, such as a model or ``dict[str, Any]``;
     - one with an argument that has no JSON form, such as a binary file.
 
-    An endpoint's or tool method's second name in its class is listed once.
+    Private names, which start with ``_``, are left out, with everything on a
+    resource mounted under one, so a ``@tool`` method can guard a private
+    endpoint. An endpoint's or tool method's second name in its class is
+    listed once.
     A deprecated endpoint is listed too: ``Tool.deprecated`` holds its message.
 
     Raises:
@@ -106,9 +116,12 @@ def _collect(owner: object, prefix: str, tools: list[Tool], seen: set[int]) -> N
     """Add the tools on ``owner``, then those on its resources.
 
     ``seen`` holds each endpoint and tool method met so far, by ``id``, so a
-    second name is left out.
+    second name is left out. A private name is skipped before it's seen, so a
+    second name that isn't private is listed.
     """
     for name, value in _members(type(owner)).items():
+        if name.startswith("_"):
+            continue
         definition = endpoint_for(value) or tool_method_for(value)
         if definition is None:
             if hasattr(type(value), "__clientx_prefix__"):  # A mounted resource.
@@ -394,9 +407,10 @@ def tool[F: Callable[..., Any]](
     ``AsyncResource``, which its class checks when it's defined.
 
     Raises:
-        DefinitionError: If the method is an endpoint, has no docstring or no
-            return annotation, has no positional first parameter, takes
-            ``*args`` or ``**kwargs``, or is read-only and destructive.
+        DefinitionError: If the method is an endpoint, has a private name, has
+            no docstring or no return annotation, has no positional first
+            parameter, takes ``*args`` or ``**kwargs``, or is read-only and
+            destructive.
     """
 
     def decorator(func: F) -> F:
@@ -422,6 +436,7 @@ def tool[F: Callable[..., Any]](
 def _check_tool_method(tool_method: ToolMethod) -> None:
     """Raise ``DefinitionError`` unless a ``@tool`` method can be a tool.
 
+    It needs a name that isn't private, or ``list_tools`` would leave it out.
     It needs a docstring, which is its description: there's no method and path
     to fall back on. It needs a return annotation, for its output schema and
     to turn its result into JSON. A model passes arguments by name, so each
@@ -430,6 +445,11 @@ def _check_tool_method(tool_method: ToolMethod) -> None:
     """
     signature = tool_method.signature
     name = signature.qualname
+    if signature.name.startswith("_"):
+        raise DefinitionError(
+            f"Tool '{name}' has a private name, which list_tools leaves out: name it without the leading `_`, "
+            "or drop @tool."
+        )
     if not _description(inspect.cleandoc(signature.doc or "")):
         raise DefinitionError(
             f"Tool '{name}' needs a docstring: it's the tool's description, which a model reads to choose it."
