@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- A tool names a model's fields by their Python names in its schemas, its arguments and its result, so a result matches the output schema and the input schema matches what a call accepts. For a model with aliased fields, such as `pet_id: int = Field(alias="petId")`, the output schema listed `petId` but the result had `pet_id`, so an MCP client that checks structured content against the schema, as FastMCP's does, rejected every call through `clientx.fastmcp`. A model argument's schema listed `pet_id`, but the call accepted only `petId`. The API still gets and sends its own names. Reported in #175.
+
 ## [0.4.0] - 2026-11-23
 
 ### Added

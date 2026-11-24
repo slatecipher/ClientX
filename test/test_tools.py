@@ -7,7 +7,7 @@ from typing import Annotated, Any, BinaryIO
 
 import httpx2
 import pytest
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from clientx import AsyncClientX, ClientX, DefinitionError, File, Header, Json, Query, Resource, Response, Send, method
 from clientx.tools import Tool, ToolError, ToolOptions, list_tools, tool
@@ -30,6 +30,11 @@ class User(BaseModel):
 class Node(BaseModel):
     value: int
     children: list["Node"] = []
+
+
+class Order(BaseModel):
+    id: int
+    pet_id: int = Field(alias="petId")
 
 
 type Limit = Annotated[int, Query(ge=1, description="How many to return.")]
@@ -153,6 +158,26 @@ def test_the_input_schema_is_compact_and_describes_each_argument() -> None:
     assert tool.output_schema is not None
     assert tool.output_schema["properties"]["children"]["items"] == {"$ref": "#/$defs/Node"}
     assert "Node" in tool.output_schema["$defs"]
+
+
+def test_a_models_fields_are_named_as_in_python_not_by_alias(mock_transport: MockTransport) -> None:
+    class API(ClientX):
+        @method.post("/orders")
+        def place(self, order: Annotated[Order, Json()]) -> list[Order]:
+            """Place an order."""
+            ...
+
+    sent: list[httpx2.Request] = []
+    tool = tools_of(API(BASE_URL, transport=mock_transport(sent, json=[{"id": 3, "petId": 7}])))["place"]
+    result = tool.call({"order": {"id": 3, "pet_id": 7}})
+
+    fields = {"id": {"type": "integer"}, "pet_id": {"type": "integer"}}
+    assert tool.input_schema["properties"]["order"]["properties"] == fields
+    assert tool.output_schema is not None
+    assert tool.output_schema["items"]["properties"] == fields
+    # The API gets its own names, and the model the schemas'.
+    assert json.loads(sent[0].content) == {"id": 3, "petId": 7}
+    assert result == [{"id": 3, "pet_id": 7}]
 
 
 @pytest.mark.parametrize(

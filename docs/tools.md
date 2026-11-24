@@ -137,9 +137,10 @@ def list_orders(
 
 ## Calling a tool
 
-`tool.call(arguments)` takes the arguments as a model sends them, a mapping from parameter names to JSON values, and returns the result as JSON-ready data, with a model dumped as Pydantic dumps it in JSON mode:
+`tool.call(arguments)` takes the arguments as a model sends them, a mapping from parameter names to JSON values, and returns the result as JSON-ready data, with a model dumped as Pydantic dumps it in JSON mode, by field name:
 
 - Arguments are named as in the method, not by a helper's `alias=`, which is the name sent to the API.
+- A model's fields are named as in Python too, in the arguments and in the result, and both schemas list them that way. ClientX still sends and reads the API's names: with `pet_id: int = Field(alias="petId")`, the model sees `pet_id` and the API `petId`.
 - They're validated as Pydantic validates a call, leniently: `"7"` fits an `int`.
 - Only the arguments the model gave are passed, so the rest keep their defaults, as in a Python call: a `Send(exclude_unset=True)` parameter the model left out isn't sent, and a JSON field left at `None` isn't sent as `null`.
 
