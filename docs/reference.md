@@ -114,6 +114,7 @@ method.get(
     deprecated: str | None = None,
     tags: list[str] | None = None,
     tool_options: ToolOptions | None = None,
+    include_in_tools: bool = True,
     timeout: float | Timeout | None = ...,  # the client's
     raise_for_status: bool | None = None,  # the client's
 )
@@ -129,6 +130,7 @@ The module of verb decorators: `get`, `post`, `put`, `patch`, `delete`, `head` a
 | `deprecated` | none | The message of a `DeprecationWarning` that each call emits. |
 | `tags` | none | Labels that group endpoints, each kept once. AI tools carry them, as `Tool.tags`. |
 | `tool_options` | none | A [`ToolOptions`](#clientxtools) with hints about what the endpoint does, for AI tools. Each hint set there is used as it is, and each left out comes from the HTTP method. |
+| `include_in_tools` | `True` | `False` keeps the endpoint out of `list_tools`, whatever its types. Combined with `tool_options`, it raises `DefinitionError`. |
 | `timeout` | the client's | The request timeout, in seconds or as an `httpx2.Timeout`. `None` turns it off. |
 | `raise_for_status` | the client's | Whether a 4xx or 5xx response raises `httpx2.HTTPStatusError`. |
 
@@ -214,7 +216,7 @@ tool.call(arguments: Mapping[str, Any] | None = None) -> Any  # on a ClientX
 await tool.acall(arguments: Mapping[str, Any] | None = None) -> Any  # on an AsyncClientX
 ```
 
-`list_tools` returns a `Tool` for each endpoint on the client and its mounted resources that a model can use, and for each `@tool` method there: endpoints that stream, return the raw `Response` or `bytes`, or take an argument with no JSON form are left out, and so are private names, which start with `_`, with everything on a resource mounted under one. Nothing in it depends on an AI library.
+`list_tools` returns a `Tool` for each endpoint on the client and its mounted resources that a model can use, and for each `@tool` method there: endpoints that stream, return the raw `Response` or `bytes`, take an argument with no JSON form, or have `include_in_tools=False` are left out, and so are private names, which start with `_`, with everything on a resource mounted under one. Nothing in it depends on an AI library.
 
 | `Tool` attribute | Type | What it is |
 |---|---|---|

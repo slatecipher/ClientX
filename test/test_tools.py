@@ -90,6 +90,25 @@ def test_an_endpoint_a_model_cant_use_isnt_a_tool() -> None:
     assert list(tools_of(API(BASE_URL))) == ["users"]
 
 
+def test_include_in_tools_false_keeps_an_endpoint_out() -> None:
+    class API(ClientX):
+        @method.get("/status")
+        def status(self) -> dict[str, Any]: ...
+
+        @method.get("/config", include_in_tools=False)
+        def config(self) -> dict[str, Any]: ...
+
+    assert list(tools_of(API(BASE_URL))) == ["status"]
+
+
+def test_an_endpoint_kept_out_of_the_tools_cant_set_tool_options() -> None:
+    with pytest.raises(DefinitionError, match=r"sets both `include_in_tools=False` and `tool_options=`"):
+
+        class API(ClientX):
+            @method.get("/config", include_in_tools=False, tool_options=ToolOptions(read_only=True))
+            def config(self) -> dict[str, Any]: ...
+
+
 def test_a_private_name_isnt_a_tool() -> None:
     class Hidden(Resource, prefix="/hidden"):
         @method.get()

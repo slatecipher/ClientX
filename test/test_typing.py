@@ -55,7 +55,7 @@ class API(ClientX):
     @method.get("/users", tool_options=ToolOptions(idempotent=True))
     def list_users(self, page: Annotated[int, Query(ge=1)] = 1) -> list[User]: ...
 
-    @method.get("/health")
+    @method.get("/health", include_in_tools=False)
     def health(self) -> Response: ...
 
     @method.get("/logs")
@@ -165,7 +165,7 @@ class Decoded(ClientX):
     @method.post("/jobs", decoder=status_of, tool_options=ToolOptions(idempotent=False))
     def submit(self) -> int: ...
 
-    @method.get("/events", decoder=decode_events)
+    @method.get("/events", decoder=decode_events, include_in_tools=False)
     def events(self) -> Iterator[Event]: ...
 
     @method.get("/text", decoder=lambda response: response.text)

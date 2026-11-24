@@ -21,6 +21,9 @@ framework can build on it.
   argument with no JSON form, such as a binary file. A model can't use them
   well: ``bytes`` are binary data, which a model can't read, and which often
   isn't even text, so it wouldn't become JSON.
+- Kept out: an endpoint whose verb has ``include_in_tools=False``, whatever
+  its types. Its author keeps it from models, such as an export that holds
+  credentials, so every app that serves the client's tools leaves it out.
 - Tool methods: ``@tool`` makes a method of a client or resource a tool, such
   as one that calls several endpoints and returns what a model needs at once.
   It needs a docstring, which is its description. Its hints are ``False``
@@ -102,7 +105,8 @@ def list_tools(client: ClientX | AsyncClientX) -> list[Tool]:
       ``str``;
     - one with an argument that has no JSON form, such as a binary file.
 
-    Private names, which start with ``_``, are left out, with everything on a
+    An endpoint with ``include_in_tools=False`` is left out too. Private
+    names, which start with ``_``, are left out, with everything on a
     resource mounted under one, so a ``@tool`` method can guard a private
     endpoint. An endpoint's or tool method's second name in its class is
     listed once.
@@ -293,7 +297,9 @@ class _Call:
 # --- Building a tool ----------------------------------------------------------
 def _endpoint_tool(name: str, endpoint: Endpoint, function: Callable[..., Any]) -> Tool | None:
     """Return the tool for an endpoint, or ``None`` if a model can't use it."""
-    if endpoint.stream or endpoint.signature.returns.base_type in (httpx2.Response, bytes):
+    if not endpoint.include_in_tools or endpoint.stream:
+        return None
+    if endpoint.signature.returns.base_type in (httpx2.Response, bytes):
         return None
     try:
         request = f"{endpoint.method} {endpoint.raw_path or '/'}"
