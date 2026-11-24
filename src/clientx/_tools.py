@@ -29,13 +29,16 @@ framework can build on it.
   its helper's ``description=``, or else its entry in the docstring's
   ``Args:``.
 - Schemas: arguments are named as in the method, not by their helpers'
-  aliases. Pydantic's ``title`` on each property is left out, and a model or
-  ``type`` alias is written in place rather than behind a ``$ref``, unless it
-  refers to itself.
+  aliases, and a model's fields by their names, not their aliases, in both
+  schemas: the aliases are the API's names, and a tool speaks Python's.
+  Pydantic's ``title`` on each property is left out, and a model or ``type``
+  alias is written in place rather than behind a ``$ref``, unless it refers to
+  itself.
 - Calls: a model's arguments are validated as Pydantic validates a call,
   leniently, so ``"7"`` fits an ``int``. Only the arguments the model gave are
   passed, so a default stays a default, as ``Send(exclude_unset=True)`` and a
-  JSON field's ``None`` need. The result is JSON-ready data.
+  JSON field's ``None`` need. A model's fields are taken, and returned, by
+  name, as the schemas list them. The result is JSON-ready data.
 - Hints: each is worked out on its own, as the endpoint's ``tool_options=``
   setting, or else what its HTTP method implies (``ToolOptions`` lists them),
   so setting one never changes another. An endpoint can't be read-only and
@@ -222,7 +225,7 @@ class _Call:
         """
         given = dict(arguments or {})
         try:
-            validated = self.adapter.validate_python(given)
+            validated = self.adapter.validate_python(given, by_alias=False, by_name=True)
         except ValidationError as error:
             raise ToolError(
                 f"The arguments don't fit {name}: {describe_errors(error, values=True)}. Nothing was sent.", tool=name
@@ -266,7 +269,7 @@ class _Call:
 
     def dump(self, result: Any) -> Any:
         """Return the result as JSON-ready data."""
-        return None if self.output is None else self.output.dump_python(result, mode="json")
+        return None if self.output is None else self.output.dump_python(result, mode="json", by_alias=False)
 
 
 # --- Building a tool ----------------------------------------------------------
@@ -320,7 +323,7 @@ def _tool(
     input_schema = _compact(adapter.json_schema(by_alias=False))
     returns_nothing = returns.base_type is None or returns.base_type is NoneType
     output = None if returns_nothing else TypeAdapter[Any](returns.annotation)
-    output_schema = None if output is None else _compact(output.json_schema(mode="serialization"))
+    output_schema = None if output is None else _compact(output.json_schema(mode="serialization", by_alias=False))
     doc = inspect.cleandoc(signature.doc or "")
     argument_docs = _argument_docs(doc)
     for parameter_name, schema in input_schema.get("properties", {}).items():
