@@ -35,6 +35,7 @@ fastmcp = ["fastmcp>=4.2.0,<5"]
 
 [project.urls]
 Repository = "https://github.com/slatecipher/ClientX"
+Documentation = "https://github.com/slatecipher/ClientX/tree/mainline/docs"
 Issues = "https://github.com/slatecipher/ClientX/issues"
 Changelog = "https://github.com/slatecipher/ClientX/blob/mainline/CHANGELOG.md"
 
