@@ -31,6 +31,8 @@ The result is less scaffolding and more focus on outcomes: authors, human or AI,
 pip install clientx
 ```
 
+ClientX installs [httpx2](https://github.com/pydantic/httpx2) and Pydantic. If your package imports `httpx2` itself, such as to catch `httpx2.HTTPStatusError`, declare it as a dependency too, rather than relying on ClientX to install it.
+
 Using an AI coding assistant? Point it at [llms.txt](https://github.com/slatecipher/ClientX/blob/mainline/llms.txt), a compact guide to ClientX's patterns and pitfalls.
 
 ## Quickstart

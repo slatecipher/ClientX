@@ -27,11 +27,14 @@ classifiers = [
 dependencies = [
     "httpx2>=2.10.0",
     "pydantic>=2.12.5",
+    # Imported directly. Each Pydantic release pins one version: 2.12.5 pins 2.41.5.
+    "pydantic-core>=2.41.5",
 ]
 
 [project.optional-dependencies]
-# `clientx.fastmcp`: serve a client's tools with FastMCP.
-fastmcp = ["fastmcp>=4.2.0,<5"]
+# `clientx.fastmcp`: serve a client's tools with FastMCP. `anyio` runs a sync
+# client's tool in a worker thread; its floor is httpx2 2.10.0's.
+fastmcp = ["fastmcp>=4.2.0,<5", "anyio>=4.10"]
 
 [project.urls]
 Repository = "https://github.com/slatecipher/ClientX"

@@ -46,3 +46,13 @@ def mock_transport() -> Callable[..., httpx2.MockTransport]:
         return httpx2.MockTransport(answer)
 
     return build
+
+
+@pytest.fixture
+def anyio_backend() -> str:
+    """Run the async tests on asyncio only, as anyio's testing guide shows.
+
+    Before 4.12, anyio's own fixture runs them on trio too, which isn't
+    installed.
+    """
+    return "asyncio"

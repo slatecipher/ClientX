@@ -2,7 +2,7 @@
 
 > ClientX is a library for typed, declarative HTTP API clients on Python 3.12+, built on httpx2 and Pydantic v2. You declare endpoints as decorated methods with empty bodies; ClientX builds each request from the method's signature and annotations, and decodes the response into the method's return annotation.
 
-Install with `pip install clientx`. ClientX depends on `httpx2`, which is a different package from `httpx`: import `httpx2`, not `httpx`.
+Install with `pip install clientx`. ClientX depends on `httpx2`, which is a different package from `httpx`: import `httpx2`, not `httpx`. A package that imports `httpx2` itself declares it as a dependency too, rather than relying on ClientX to install it.
 
 **Rules for code that uses ClientX** (each is explained in a bullet below):
 

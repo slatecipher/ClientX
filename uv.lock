@@ -295,10 +295,12 @@ source = { editable = "." }
 dependencies = [
     { name = "httpx2" },
     { name = "pydantic" },
+    { name = "pydantic-core" },
 ]
 
 [package.optional-dependencies]
 fastmcp = [
+    { name = "anyio" },
     { name = "fastmcp" },
 ]
 
@@ -314,9 +316,11 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "anyio", marker = "extra == 'fastmcp'", specifier = ">=4.10" },
     { name = "fastmcp", marker = "extra == 'fastmcp'", specifier = ">=4.2.0,<5" },
     { name = "httpx2", specifier = ">=2.10.0" },
     { name = "pydantic", specifier = ">=2.12.5" },
+    { name = "pydantic-core", specifier = ">=2.41.5" },
 ]
 provides-extras = ["fastmcp"]
 
