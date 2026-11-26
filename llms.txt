@@ -141,6 +141,10 @@ Using clients:
 - [API reference](https://github.com/slatecipher/ClientX/blob/mainline/docs/reference.md): every public name, its signature, arguments and defaults, and what's internal
 - [CHANGELOG](https://github.com/slatecipher/ClientX/blob/mainline/CHANGELOG.md): changes in each release; the API may change between minor versions before 1.0
 
+## Examples
+
+- [gravitywell](https://github.com/slatecipher/gravitywell): a full client built with ClientX, for the Pi-hole v6 REST API: sync and async clients with resources, an httpx2.Auth that manages the API session, @tool methods that gather several endpoints in one call, and an MCP server on clientx.fastmcp
+
 ## Optional
 
 - [CONTRIBUTING](https://github.com/slatecipher/ClientX/blob/mainline/CONTRIBUTING.md): development setup and commit conventions for contributing to ClientX itself
