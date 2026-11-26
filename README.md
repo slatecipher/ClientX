@@ -128,6 +128,10 @@ ClientX is inspired by FastAPI, which reads type hints to define server endpoint
 - [Errors](https://github.com/slatecipher/ClientX/blob/mainline/docs/errors.md): the errors ClientX raises, and when.
 - [API reference](https://github.com/slatecipher/ClientX/blob/mainline/docs/reference.md): every public name, with its signature and arguments.
 
+## Built with ClientX
+
+- [gravitywell](https://github.com/slatecipher/gravitywell): a typed client for the Pi-hole v6 REST API, sync and async, with AI tools and an MCP server.
+
 ## Development
 
 See [CONTRIBUTING.md](https://github.com/slatecipher/ClientX/blob/mainline/CONTRIBUTING.md) for setup, checks, and conventions.
