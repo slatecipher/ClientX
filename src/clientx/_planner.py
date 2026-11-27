@@ -1,12 +1,12 @@
 """Plan how an endpoint's calls become requests, when its class is defined.
 
-``Endpoint.set_up_request`` calls ``plan_request`` with the endpoint's final
-path template (any resource prefix joined on), its parameters, and whether it's
-``async def``. It checks that they fit together, raising ``DefinitionError`` if
-they don't, and returns the ``RequestPlan`` that ``_builder.build_request``
-follows on each call. The planner decides everything, ``Send`` options
-included, and bakes it into the plan, so the builder never reads annotations,
-``Send`` or the specs.
+``Endpoint.set_up_request_plan`` calls ``plan_request`` with the endpoint's
+final path template (any resource prefix joined on), its parameters, and
+whether it's ``async def``. It checks that they fit together, raising
+``DefinitionError`` if they don't, and returns the ``RequestPlan`` that
+``_builder.build_request`` follows on each call. The planner decides
+everything, ``Send`` options included, and bakes it into the plan, so the
+builder never reads annotations, ``Send`` or the specs.
 
 Where each parameter goes is decided once, and never guessed:
 
