@@ -121,12 +121,8 @@ class Endpoint:
                 and ``_set_*`` methods and ``default_decoder``.
         """
         self.tags = list(dict.fromkeys(self.tags))  # Each tag once, in order.
-        self._check_not_a_tool_method()
+        self._check_definition()
         self._set_tool_hints(tool_options)
-        self._check_parameters()
-        self._check_return_annotation()
-        self._check_stream_response()
-        self._check_decoder()
 
         name = self.signature.qualname
         returns = self.signature.returns
@@ -137,18 +133,6 @@ class Endpoint:
                 self.decoder = default_decoder(returns, is_async=is_async)
         except DefinitionError as error:
             raise DefinitionError(f"Endpoint '{name}': {error}") from error
-
-    def _check_not_a_tool_method(self) -> None:
-        """Raise ``DefinitionError`` if ``@tool`` is under the verb.
-
-        ``@tool`` over the verb raises when it's applied, as it gets the
-        endpoint.
-        """
-        if tool_method_for(self.signature.func) is not None:
-            raise DefinitionError(
-                f"'{self.signature.qualname}' is an endpoint, so it's a tool already: instead of @tool, set its "
-                "hints with its verb's `tool_options=`."
-            )
 
     def _set_tool_hints(self, options: ToolOptions | None) -> None:
         """Set each tool hint from ``options``, or else from the HTTP method.
@@ -173,6 +157,26 @@ class Endpoint:
                 f"Endpoint '{self.signature.qualname}' can't be both read-only and destructive: a read-only endpoint "
                 "changes nothing. Set `read_only=False` or `destructive=False` in `tool_options=`; a hint left out "
                 f"there comes from the HTTP method, {method}."
+            )
+
+    def _check_definition(self) -> None:
+        """Raise ``DefinitionError`` if the method can't be an endpoint."""
+        self._check_not_a_tool_method()
+        self._check_parameters()
+        self._check_return_annotation()
+        self._check_stream_response()
+        self._check_decoder()
+
+    def _check_not_a_tool_method(self) -> None:
+        """Raise ``DefinitionError`` if ``@tool`` is under the verb.
+
+        ``@tool`` over the verb raises when it's applied, as it gets the
+        endpoint.
+        """
+        if tool_method_for(self.signature.func) is not None:
+            raise DefinitionError(
+                f"'{self.signature.qualname}' is an endpoint, so it's a tool already: instead of @tool, set its "
+                "hints with its verb's `tool_options=`."
             )
 
     def _check_parameters(self) -> None:
