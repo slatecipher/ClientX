@@ -57,7 +57,7 @@ def set_up_client(
     if user_agent is not None:
         cls.__clientx_user_agent__ = user_agent
     for endpoint in _claim_endpoints(cls):
-        endpoint.set_up_request()
+        endpoint.set_up_request_plan()
 
 
 def set_up_resource(
@@ -89,7 +89,7 @@ def set_up_resource(
     for endpoint in _claim_endpoints(cls):
         endpoint.raw_path = _join_path(cls.__clientx_prefix__, endpoint.raw_path)
         endpoint.tags = list(dict.fromkeys([*cls.__clientx_tags__, *endpoint.tags]))
-        endpoint.set_up_request()
+        endpoint.set_up_request_plan()
     tool_methods = {id(method): method for value in vars(cls).values() if (method := tool_method_for(value))}
     for tool_method in tool_methods.values():  # Each once, though it has a second name.
         tool_method.tags = list(dict.fromkeys([*cls.__clientx_tags__, *tool_method.tags]))

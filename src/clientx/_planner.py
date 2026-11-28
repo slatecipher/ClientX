@@ -1,12 +1,12 @@
 """Plan how an endpoint's calls become requests, when its class is defined.
 
-``Endpoint.set_up_request`` calls ``plan_request`` with the endpoint's final
-path template (any resource prefix joined on), its parameters, and whether it's
-``async def``. It checks that they fit together, raising ``DefinitionError`` if
-they don't, and returns the ``RequestPlan`` that ``_builder.build_request``
-follows on each call. The planner decides everything, ``Send`` options
-included, and bakes it into the plan, so the builder never reads annotations,
-``Send`` or the specs.
+``Endpoint.set_up_request_plan`` calls ``plan_request`` with the endpoint's
+final path template (any resource prefix joined on), its parameters, and
+whether it's ``async def``. It checks that they fit together, raising
+``DefinitionError`` if they don't, and returns the ``RequestPlan`` that
+``_builder.build_request`` follows on each call. The planner decides
+everything, ``Send`` options included, and bakes it into the plan, so the
+builder never reads annotations, ``Send`` or the specs.
 
 Where each parameter goes is decided once, and never guessed:
 
@@ -66,7 +66,7 @@ isn't part of a placeholder raises.
 from __future__ import annotations
 
 import io
-from collections.abc import AsyncIterable, Callable, Collection, Iterable, Mapping, Sequence
+from collections.abc import AsyncIterable, Callable, Collection, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, fields, is_dataclass
 from datetime import date, datetime, time
 from decimal import Decimal
@@ -658,7 +658,7 @@ def _check_dump_options(parameter: ParameterInfo) -> None:
     for option, (affects, described) in _DUMP_OPTIONS.items():
         if getattr(parameter.send, option) is None:
             continue
-        if not _contains_class(parameter.annotation, affects, frozenset()):
+        if not _contains_class(parameter.annotation, affects):
             hint = (
                 " To leave out the parameter itself when the caller doesn't pass it, use Send(exclude_unset=True)."
                 if option == "exclude_defaults"
@@ -671,7 +671,7 @@ def _check_dump_options(parameter: ParameterInfo) -> None:
     if (
         parameter.send.exclude_unset is not None
         and (parameter.default is NO_VALUE or parameter.default is None)
-        and not _contains_class(parameter.annotation, _is_model, frozenset())
+        and not _contains_class(parameter.annotation, _is_model)
     ):
         why = (
             "it has no default, so it's always passed"
@@ -694,22 +694,9 @@ def _dump_options(parameter: ParameterInfo) -> DumpOptions:
     )
 
 
-def _contains_class(annotation: Any, wanted: Callable[[type[Any]], bool], seen: frozenset[TypeAliasType]) -> bool:
-    """Return whether ``annotation``, or a type inside it, is a wanted class.
-
-    ``seen`` holds the ``type`` aliases already expanded, as in ``_contains``,
-    so one that contains itself is expanded only once.
-    """
-    alias = annotation if isinstance(annotation, TypeAliasType) else get_origin(annotation)
-    if isinstance(alias, TypeAliasType):
-        if alias in seen:
-            return False
-        seen |= {alias}
-    base, _ = unwrap_annotated(annotation)
-    cls = _class_of(base)
-    if cls is not None and wanted(cls):
-        return True
-    return any(_contains_class(arg, wanted, seen) for arg in get_args(base))
+def _contains_class(annotation: Any, wanted: Callable[[type[Any]], bool]) -> bool:
+    """Return whether ``annotation``, or a type inside it, is a wanted class."""
+    return any((cls := _class_of(base)) is not None and wanted(cls) for base, _ in _walk(annotation))
 
 
 # --- Helpers and Send nested in a type ----------------------------------------
@@ -722,13 +709,13 @@ def _check_nested(parameter: ParameterInfo) -> None:
     # base_type is the type without the outermost Annotated, which
     # ParameterInfo has already read, so only what's inside it is searched.
     inside = get_args(parameter.base_type)
-    if any(_contains(arg, _is_helper, frozenset()) for arg in inside):
+    if any(_contains(arg, _is_helper) for arg in inside):
         raise DefinitionError(
             f"Parameter {parameter.name!r} has a helper inside its type. ClientX reads a helper only "
             "in the outermost Annotated, so move it there: for example, Annotated[str | None, Header()] "
             "rather than Annotated[str, Header()] | None."
         )
-    if any(_contains(arg, _is_send, frozenset()) for arg in inside):
+    if any(_contains(arg, _is_send) for arg in inside):
         raise DefinitionError(
             f"Parameter {parameter.name!r} has a Send inside its type. ClientX reads Send only in the "
             "outermost Annotated, so move it there: for example, Annotated[list[str] | None, Json(), "
@@ -736,23 +723,9 @@ def _check_nested(parameter: ParameterInfo) -> None:
         )
 
 
-def _contains(annotation: Any, wanted: Callable[[object], bool], seen: frozenset[TypeAliasType]) -> bool:
-    """Return whether ``annotation``, or a type inside it, has ``wanted``.
-
-    ``seen`` holds the ``type`` aliases already expanded on the way here, so one
-    that contains itself, such as ``type Value = dict[str, Value] | str``, is
-    expanded only once.
-    """
-    alias = annotation if isinstance(annotation, TypeAliasType) else get_origin(annotation)
-    if isinstance(alias, TypeAliasType):
-        if alias in seen:
-            return False
-        seen |= {alias}
-    # unwrap_annotated expands a type alias too, so metadata inside one counts.
-    base, metadata = unwrap_annotated(annotation)
-    if any(wanted(meta) for meta in metadata):
-        return True
-    return any(_contains(arg, wanted, seen) for arg in get_args(base))
+def _contains(annotation: Any, wanted: Callable[[object], bool]) -> bool:
+    """Return whether ``annotation``, or a type inside it, has ``wanted``."""
+    return any(wanted(meta) for _, metadata in _walk(annotation) for meta in metadata)
 
 
 def _is_helper(meta: object) -> bool:
@@ -771,7 +744,7 @@ def _check_serializers(parameter: ParameterInfo) -> None:
     ``PlainSerializer`` or ``WrapSerializer`` in the parameter's annotation
     would be ignored silently. A model's own serializers do run.
     """
-    if _contains(parameter.annotation, _is_serializer, frozenset()):
+    if _contains(parameter.annotation, _is_serializer):
         raise DefinitionError(
             f"Parameter {parameter.name!r} has a pydantic serializer in its type, but ClientX sends a value by its "
             "own type, so the serializer wouldn't run. Convert the value at the call, or make it a field of a "
@@ -1151,6 +1124,26 @@ def _class_of(annotation: Any) -> type[Any] | None:
     # get_origin gives list for list[str], and None for a plain class like int.
     cls: object = get_origin(annotation) or annotation
     return cast("type[Any]", cls) if isinstance(cls, type) else None
+
+
+def _walk(annotation: Any, seen: frozenset[TypeAliasType] = frozenset()) -> Iterator[tuple[Any, tuple[Any, ...]]]:
+    """Yield the type and each type inside it, outermost first.
+
+    Each comes split by ``unwrap_annotated`` into its type and its metadata.
+    That expands a ``type`` alias too, so metadata inside one counts. ``seen``
+    holds the aliases already expanded on the way here, so one that contains
+    itself, such as ``type Value = dict[str, Value] | str``, is expanded only
+    once.
+    """
+    alias = annotation if isinstance(annotation, TypeAliasType) else get_origin(annotation)
+    if isinstance(alias, TypeAliasType):
+        if alias in seen:
+            return
+        seen |= {alias}
+    base, metadata = unwrap_annotated(annotation)
+    yield base, metadata
+    for arg in get_args(base):
+        yield from _walk(arg, seen)
 
 
 def _has_fields(annotation: Any) -> bool:
